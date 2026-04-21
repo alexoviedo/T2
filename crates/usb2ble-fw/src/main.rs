@@ -8,7 +8,7 @@ mod integration_tests;
 use usb2ble_app::App;
 use usb2ble_contracts::{CONTRACT_VERSION, ControlPlane, ControlResponse};
 use usb2ble_control::SerialControlPlane;
-use usb2ble_platform_esp32::{self as platform, Uart};
+use usb2ble_platform_esp32::{self as platform, Uart, UartReadResult};
 use usb2ble_storage::InMemoryStore;
 
 /// Firmware name.
@@ -40,27 +40,35 @@ pub fn main() {
     // 5. Main loop
     let mut buf = [0u8; 128];
     loop {
-        let n = uart.read_line(&mut buf);
-        if n > 0 {
-            match control.decode_command(&buf[..n]) {
-                Ok(cmd) => {
-                    let resp = app.handle_control_command(&cmd);
-                    if let Ok(resp_bytes) = control.encode_response(&resp) {
-                        uart.write_all(&resp_bytes);
+        match uart.read_line(&mut buf) {
+            UartReadResult::Frame(n) => {
+                match control.decode_command(&buf[..n]) {
+                    Ok(cmd) => {
+                        let resp = app.handle_control_command(&cmd);
+                        if let Ok(resp_bytes) = control.encode_response(&resp) {
+                            uart.write_all(&resp_bytes);
+                        }
                     }
-                }
-                Err(err) => {
-                    // Send explicit error response for undecodable commands
-                    let resp = ControlResponse::Error(err);
-                    if let Ok(resp_bytes) = control.encode_response(&resp) {
-                        uart.write_all(&resp_bytes);
+                    Err(err) => {
+                        // Send explicit error response for undecodable commands
+                        let resp = ControlResponse::Error(err);
+                        if let Ok(resp_bytes) = control.encode_response(&resp) {
+                            uart.write_all(&resp_bytes);
+                        }
                     }
                 }
             }
-        } else {
-            // On host, n=0 usually means EOF (stdin closed).
-            #[cfg(not(target_os = "espidf"))]
-            break;
+            UartReadResult::Pending => {
+                // Continue looping, wait for more data
+            }
+            UartReadResult::Eof => {
+                // On host, stdin closed.
+                #[cfg(not(target_os = "espidf"))]
+                break;
+            }
+            UartReadResult::Error => {
+                uart.write_all(b"ERROR: UART Read Error\n");
+            }
         }
 
         // In a real ESP-IDF environment, we might yield or sleep here.

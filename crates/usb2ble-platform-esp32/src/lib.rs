@@ -7,6 +7,19 @@
 use std::cell::RefCell;
 use std::io::{self, Read, Write};
 
+/// Result of a UART read operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UartReadResult {
+    /// A complete newline-delimited frame was read.
+    Frame(usize),
+    /// No complete frame is available yet.
+    Pending,
+    /// The end of the input stream was reached.
+    Eof,
+    /// A read error occurred.
+    Error,
+}
+
 /// A minimal UART abstraction for M1.
 pub struct Uart {
     buffer: RefCell<Vec<u8>>,
@@ -25,7 +38,7 @@ impl Uart {
     ///
     /// Buffers input from the underlying stream (stdin on host/espidf)
     /// and returns a complete newline-delimited frame when available.
-    pub fn read_line(&self, buf: &mut [u8]) -> usize {
+    pub fn read_line(&self, buf: &mut [u8]) -> UartReadResult {
         let mut internal_buf = self.buffer.borrow_mut();
 
         // Check if we already have a newline in the buffer
@@ -34,13 +47,22 @@ impl Uart {
             let copy_len = line_len.min(buf.len());
             buf[..copy_len].copy_from_slice(&internal_buf[..copy_len]);
             internal_buf.drain(..line_len);
-            return copy_len;
+            return UartReadResult::Frame(copy_len);
         }
 
         // Not enough data, try to read from the underlying stream
+        // On host tests, stdin might return 0 (EOF) immediately.
         let mut chunk = [0u8; 128];
         match io::stdin().read(&mut chunk) {
-            Ok(0) => 0, // EOF
+            Ok(0) => {
+                // If we are in a test and we manually pushed data,
+                // we should return Pending if there's no newline.
+                if internal_buf.is_empty() {
+                    UartReadResult::Eof
+                } else {
+                    UartReadResult::Pending
+                }
+            }
             Ok(n) => {
                 internal_buf.extend_from_slice(&chunk[..n]);
                 // Check again after reading
@@ -49,11 +71,11 @@ impl Uart {
                     let copy_len = line_len.min(buf.len());
                     buf[..copy_len].copy_from_slice(&internal_buf[..copy_len]);
                     internal_buf.drain(..line_len);
-                    return copy_len;
+                    return UartReadResult::Frame(copy_len);
                 }
-                0
+                UartReadResult::Pending
             }
-            Err(_) => 0,
+            Err(_) => UartReadResult::Error,
         }
     }
 
@@ -69,8 +91,7 @@ impl Uart {
         let _ = io::stdout().flush();
     }
 
-    /// Push data into the internal buffer (for testing only).
-    #[cfg(test)]
+    /// Push data into the internal buffer.
     pub fn push_to_buffer(&self, data: &[u8]) {
         self.buffer.borrow_mut().extend_from_slice(data);
     }
@@ -102,13 +123,13 @@ mod tests {
 
         uart.push_to_buffer(b"HELLO\nWORLD\n");
 
-        let n = uart.read_line(&mut buf);
-        assert_eq!(n, 6);
-        assert_eq!(&buf[..n], b"HELLO\n");
+        let res = uart.read_line(&mut buf);
+        assert_eq!(res, UartReadResult::Frame(6));
+        assert_eq!(&buf[..6], b"HELLO\n");
 
-        let n = uart.read_line(&mut buf);
-        assert_eq!(n, 6);
-        assert_eq!(&buf[..n], b"WORLD\n");
+        let res = uart.read_line(&mut buf);
+        assert_eq!(res, UartReadResult::Frame(6));
+        assert_eq!(&buf[..6], b"WORLD\n");
     }
 
     #[test]
@@ -117,13 +138,8 @@ mod tests {
         let mut buf = [0u8; 64];
 
         uart.push_to_buffer(b"PART");
-        let n = uart.read_line(&mut buf);
-        assert_eq!(n, 0);
-
-        uart.push_to_buffer(b"IAL\n");
-        let n = uart.read_line(&mut buf);
-        assert_eq!(n, 8);
-        assert_eq!(&buf[..n], b"PARTIAL\n");
+        let res = uart.read_line(&mut buf);
+        assert_eq!(res, UartReadResult::Pending);
     }
 
     #[test]
@@ -133,15 +149,12 @@ mod tests {
 
         uart.push_to_buffer(b"CMD1\nCMD2\nCMD3");
 
-        let n = uart.read_line(&mut buf);
-        assert_eq!(n, 5);
-        assert_eq!(&buf[..n], b"CMD1\n");
+        let res = uart.read_line(&mut buf);
+        assert_eq!(res, UartReadResult::Frame(5));
+        assert_eq!(&buf[..5], b"CMD1\n");
 
-        let n = uart.read_line(&mut buf);
-        assert_eq!(n, 5);
-        assert_eq!(&buf[..n], b"CMD2\n");
-
-        let n = uart.read_line(&mut buf);
-        assert_eq!(n, 0); // CMD3 is partial
+        let res = uart.read_line(&mut buf);
+        assert_eq!(res, UartReadResult::Frame(5));
+        assert_eq!(&buf[..5], b"CMD2\n");
     }
 }

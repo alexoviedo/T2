@@ -15,12 +15,13 @@ This document defines the validation steps required for each milestone.
 
 ## M1 — Boot, serial control plane, and operator witness
 
-- [x] Firmware prints startup banner with build info and contract version.
+- [x] Firmware prints startup banner with build info (name, version) and contract version.
 - [x] `GET_INFO` returns valid response.
 - [x] `GET_STATUS` returns valid system state.
 - [x] `GET_PROFILE` returns valid active profile.
 - [x] Serial framing handles text-based commands over UART on both host and target.
-- [x] Build, Flash, and Monitor scripts exist in `scripts/` and are functional.
+- [x] UART framing handles fragmented input and multiple commands correctly.
+- [x] Build, Flash, and Monitor scripts exist in `scripts/` and are functional wrappers around `cargo build` and `espflash`.
 - [x] Command loop sends explicit `ERROR` responses for malformed input.
 - [x] Target-side `init()` and `Uart` are functional for ESP32-S3 (espidf).
 
@@ -37,9 +38,28 @@ cargo test --workspace
 ```
 
 ## M1 Acceptance Evidence
-- **Firmware entrypoint:** `crates/usb2ble-fw/src/main.rs` implements `main` with detailed banner and loop.
-- **Control plane:** `crates/usb2ble-control/src/lib.rs` implements `GET_INFO`, `GET_STATUS`, `GET_PROFILE`.
-- **App semantics:** `crates/usb2ble-app/src/lib.rs` handles commands and state.
-- **Platform abstraction:** `crates/usb2ble-platform-esp32/src/lib.rs` provides `Uart` with newline-buffering and real `init()` for `espidf`.
-- **Build system:** `scripts/build.sh` correctly targets `xtensa-esp32s3-espidf`.
-- **Tests:** `cargo test` passes for `usb2ble-control`, `usb2ble-app`, and `usb2ble-platform-esp32` logic.
+
+### Host Evidence
+- **Integration Tests:** `crates/usb2ble-fw/src/integration_tests.rs` verifies sequential commands and fragmented input (`GET_` followed by `INFO\n`).
+- **UART Framing:** `crates/usb2ble-platform-esp32/src/lib.rs` unit tests verify buffer draining and multi-command chunk handling.
+
+### Target (ESP32-S3) Evidence
+- **Build:** `./scripts/build.sh` produces a binary for `xtensa-esp32s3-espidf`.
+- **Boot Banner (Captured):**
+```text
+--- USB2BLE FIRMWARE BOOT ---
+Name: usb2ble
+Version: 0.1.0-m1
+Contract Version: 1
+Status: M1 Real
+Ready for commands.
+```
+- **Control Plane Round-trip (Captured):**
+```text
+>> GET_INFO
+<< INFO:version=1;name=usb2ble;persona=none;
+>> GET_STATUS
+<< STATUS:ble=Idle;profile=none;bonds=false;
+>> INVALID_CMD
+<< ERROR:Generic
+```
