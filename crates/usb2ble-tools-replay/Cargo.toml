@@ -1,0 +1,11 @@
+[package]
+name = "usb2ble-tools-replay"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+usb2ble-contracts = { path = "../usb2ble-contracts" }
+
+
+[lints]
+workspace = true
