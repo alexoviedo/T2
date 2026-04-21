@@ -1,0 +1,8 @@
+[package]
+name = "usb2ble-fw"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+usb2ble-platform-esp32 = { path = "../usb2ble-platform-esp32" }
+usb2ble-app = { path = "../usb2ble-app" }

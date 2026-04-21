@@ -1,0 +1,10 @@
+[package]
+name = "usb2ble-platform-esp32"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+usb2ble-personas = { path = "../usb2ble-personas" }
+usb2ble-storage = { path = "../usb2ble-storage" }
+usb2ble-control = { path = "../usb2ble-control" }
+usb2ble-contracts = { path = "../usb2ble-contracts" }
