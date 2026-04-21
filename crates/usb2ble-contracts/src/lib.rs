@@ -553,14 +553,57 @@ pub trait BondStore {
 
 // --- Control Plane ---
 
+/// Response payload for GET_INFO.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InfoResponse {
+    /// The current contract version.
+    pub contract_version: u32,
+    /// Human-readable firmware name.
+    pub firmware_name: &'static str,
+    /// Active persona info.
+    pub active_persona: Option<PersonaId>,
+}
+
+/// Response payload for GET_STATUS.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusResponse {
+    /// Current BLE link state.
+    pub ble_state: BleLinkState,
+    /// Active profile ID.
+    pub active_profile: Option<ProfileId>,
+    /// Whether any bonds are present.
+    pub bonds_present: bool,
+}
+
+/// Response payload for GET_PROFILE.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileResponse {
+    /// The currently active profile.
+    pub active_profile: Option<ProfileId>,
+}
+
 /// A command received over the serial control plane.
-pub struct ControlCommand {
-    // Placeholder for M1
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ControlCommand {
+    /// Request firmware and persona information.
+    GetInfo,
+    /// Request current system status.
+    GetStatus,
+    /// Request the active profile.
+    GetProfile,
 }
 
 /// A response to be sent over the serial control plane.
-pub struct ControlResponse {
-    // Placeholder for M1
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ControlResponse {
+    /// Response to GET_INFO.
+    Info(InfoResponse),
+    /// Response to GET_STATUS.
+    Status(StatusResponse),
+    /// Response to GET_PROFILE.
+    Profile(ProfileResponse),
+    /// An error response.
+    Error(ControlError),
 }
 
 /// Errors occurring during control plane operations.

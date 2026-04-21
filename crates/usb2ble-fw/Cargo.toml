@@ -6,7 +6,9 @@ edition = "2024"
 [dependencies]
 usb2ble-platform-esp32 = { path = "../usb2ble-platform-esp32" }
 usb2ble-app = { path = "../usb2ble-app" }
-
+usb2ble-control = { path = "../usb2ble-control" }
+usb2ble-contracts = { path = "../usb2ble-contracts" }
+usb2ble-storage = { path = "../usb2ble-storage" }
 
 [lints.rust]
 unsafe_code = "allow"
