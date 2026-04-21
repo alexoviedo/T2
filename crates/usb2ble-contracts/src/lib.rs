@@ -553,7 +553,7 @@ pub trait BondStore {
 
 // --- Control Plane ---
 
-/// Response payload for GET_INFO.
+/// Response payload for `GET_INFO`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InfoResponse {
     /// The current contract version.
@@ -564,7 +564,7 @@ pub struct InfoResponse {
     pub active_persona: Option<PersonaId>,
 }
 
-/// Response payload for GET_STATUS.
+/// Response payload for `GET_STATUS`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusResponse {
     /// Current BLE link state.
@@ -575,7 +575,7 @@ pub struct StatusResponse {
     pub bonds_present: bool,
 }
 
-/// Response payload for GET_PROFILE.
+/// Response payload for `GET_PROFILE`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProfileResponse {
     /// The currently active profile.
@@ -596,11 +596,11 @@ pub enum ControlCommand {
 /// A response to be sent over the serial control plane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlResponse {
-    /// Response to GET_INFO.
+    /// Response to `GET_INFO`.
     Info(InfoResponse),
-    /// Response to GET_STATUS.
+    /// Response to `GET_STATUS`.
     Status(StatusResponse),
-    /// Response to GET_PROFILE.
+    /// Response to `GET_PROFILE`.
     Profile(ProfileResponse),
     /// An error response.
     Error(ControlError),

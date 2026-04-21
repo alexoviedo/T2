@@ -34,7 +34,7 @@ where
     }
 
     /// Process a control plane command.
-    pub fn handle_control_command(&mut self, cmd: ControlCommand) -> ControlResponse {
+    pub fn handle_control_command(&mut self, cmd: &ControlCommand) -> ControlResponse {
         match cmd {
             ControlCommand::GetInfo => ControlResponse::Info(InfoResponse {
                 contract_version: CONTRACT_VERSION,
@@ -56,13 +56,13 @@ where
     }
 
     /// Set the BLE state (e.g. from platform glue).
-    pub fn set_ble_state(&mut self, state: BleLinkState) {
+    pub const fn set_ble_state(&mut self, state: BleLinkState) {
         self.state.ble_state = state;
     }
 
     /// Get current app state (read-only).
     #[must_use]
-    pub fn state(&self) -> &AppState {
+    pub const fn state(&self) -> &AppState {
         &self.state
     }
 }
@@ -77,7 +77,7 @@ mod tests {
     fn test_handle_get_info() {
         let storage = InMemoryStore::new();
         let mut app = App::new(storage);
-        let resp = app.handle_control_command(ControlCommand::GetInfo);
+        let resp = app.handle_control_command(&ControlCommand::GetInfo);
 
         if let ControlResponse::Info(info) = resp {
             assert_eq!(info.contract_version, CONTRACT_VERSION);
@@ -96,7 +96,7 @@ mod tests {
         let mut app = App::new(storage);
         app.set_ble_state(BleLinkState::Connected);
 
-        let resp = app.handle_control_command(ControlCommand::GetStatus);
+        let resp = app.handle_control_command(&ControlCommand::GetStatus);
 
         if let ControlResponse::Status(status) = resp {
             assert_eq!(status.ble_state, BleLinkState::Connected);

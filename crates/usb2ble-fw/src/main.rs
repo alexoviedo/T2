@@ -3,8 +3,8 @@
 //! Thin firmware entrypoint.
 
 use usb2ble_app::App;
-use usb2ble_control::SerialControlPlane;
 use usb2ble_contracts::ControlPlane;
+use usb2ble_control::SerialControlPlane;
 use usb2ble_platform_esp32::{self as platform, Uart};
 use usb2ble_storage::InMemoryStore;
 
@@ -28,11 +28,12 @@ pub fn main() {
 
     // 5. Main loop
     let mut buf = [0u8; 128];
+    #[allow(clippy::never_loop, clippy::collapsible_if)]
     loop {
         let n = uart.read_line(&mut buf);
         if n > 0 {
             if let Ok(cmd) = control.decode_command(&buf[..n]) {
-                let resp = app.handle_control_command(cmd);
+                let resp = app.handle_control_command(&cmd);
                 if let Ok(resp_bytes) = control.encode_response(&resp) {
                     uart.write_all(&resp_bytes);
                 }

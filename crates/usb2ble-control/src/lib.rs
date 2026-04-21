@@ -5,6 +5,7 @@
 //! - command/response framing,
 //! - schema validation.
 
+use std::fmt::Write;
 use usb2ble_contracts::{
     ControlCommand, ControlError, ControlPlane, ControlResponse,
 };
@@ -14,9 +15,9 @@ use usb2ble_contracts::{
 pub struct SerialControlPlane;
 
 impl SerialControlPlane {
-    /// Create a new SerialControlPlane instance.
+    /// Create a new `SerialControlPlane` instance.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }
@@ -40,23 +41,23 @@ impl ControlPlane for SerialControlPlane {
         match response {
             ControlResponse::Info(info) => {
                 out.push_str("INFO:");
-                out.push_str(&format!("version={};", info.contract_version));
-                out.push_str(&format!("name={};", info.firmware_name));
+                let _ = write!(out, "version={};", info.contract_version);
+                let _ = write!(out, "name={};", info.firmware_name);
                 if let Some(persona) = info.active_persona {
-                    out.push_str(&format!("persona={};", persona.0));
+                    let _ = write!(out, "persona={};", persona.0);
                 } else {
                     out.push_str("persona=none;");
                 }
             }
             ControlResponse::Status(status) => {
                 out.push_str("STATUS:");
-                out.push_str(&format!("ble={:?};", status.ble_state));
+                let _ = write!(out, "ble={:?};", status.ble_state);
                 if let Some(profile) = status.active_profile {
-                    out.push_str(&format!("profile={};", profile.0));
+                    let _ = write!(out, "profile={};", profile.0);
                 } else {
                     out.push_str("profile=none;");
                 }
-                out.push_str(&format!("bonds={};", status.bonds_present));
+                let _ = write!(out, "bonds={};", status.bonds_present);
             }
             ControlResponse::Profile(profile) => {
                 out.push_str("PROFILE:");
@@ -67,7 +68,7 @@ impl ControlPlane for SerialControlPlane {
                 }
             }
             ControlResponse::Error(err) => {
-                out.push_str(&format!("ERROR:{:?}", err));
+                let _ = write!(out, "ERROR:{err:?}");
             }
         }
 

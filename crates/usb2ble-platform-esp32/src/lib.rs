@@ -7,8 +7,7 @@
 use std::io::{self, Read, Write};
 
 /// A minimal UART abstraction for M1.
-pub struct Uart {
-}
+pub struct Uart {}
 
 impl Uart {
     /// Initialize the UART.
@@ -20,10 +19,7 @@ impl Uart {
     /// Read a line from UART (simulated via stdin for M1 host testability).
     pub fn read_line(&self, buf: &mut [u8]) -> usize {
         let mut stdin = io::stdin();
-        match stdin.read(buf) {
-            Ok(n) => n,
-            Err(_) => 0,
-        }
+        stdin.read(buf).unwrap_or_default()
     }
 
     /// Write bytes to UART (simulated via stdout for M1 host testability).
