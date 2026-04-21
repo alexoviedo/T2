@@ -6,9 +6,7 @@
 //! - schema validation.
 
 use std::fmt::Write;
-use usb2ble_contracts::{
-    ControlCommand, ControlError, ControlPlane, ControlResponse,
-};
+use usb2ble_contracts::{ControlCommand, ControlError, ControlPlane, ControlResponse};
 
 /// Implementation of the newline-framed serial control plane.
 #[derive(Default)]
@@ -80,7 +78,7 @@ impl ControlPlane for SerialControlPlane {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use usb2ble_contracts::{BleLinkState, PersonaId, ProfileId, InfoResponse, StatusResponse};
+    use usb2ble_contracts::{BleLinkState, InfoResponse, PersonaId, ProfileId, StatusResponse};
 
     #[test]
     fn test_decode() {
