@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
+
 echo "Opening USB2BLE monitor..."
-# Real command for ESP32-S3 monitoring.
-echo "> espflash monitor"
-# We can't actually run this here without hardware.
+
+if ! command -v espflash &> /dev/null; then
+    echo "Error: espflash not found."
+    echo "Install with: cargo install espflash"
+    exit 1
+fi
+
+# Invoke espflash monitor. Arguments like --port can be passed to this script.
+espflash monitor "$@"

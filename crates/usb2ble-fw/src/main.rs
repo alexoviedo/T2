@@ -2,6 +2,9 @@
 //!
 //! Thin firmware entrypoint.
 
+#[cfg(test)]
+mod integration_tests;
+
 use usb2ble_app::App;
 use usb2ble_contracts::ControlPlane;
 use usb2ble_control::SerialControlPlane;
@@ -28,7 +31,6 @@ pub fn main() {
 
     // 5. Main loop
     let mut buf = [0u8; 128];
-    #[allow(clippy::never_loop, clippy::collapsible_if)]
     loop {
         let n = uart.read_line(&mut buf);
         if n > 0 {
@@ -38,11 +40,12 @@ pub fn main() {
                     uart.write_all(&resp_bytes);
                 }
             }
+        } else {
+            // On host, n=0 usually means EOF (stdin closed).
+            #[cfg(not(target_os = "espidf"))]
+            break;
         }
 
         // In a real ESP-IDF environment, we might yield or sleep here.
-        // For M1 stub, we just break to avoid infinite loop on host tests if called.
-        #[cfg(not(target_os = "espidf"))]
-        break;
     }
 }
