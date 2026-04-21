@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 usb2ble-contracts = { path = "../usb2ble-contracts" }
+
+
+[lints]
+workspace = true

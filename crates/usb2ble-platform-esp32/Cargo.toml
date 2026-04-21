@@ -8,3 +8,7 @@ usb2ble-personas = { path = "../usb2ble-personas" }
 usb2ble-storage = { path = "../usb2ble-storage" }
 usb2ble-control = { path = "../usb2ble-control" }
 usb2ble-contracts = { path = "../usb2ble-contracts" }
+
+
+[lints.rust]
+unsafe_code = "allow"

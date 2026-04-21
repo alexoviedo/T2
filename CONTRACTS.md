@@ -523,10 +523,15 @@ At minimum, app state must track:
 ```rust
 pub struct AppState {
     pub known_devices: Vec<UsbDeviceRef>,
-    pub descriptors: Vec<(DeviceId, HidDescriptorIr)>,
+    pub descriptors: Vec<(DescriptorKey, HidDescriptorIr)>,
     pub active_profile: Option<ProfileId>,
     pub active_persona: Option<PersonaId>,
     pub ble_state: BleLinkState,
+}
+
+pub struct DescriptorKey {
+    pub device_id: DeviceId,
+    pub interface_id: Option<InterfaceId>,
 }
 ```
 
