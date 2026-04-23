@@ -64,7 +64,8 @@ where
                 ControlResponse::UsbDevices(self.state.physical_devices.clone())
             }
             ControlCommand::GetUsbDescriptor(key) => {
-                if let Some((_, bytes)) = self.state.raw_descriptors.iter().find(|(k, _)| k == key) {
+                if let Some((_, bytes)) = self.state.raw_descriptors.iter().find(|(k, _)| k == key)
+                {
                     ControlResponse::UsbDescriptor(UsbDescriptorResponse {
                         bytes: bytes.clone(),
                     })
@@ -119,7 +120,12 @@ where
                     device_id: blob.source.device.device_id,
                     interface_id: Some(blob.source.interface_id),
                 };
-                if let Some(entry) = self.state.raw_descriptors.iter_mut().find(|(k, _)| k == &key) {
+                if let Some(entry) = self
+                    .state
+                    .raw_descriptors
+                    .iter_mut()
+                    .find(|(k, _)| k == &key)
+                {
                     entry.1 = blob.bytes;
                 } else {
                     self.state.raw_descriptors.push((key, blob.bytes));

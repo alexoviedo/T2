@@ -2,12 +2,12 @@
 
 #[cfg(target_os = "espidf")]
 use esp_idf_sys::*;
+use std::sync::mpsc;
 #[allow(unused_imports)]
 use usb2ble_contracts::{
     ConnectionTopology, DeviceId, InputReportPacket, InterfaceId, ReportDescriptorBlob,
     UsbDeviceRef, UsbIngressEvent,
 };
-use std::sync::mpsc;
 
 /// Internal state for the USB host.
 pub struct EspUsbHost {
