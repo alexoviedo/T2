@@ -90,6 +90,9 @@ Real attach/detach + identity witness plumbing on ESP32-S3; on-device evidence s
 ### M2B.2 (Pending)
 Descriptor and input-report capture exposed through control plane.
 
+> Review note for current PR scope: only M2B.1 code-path work (attach/detach + identity witness)
+> is in scope; descriptor/report capture remains deferred to M2B.2.
+
 ### Goal
 Prove real USB host viability on ESP32-S3 with curated supported hardware.
 
