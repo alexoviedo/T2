@@ -84,6 +84,7 @@ pub struct UsbInterfaceRef {
 }
 
 /// Raw HID report descriptor bytes from a specific source.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportDescriptorBlob {
     /// The USB source interface.
     pub source: UsbInterfaceRef,
@@ -92,6 +93,7 @@ pub struct ReportDescriptorBlob {
 }
 
 /// A single input report received from a USB device.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputReportPacket {
     /// The USB source interface.
     pub source: UsbInterfaceRef,
@@ -118,6 +120,7 @@ pub enum UsbIngressErrorCode {
 }
 
 /// High-level events from the USB ingress layer.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsbIngressEvent {
     /// A new USB device has been attached.
     DeviceAttached(UsbDeviceRef),
@@ -166,6 +169,7 @@ pub trait UsbIngress {
 // --- HID ---
 
 /// Intermediate representation of an HID descriptor.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HidDescriptorIr {
     /// Logical collections defined in the descriptor.
     pub collections: Vec<HidCollection>,
@@ -176,11 +180,13 @@ pub struct HidDescriptorIr {
 }
 
 /// A logical grouping of HID fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HidCollection {
     // Placeholder for M3
 }
 
 /// Metadata for a single field within an HID report.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HidField {
     /// Report ID this field belongs to.
     pub report_id: ReportId,
