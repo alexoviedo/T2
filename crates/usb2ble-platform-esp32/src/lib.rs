@@ -4,9 +4,12 @@
 //! - ESP-IDF bindings,
 //! - UART/NVS adapters.
 
+pub mod usb_host;
+
 use std::cell::RefCell;
 use std::io::{self, Read, Write};
-use usb2ble_contracts::UsbIngress;
+use std::sync::mpsc;
+use usb2ble_contracts::{UsbIngress, UsbIngressEvent};
 
 /// Result of a UART read operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,56 +117,37 @@ pub fn init() {
 }
 
 /// A minimal USB ingress implementation for M2.
-#[derive(Default)]
 pub struct EspUsbIngress {
-    events: RefCell<Vec<usb2ble_contracts::UsbIngressEvent>>,
+    rx: mpsc::Receiver<UsbIngressEvent>,
+    #[allow(dead_code)]
+    host: usb_host::EspUsbHost,
 }
 
 impl EspUsbIngress {
     /// Create a new `EspUsbIngress` instance.
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        let (tx, rx) = mpsc::channel();
+        let host = usb_host::EspUsbHost::new(tx);
+        Self { rx, host }
     }
 
     /// Initialize the USB host stack.
     pub fn init_host(&self) {
         #[cfg(target_os = "espidf")]
-        {
-            // SAFETY: ESP-IDF USB Host initialization involves FFI calls.
-            // This is a representative structural implementation for M2.
-            unsafe {
-                // 1. Install USB Host driver
-                // esp_idf_sys::usb_host_install(...);
-
-                // 2. Create a background task to handle USB events
-                // This task would call esp_host_lib_handle_events() in a loop
-
-                // 3. Register HID class driver
-                // hid_host_install(...);
-
-                // 4. Set up callbacks that push to self.events
-                // Device attach -> UsbIngressEvent::DeviceAttached
-                // HID Descriptor -> UsbIngressEvent::ReportDescriptorReceived
-                // HID Report -> UsbIngressEvent::InputReportReceived
-            }
-        }
-    }
-
-    /// Push a synthetic event (useful for testing or platform-sim).
-    pub fn push_event(&self, event: usb2ble_contracts::UsbIngressEvent) {
-        self.events.borrow_mut().push(event);
+        self.host.init();
     }
 }
 
 impl UsbIngress for EspUsbIngress {
-    fn poll_event(&mut self) -> Option<usb2ble_contracts::UsbIngressEvent> {
-        let mut events = self.events.borrow_mut();
-        if events.is_empty() {
-            None
-        } else {
-            Some(events.remove(0))
-        }
+    fn poll_event(&mut self) -> Option<UsbIngressEvent> {
+        self.rx.try_recv().ok()
+    }
+}
+
+impl Default for EspUsbIngress {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

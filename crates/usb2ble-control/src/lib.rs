@@ -105,9 +105,6 @@ impl ControlPlane for SerialControlPlane {
                         "id={},vid={:04x},pid={:04x}",
                         dev.device_id.0, dev.vendor_id, dev.product_id
                     );
-                    if let Some(iface) = dev.interface_id {
-                        let _ = write!(out, ",iface={}", iface.0);
-                    }
                     if i < devices.len() - 1 {
                         out.push('|');
                     }
@@ -262,13 +259,12 @@ mod tests {
             topology: ConnectionTopology::Direct,
             vendor_id: 0x1234,
             product_id: 0x5678,
-            interface_id: Some(InterfaceId(0)),
         };
         let resp = ControlResponse::UsbDevices(vec![dev1]);
         let bytes = cp.encode_response(&resp).unwrap();
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
-            "USB_DEVICES:id=1,vid=1234,pid=5678,iface=0\n"
+            "USB_DEVICES:id=1,vid=1234,pid=5678\n"
         );
 
         // UsbDescriptor

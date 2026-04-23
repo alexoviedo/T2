@@ -72,22 +72,29 @@ pub struct UsbDeviceRef {
     pub vendor_id: u16,
     /// USB Product ID.
     pub product_id: u16,
-    /// Interface identifier if known.
-    pub interface_id: Option<InterfaceId>,
+}
+
+/// A stable reference to a USB interface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsbInterfaceRef {
+    /// Source device reference.
+    pub device: UsbDeviceRef,
+    /// Interface identifier.
+    pub interface_id: InterfaceId,
 }
 
 /// Raw HID report descriptor bytes from a specific source.
 pub struct ReportDescriptorBlob {
-    /// The USB source device.
-    pub source: UsbDeviceRef,
+    /// The USB source interface.
+    pub source: UsbInterfaceRef,
     /// Raw descriptor bytes.
     pub bytes: Vec<u8>,
 }
 
 /// A single input report received from a USB device.
 pub struct InputReportPacket {
-    /// The USB source device.
-    pub source: UsbDeviceRef,
+    /// The USB source interface.
+    pub source: UsbInterfaceRef,
     /// HID report ID.
     pub report_id: ReportId,
     /// Raw report payload.
@@ -121,8 +128,8 @@ pub enum UsbIngressEvent {
     },
     /// A USB HID interface was discovered on a device.
     InterfaceDiscovered {
-        /// The source device.
-        source: UsbDeviceRef,
+        /// The source interface.
+        source: UsbInterfaceRef,
         /// HID class code.
         class_code: u8,
         /// HID subclass code.
@@ -273,8 +280,8 @@ pub enum NormalizedControlValue {
 
 /// A normalized event from a specific source control.
 pub struct NormalizedControlEvent {
-    /// The USB source device.
-    pub source: UsbDeviceRef,
+    /// The USB source interface.
+    pub source: UsbInterfaceRef,
     /// Stable identifier for the control.
     pub control_id: String,
     /// Normalized value.
@@ -285,8 +292,8 @@ pub struct NormalizedControlEvent {
 
 /// A full frame of normalized input from a single source.
 pub struct NormalizedInputFrame {
-    /// The USB source device.
-    pub source: UsbDeviceRef,
+    /// The USB source interface.
+    pub source: UsbInterfaceRef,
     /// List of control updates in this frame.
     pub controls: Vec<NormalizedControlEvent>,
 }
@@ -299,7 +306,7 @@ pub struct NormalizedCompositeValue {
 /// A composed frame representing state from multiple sources.
 pub struct CompositeInputFrame {
     /// All contributing USB sources.
-    pub sources: Vec<UsbDeviceRef>,
+    pub sources: Vec<UsbInterfaceRef>,
     /// Composed control states.
     pub controls: Vec<NormalizedCompositeValue>,
     /// Aggregated timestamp.
@@ -650,6 +657,8 @@ pub enum ControlResponse {
 pub enum ControlError {
     /// Generic control plane failure.
     Generic,
+    /// Requested resource was not found.
+    NotFound,
 }
 
 /// Trait for serial control plane framing and schema.
@@ -673,8 +682,10 @@ pub struct DescriptorKey {
 
 /// Current state of the application.
 pub struct AppState {
-    /// List of currently attached USB devices.
-    pub known_devices: Vec<UsbDeviceRef>,
+    /// Currently attached physical USB devices.
+    pub physical_devices: Vec<UsbDeviceRef>,
+    /// Discovered HID interfaces.
+    pub hid_interfaces: Vec<UsbInterfaceRef>,
     /// Active HID descriptors keyed by device/interface.
     pub descriptors: Vec<(DescriptorKey, HidDescriptorIr)>,
     /// Raw HID descriptors keyed by device/interface.

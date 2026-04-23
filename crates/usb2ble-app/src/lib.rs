@@ -3,8 +3,8 @@
 //! Responsible for orchestration and application state.
 
 use usb2ble_contracts::{
-    AppState, BleLinkState, BondStore, CONTRACT_VERSION, ControlCommand, ControlResponse,
-    DescriptorKey, InfoResponse, ProfileResponse, ProfileStore, StatusResponse,
+    AppState, BleLinkState, BondStore, CONTRACT_VERSION, ControlCommand, ControlError,
+    ControlResponse, DescriptorKey, InfoResponse, ProfileResponse, ProfileStore, StatusResponse,
     UsbDescriptorResponse, UsbIngressEvent, UsbReportResponse, UsbStatusResponse,
 };
 
@@ -24,7 +24,8 @@ where
 
         Self {
             state: AppState {
-                known_devices: Vec::new(),
+                physical_devices: Vec::new(),
+                hid_interfaces: Vec::new(),
                 descriptors: Vec::new(),
                 raw_descriptors: Vec::new(),
                 last_reports: Vec::new(),
@@ -55,43 +56,30 @@ where
             ControlCommand::GetProfile => ControlResponse::Profile(ProfileResponse {
                 active_profile: self.state.active_profile,
             }),
-            ControlCommand::GetUsbStatus => {
-                let mut unique_devices = self
-                    .state
-                    .known_devices
-                    .iter()
-                    .map(|d| d.device_id)
-                    .collect::<Vec<_>>();
-                unique_devices.sort_by_key(|d| d.0);
-                unique_devices.dedup();
-
-                ControlResponse::UsbStatus(UsbStatusResponse {
-                    physical_devices: unique_devices.len(),
-                    total_interfaces: self.state.known_devices.len(),
-                })
-            }
+            ControlCommand::GetUsbStatus => ControlResponse::UsbStatus(UsbStatusResponse {
+                physical_devices: self.state.physical_devices.len(),
+                total_interfaces: self.state.hid_interfaces.len(),
+            }),
             ControlCommand::ListUsbDevices => {
-                ControlResponse::UsbDevices(self.state.known_devices.clone())
+                ControlResponse::UsbDevices(self.state.physical_devices.clone())
             }
             ControlCommand::GetUsbDescriptor(key) => {
-                let bytes = self
-                    .state
-                    .raw_descriptors
-                    .iter()
-                    .find(|(k, _)| k == key)
-                    .map(|(_, b)| b.clone())
-                    .unwrap_or_default();
-                ControlResponse::UsbDescriptor(UsbDescriptorResponse { bytes })
+                if let Some((_, bytes)) = self.state.raw_descriptors.iter().find(|(k, _)| k == key) {
+                    ControlResponse::UsbDescriptor(UsbDescriptorResponse {
+                        bytes: bytes.clone(),
+                    })
+                } else {
+                    ControlResponse::Error(ControlError::NotFound)
+                }
             }
             ControlCommand::GetLastUsbReport(key) => {
-                let bytes = self
-                    .state
-                    .last_reports
-                    .iter()
-                    .find(|(k, _)| k == key)
-                    .map(|(_, b)| b.clone())
-                    .unwrap_or_default();
-                ControlResponse::UsbReport(UsbReportResponse { bytes })
+                if let Some((_, bytes)) = self.state.last_reports.iter().find(|(k, _)| k == key) {
+                    ControlResponse::UsbReport(UsbReportResponse {
+                        bytes: bytes.clone(),
+                    })
+                } else {
+                    ControlResponse::Error(ControlError::NotFound)
+                }
             }
         }
     }
@@ -99,13 +87,18 @@ where
     /// Handle a USB ingress event.
     pub fn handle_usb_event(&mut self, event: UsbIngressEvent) {
         match event {
-            UsbIngressEvent::DeviceAttached(dev) if !self.state.known_devices.contains(&dev) => {
-                self.state.known_devices.push(dev);
+            UsbIngressEvent::DeviceAttached(dev) => {
+                if !self.state.physical_devices.contains(&dev) {
+                    self.state.physical_devices.push(dev);
+                }
             }
             UsbIngressEvent::DeviceDetached { source } => {
                 self.state
-                    .known_devices
+                    .physical_devices
                     .retain(|d| d.device_id != source.device_id);
+                self.state
+                    .hid_interfaces
+                    .retain(|i| i.device.device_id != source.device_id);
                 self.state
                     .raw_descriptors
                     .retain(|(k, _)| k.device_id != source.device_id);
@@ -116,22 +109,17 @@ where
                     .descriptors
                     .retain(|(k, _)| k.device_id != source.device_id);
             }
-            UsbIngressEvent::InterfaceDiscovered { source, .. }
-                if !self.state.known_devices.contains(&source) =>
-            {
-                self.state.known_devices.push(source);
+            UsbIngressEvent::InterfaceDiscovered { source, .. } => {
+                if !self.state.hid_interfaces.contains(&source) {
+                    self.state.hid_interfaces.push(source);
+                }
             }
             UsbIngressEvent::ReportDescriptorReceived(blob) => {
                 let key = DescriptorKey {
-                    device_id: blob.source.device_id,
-                    interface_id: blob.source.interface_id,
+                    device_id: blob.source.device.device_id,
+                    interface_id: Some(blob.source.interface_id),
                 };
-                if let Some(entry) = self
-                    .state
-                    .raw_descriptors
-                    .iter_mut()
-                    .find(|(k, _)| k == &key)
-                {
+                if let Some(entry) = self.state.raw_descriptors.iter_mut().find(|(k, _)| k == &key) {
                     entry.1 = blob.bytes;
                 } else {
                     self.state.raw_descriptors.push((key, blob.bytes));
@@ -139,8 +127,8 @@ where
             }
             UsbIngressEvent::InputReportReceived(packet) => {
                 let key = DescriptorKey {
-                    device_id: packet.source.device_id,
-                    interface_id: packet.source.interface_id,
+                    device_id: packet.source.device.device_id,
+                    interface_id: Some(packet.source.interface_id),
                 };
                 if let Some(entry) = self.state.last_reports.iter_mut().find(|(k, _)| k == &key) {
                     entry.1 = packet.payload;
@@ -208,7 +196,7 @@ mod tests {
     fn test_handle_usb_events_and_commands() {
         use usb2ble_contracts::{
             ConnectionTopology, DeviceId, InputReportPacket, InterfaceId, ReportDescriptorBlob,
-            UsbDeviceRef,
+            UsbDeviceRef, UsbInterfaceRef,
         };
 
         let storage = InMemoryStore::new();
@@ -219,30 +207,42 @@ mod tests {
             topology: ConnectionTopology::Direct,
             vendor_id: 0x1234,
             product_id: 0x5678,
-            interface_id: Some(InterfaceId(0)),
+        };
+        let iface = UsbInterfaceRef {
+            device: dev.clone(),
+            interface_id: InterfaceId(0),
         };
 
         // 1. Attach
         app.handle_usb_event(UsbIngressEvent::DeviceAttached(dev.clone()));
-        assert_eq!(app.state().known_devices.len(), 1);
+        assert_eq!(app.state().physical_devices.len(), 1);
 
-        // 2. Descriptor
+        // 2. Discover interface
+        app.handle_usb_event(UsbIngressEvent::InterfaceDiscovered {
+            source: iface.clone(),
+            class_code: 3,
+            subclass_code: 0,
+            protocol_code: 0,
+        });
+        assert_eq!(app.state().hid_interfaces.len(), 1);
+
+        // 3. Descriptor
         app.handle_usb_event(UsbIngressEvent::ReportDescriptorReceived(
             ReportDescriptorBlob {
-                source: dev.clone(),
+                source: iface.clone(),
                 bytes: vec![0x01, 0x02, 0x03],
             },
         ));
 
-        // 3. Report
+        // 4. Report
         app.handle_usb_event(UsbIngressEvent::InputReportReceived(InputReportPacket {
-            source: dev.clone(),
+            source: iface.clone(),
             report_id: usb2ble_contracts::ReportId(0),
             payload: vec![0xAA, 0xBB],
             timestamp_micros: 100,
         }));
 
-        // 4. Verify via control commands
+        // 5. Verify via control commands
         let resp = app.handle_control_command(&ControlCommand::GetUsbStatus);
         if let ControlResponse::UsbStatus(s) = resp {
             assert_eq!(s.physical_devices, 1);
@@ -270,9 +270,21 @@ mod tests {
             panic!("Expected UsbReport");
         }
 
-        // 5. Detach
+        // Test missing key
+        let missing_key = DescriptorKey {
+            device_id: DeviceId(2),
+            interface_id: Some(InterfaceId(0)),
+        };
+        let resp = app.handle_control_command(&ControlCommand::GetUsbDescriptor(missing_key));
+        if let ControlResponse::Error(ControlError::NotFound) = resp {
+        } else {
+            panic!("Expected NotFound error");
+        }
+
+        // 6. Detach
         app.handle_usb_event(UsbIngressEvent::DeviceDetached { source: dev });
-        assert_eq!(app.state().known_devices.len(), 0);
+        assert_eq!(app.state().physical_devices.len(), 0);
+        assert_eq!(app.state().hid_interfaces.len(), 0);
         assert_eq!(app.state().raw_descriptors.len(), 0);
         assert_eq!(app.state().last_reports.len(), 0);
     }
