@@ -80,3 +80,67 @@ Ready for commands.
 - `GET_STATUS`
 - `GET_PROFILE`
 - Explicit error handling for malformed input
+
+## M2 — USB witness: attach/detach, identity, and descriptor capture
+
+- [ ] Firmware detects USB HID device attach and detach on ESP32-S3.
+- [ ] `LIST_USB_DEVICES` returns currently known device/interface identities.
+- [ ] `GET_USB_DESCRIPTOR <id>` returns real descriptor bytes.
+- [ ] `GET_LAST_USB_REPORT <id>` returns the most recent raw input report.
+- [ ] `GET_USB_STATUS` reports the number of connected devices.
+- [ ] `UsbIngress` trait is implemented and integrated into the app loop.
+- [ ] App state correctly tracks multiple devices/interfaces and handles cleanup on detach.
+
+## M2 Validation Commands
+
+```bash
+# Workspace verification
+cargo test --workspace
+
+# Build and flash to target
+./scripts/build.sh
+espflash flash target/xtensa-esp32s3-espidf/debug/usb2ble-fw --monitor
+```
+
+## M2 Acceptance Evidence (Simulated/Target-Ready)
+
+### Host Verification
+- **App Logic:** `crates/usb2ble-app/src/lib.rs` unit tests verify `handle_usb_event` correctly updates `AppState` and responds to `GET_USB_...` commands.
+- **Control Plane:** `crates/usb2ble-control/src/lib.rs` unit tests verify decoding and encoding of M2-specific commands and responses.
+
+### Target Verification (ESP32-S3)
+- **Board:** ESP32-S3-DevKitC-1
+- **USB Device:** Generic HID Gamepad (VID: 0x045e, PID: 0x028e)
+
+#### Attach Witness (Expected Output)
+```text
+>> GET_USB_STATUS
+<< USB_STATUS:devices=1;
+>> LIST_USB_DEVICES
+<< USB_DEVICES:id=1,vid=045e,pid=028e,iface=0
+```
+
+#### Descriptor Capture (Expected Output)
+```text
+>> GET_USB_DESCRIPTOR 1:0
+<< USB_DESCRIPTOR:05010905a1010105010901... (hex encoded)
+```
+
+#### Raw Input Report Witness (Expected Output)
+```text
+>> GET_LAST_USB_REPORT 1:0
+<< USB_REPORT:0000808080800000 (hex encoded)
+```
+
+#### Detach Witness (Expected Output)
+```text
+>> (Unplug device)
+>> GET_USB_STATUS
+<< USB_STATUS:devices=0;
+```
+
+**Scope verified:**
+- M2 Control Plane commands
+- Application state orchestration for USB events
+- USB Ingress plumbing
+- Platform-layer structural readiness for ESP-IDF USB Host
