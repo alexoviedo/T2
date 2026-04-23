@@ -21,30 +21,41 @@ Out of scope for this playbook:
 
 ## Commands
 
-### Build
+### 1) Target build preflight (required before flash)
+```bash
+./scripts/check_target_build.sh
+```
+
+Equivalent direct command:
+```bash
+cargo build --package usb2ble-fw --target xtensa-esp32s3-espidf
+```
+
+### 2) Build wrapper (optional convenience)
 ```bash
 ./scripts/build.sh
 ```
 
-### Flash
+### 3) Flash
 ```bash
 espflash flash target/xtensa-esp32s3-espidf/debug/usb2ble-fw --monitor
 ```
 
-### Monitor (alternative wrapper)
+### 4) Monitor (alternative wrapper)
 ```bash
 ./scripts/monitor.sh
 ```
 
 ## Verification procedure
-1. Boot board and open monitor.
-2. Send `GET_USB_STATUS`.
-3. Plug HID device into host path.
-4. Send `GET_USB_STATUS`.
-5. Send `LIST_USB_DEVICES`.
-6. Unplug HID device.
-7. Send `GET_USB_STATUS`.
-8. Send `LIST_USB_DEVICES`.
+1. Run target build preflight (`./scripts/check_target_build.sh`).
+2. Boot board and open monitor.
+3. Send `GET_USB_STATUS`.
+4. Plug HID device into host path.
+5. Send `GET_USB_STATUS`.
+6. Send `LIST_USB_DEVICES`.
+7. Unplug HID device.
+8. Send `GET_USB_STATUS`.
+9. Send `LIST_USB_DEVICES`.
 
 ## Transcript template (paste filled real output back into repo)
 

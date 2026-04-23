@@ -42,6 +42,7 @@ This document defines the validation steps required for each milestone.
 - [x] Code-path emits HID `InterfaceDiscovered` from active config descriptor parsing.
 - [x] Code-path emits `DeviceDetached` and removes device/interface bookkeeping.
 - [x] `GET_USB_STATUS` and `LIST_USB_DEVICES` provide the witness surface for attach/detach identity state.
+- [ ] Target build preflight verified for `xtensa-esp32s3-espidf` at this revision.
 - [ ] Real-hardware witness transcript captured and checked in for this revision.
 
 ## M2B.1 Validation Commands

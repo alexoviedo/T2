@@ -235,52 +235,55 @@ impl EspUsbHost {
             return Err("usb_host_device_open failed");
         }
 
-        let mut descriptor: usb_device_desc_t = unsafe { core::mem::zeroed() };
-        let desc_err = unsafe { usb_host_get_device_descriptor(dev_hdl, &mut descriptor) };
-        if desc_err != ESP_OK as i32 {
-            unsafe {
-                let _ = usb_host_device_close(client_hdl, dev_hdl);
+        // Ownership model:
+        // - register_device_if_needed() owns device-handle close.
+        // - emit_hid_interfaces_from_active_config() owns config-descriptor release.
+        let register_result = (|| -> Result<(), &'static str> {
+            let mut descriptor: usb_device_desc_t = unsafe { core::mem::zeroed() };
+            let desc_err = unsafe { usb_host_get_device_descriptor(dev_hdl, &mut descriptor) };
+            if desc_err != ESP_OK as i32 {
+                return Err("usb_host_get_device_descriptor failed");
             }
-            return Err("usb_host_get_device_descriptor failed");
-        }
 
-        let dev_ref = {
-            let mut state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
-            let dev_ref = UsbDeviceRef {
-                device_id: state.alloc_device_id(),
-                topology: ConnectionTopology::Direct,
-                vendor_id: descriptor.idVendor,
-                product_id: descriptor.idProduct,
+            let dev_ref = {
+                let mut state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
+                let dev_ref = UsbDeviceRef {
+                    device_id: state.alloc_device_id(),
+                    topology: ConnectionTopology::Direct,
+                    vendor_id: descriptor.idVendor,
+                    product_id: descriptor.idProduct,
+                };
+                state.by_addr.insert(dev_addr, dev_ref.clone());
+                dev_ref
             };
-            state.by_addr.insert(dev_addr, dev_ref.clone());
-            dev_ref
-        };
 
-        let _ = self
-            .event_tx
-            .send(UsbIngressEvent::DeviceAttached(dev_ref.clone()));
+            let _ = self
+                .event_tx
+                .send(UsbIngressEvent::DeviceAttached(dev_ref.clone()));
 
-        self.emit_hid_interfaces_from_active_config(dev_ref, client_hdl, dev_hdl)?;
+            self.emit_hid_interfaces_from_active_config(dev_ref, dev_hdl)?;
+            Ok(())
+        })();
 
         let close_err = unsafe { usb_host_device_close(client_hdl, dev_hdl) };
         if close_err != ESP_OK as i32 {
             return Err("usb_host_device_close failed");
         }
 
-        Ok(())
+        register_result
     }
 
     #[cfg(target_os = "espidf")]
     fn emit_hid_interfaces_from_active_config(
         &self,
         dev_ref: UsbDeviceRef,
-        client_hdl: usb_host_client_handle_t,
         dev_hdl: usb_device_handle_t,
     ) -> Result<(), &'static str> {
         let mut cfg_ptr: *const usb_config_desc_t = core::ptr::null();
         let cfg_err = unsafe { usb_host_get_active_config_descriptor(dev_hdl, &mut cfg_ptr) };
         if cfg_err != ESP_OK as i32 || cfg_ptr.is_null() {
-            // Acceptable for witness mode: attach identity still valid.
+            // For M2B.1 witness, attach identity is the primary signal.
+            // Missing config descriptor is non-fatal for this milestone.
             return Ok(());
         }
 
@@ -315,7 +318,6 @@ impl EspUsbHost {
 
         let free_err = unsafe { usb_host_release_config_descriptor(cfg_ptr) };
         if free_err != ESP_OK as i32 {
-            let _ = unsafe { usb_host_device_close(client_hdl, dev_hdl) };
             return Err("usb_host_release_config_descriptor failed");
         }
 
