@@ -22,7 +22,14 @@ pub fn main() {
     platform::init();
     let uart = Uart::new();
     let mut usb = EspUsbIngress::new();
+
+    // Start USB host stack on target
+    #[cfg(target_os = "espidf")]
     usb.init_host();
+
+    // Trigger witness events for demonstration/test
+    #[cfg(not(target_os = "espidf"))]
+    usb.simulate_events();
 
     // 2. Initialize storage (In-memory for M1/M2)
     let storage = InMemoryStore::new();
@@ -77,7 +84,5 @@ pub fn main() {
                 uart.write_all(b"ERROR: UART Read Error\n");
             }
         }
-
-        // In a real ESP-IDF environment, we might yield or sleep here.
     }
 }

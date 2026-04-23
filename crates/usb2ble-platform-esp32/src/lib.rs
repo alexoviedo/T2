@@ -133,9 +133,15 @@ impl EspUsbIngress {
     }
 
     /// Initialize the USB host stack.
+    #[cfg(target_os = "espidf")]
     pub fn init_host(&self) {
-        #[cfg(target_os = "espidf")]
         self.host.init();
+    }
+
+    /// Trigger witness events for simulation.
+    #[cfg(not(target_os = "espidf"))]
+    pub fn simulate_events(&self) {
+        self.host.simulate_events();
     }
 }
 
