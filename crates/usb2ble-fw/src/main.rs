@@ -14,7 +14,7 @@ use usb2ble_storage::InMemoryStore;
 /// Firmware name.
 pub const FIRMWARE_NAME: &str = "usb2ble";
 /// Firmware version.
-pub const FIRMWARE_VERSION: &str = "0.2.0-m2a";
+pub const FIRMWARE_VERSION: &str = "0.2.1-m2b1";
 
 /// Main firmware entrypoint.
 pub fn main() {
@@ -23,9 +23,13 @@ pub fn main() {
     let uart = Uart::new();
     let mut usb = EspUsbIngress::new();
 
-    // Start USB host stack groundwork on target
+    // Start USB host stack witness path on target
     #[cfg(target_os = "espidf")]
-    usb.init_host();
+    {
+        if let Err(err) = usb.init_host() {
+            uart.write_all(format!("ERROR: USB host init failed: {err}\n").as_bytes());
+        }
+    }
 
     // Trigger witness events for host simulation/test
     #[cfg(not(target_os = "espidf"))]
@@ -43,12 +47,21 @@ pub fn main() {
     uart.write_all(format!("Name: {}\n", FIRMWARE_NAME).as_bytes());
     uart.write_all(format!("Version: {}\n", FIRMWARE_VERSION).as_bytes());
     uart.write_all(format!("Contract Version: {}\n", CONTRACT_VERSION).as_bytes());
-    uart.write_all(b"Status: M2A Groundwork\n");
+    uart.write_all(b"Status: M2B.1 Code-path (HW Verification Pending)\n");
     uart.write_all(b"Ready for commands.\n");
 
     // 5. Main loop
     let mut buf = [0u8; 128];
     loop {
+        #[cfg(target_os = "espidf")]
+        {
+            if let Err(err) = usb.service_host() {
+                uart.write_all(format!("ERROR: USB host service failed: {err}\n").as_bytes());
+            }
+        }
+        #[cfg(not(target_os = "espidf"))]
+        usb.service_host();
+
         // Poll USB events
         while let Some(event) = usb.poll_event() {
             app.handle_usb_event(event);

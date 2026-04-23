@@ -81,6 +81,15 @@ This milestone intentionally proves operator visibility before device functional
 
 ## M2 — USB witness on real hardware
 
+### M2A (Complete)
+Groundwork complete: contracts, app bookkeeping, control-plane USB visibility, and platform plumbing.
+
+### M2B.1 (Code-path implemented, hardware verification pending)
+Real attach/detach + identity witness plumbing on ESP32-S3; on-device evidence still required.
+
+### M2B.2 (Pending)
+Descriptor and input-report capture exposed through control plane.
+
 ### Goal
 Prove real USB host viability on ESP32-S3 with curated supported hardware.
 
