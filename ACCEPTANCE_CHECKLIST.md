@@ -81,80 +81,40 @@ Ready for commands.
 - `GET_PROFILE`
 - Explicit error handling for malformed input
 
-## M2 — USB witness: attach/detach, identity, and descriptor capture
+## M2A — USB witness: contracts, app-state, and control-plane groundwork
 
-- [x] Firmware detects USB HID device attach and detach on ESP32-S3.
-- [x] `LIST_USB_DEVICES` returns currently known physical device identities.
-- [x] `GET_USB_STATUS` returns physical device and interface counts correctly.
-- [x] `GET_USB_DESCRIPTOR <id>` returns real descriptor bytes or `NotFound` error.
-- [x] `GET_LAST_USB_REPORT <id>` returns the most recent raw input report or `NotFound` error.
-- [x] `UsbIngress` trait is implemented and integrated into the app loop with real ESP-IDF USB Host initialization calls.
-- [x] App state separates physical devices from HID interfaces.
-- [x] Detach cleanup correctly removes all associated interface and report records.
+- [x] Contracts defined for USB device/interface identity and events.
+- [x] `AppState` refactored to separate physical devices from HID interfaces.
+- [x] `GET_USB_STATUS` and `LIST_USB_DEVICES` implemented in control plane.
+- [x] `GET_USB_DESCRIPTOR` and `GET_LAST_USB_REPORT` support explicit `NotFound` error.
+- [x] `handle_usb_event` logic verified with multi-interface cleanup tests on host.
+- [x] Platform `EspUsbIngress` plumbing (channel-based) established.
+- [x] Real target USB stack initialization placeholder added.
 
-## M2 Validation Commands
+## M2A Validation Commands
 
 ```bash
-# Workspace verification
+# Full workspace validation
 cargo fmt --all
 cargo clippy --workspace -- -D warnings
 cargo test --workspace
-
-# Build and flash to target
-./scripts/build.sh
-espflash flash target/xtensa-esp32s3-espidf/debug/usb2ble-fw --monitor
 ```
 
-## M2 Acceptance Evidence
+## M2A Acceptance Evidence
 
 ### Host Verification
-- **App Logic:** `crates/usb2ble-app/src/lib.rs` unit tests verify `handle_usb_event` correctly updates `AppState` (separating devices/interfaces), handles multi-interface cleanup, and returns `NotFound` for missing keys.
-- **Control Plane:** `crates/usb2ble-control/src/lib.rs` unit tests verify decoding and encoding of M2 commands and error responses.
+- **App Logic:** `crates/usb2ble-app/src/lib.rs` unit tests verify correct tracking and cleanup of physical devices and multiple HID interfaces.
+- **Control Plane:** `crates/usb2ble-control/src/lib.rs` unit tests verify M2A command decoding and response encoding, including `NotFound` errors.
+- **Integration:** `crates/usb2ble-fw/src/main.rs` verified via simulation path on host to confirm end-to-end groundwork plumbing.
 
-### Target Verification (ESP32-S3)
-- **Board:** ESP32-S3-DevKitC-1
-- **USB Device:** Generic HID Gamepad (VID: 0x045e, PID: 0x028e)
+### Target Status (ESP32-S3)
+- **Status:** Groundwork only.
+- **Verified:** Firmware boots (`0.2.0-m2a`) and responds to groundwork control commands.
+- **Pending (M2B):** Real HID device attach/detach detection and report capture on hardware.
 
-#### Attach Witness (Captured)
-```text
---- USB2BLE FIRMWARE BOOT ---
-Status: M2 Real
-...
->> GET_USB_STATUS
-<< USB_STATUS:devices=1;interfaces=1;
->> LIST_USB_DEVICES
-<< USB_DEVICES:id=1,vid=045e,pid=028e
-```
+## M2B — Real target USB witness (Pending)
 
-#### Descriptor Capture (Captured)
-```text
->> GET_USB_DESCRIPTOR 1:0
-<< USB_DESCRIPTOR:05010905a1010105010901150025017501950a8102750695018103050109300931093209351581257f750895048102050c0901a1010a3e020a40021500250175019502810295068103c0c0
-```
-
-#### Raw Input Report Witness (Captured)
-```text
->> GET_LAST_USB_REPORT 1:0
-<< USB_REPORT:0000808080800000
-```
-
-#### Missing Key Error (Captured)
-```text
->> GET_USB_DESCRIPTOR 2:0
-<< ERROR:NotFound
-```
-
-#### Detach Witness (Captured)
-```text
->> (Unplug device)
->> GET_USB_STATUS
-<< USB_STATUS:devices=0;interfaces=0;
-```
-
-**Scope verified on target:**
-- Real ESP-IDF USB Host stack initialization path.
-- Attach/detach detection of physical HID devices.
-- Identity capture (VID/PID) and interface discovery.
-- Raw HID Report Descriptor capture.
-- Raw HID Input Report capture.
-- Control plane visibility into all of the above with explicit error handling.
+- [ ] Firmware detects USB HID device attach and detach on ESP32-S3.
+- [ ] `GET_USB_DESCRIPTOR` returns real descriptor bytes from hardware.
+- [ ] `GET_LAST_USB_REPORT` returns real input reports from hardware.
+- [ ] Verified with real USB HID devices on target.

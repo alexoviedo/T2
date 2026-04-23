@@ -14,7 +14,7 @@ use usb2ble_storage::InMemoryStore;
 /// Firmware name.
 pub const FIRMWARE_NAME: &str = "usb2ble";
 /// Firmware version.
-pub const FIRMWARE_VERSION: &str = "0.2.0-m2";
+pub const FIRMWARE_VERSION: &str = "0.2.0-m2a";
 
 /// Main firmware entrypoint.
 pub fn main() {
@@ -23,13 +23,13 @@ pub fn main() {
     let uart = Uart::new();
     let mut usb = EspUsbIngress::new();
 
-    // Start USB host stack on target
+    // Start USB host stack groundwork on target
     #[cfg(target_os = "espidf")]
     usb.init_host();
 
-    // Trigger witness events for demonstration/test
+    // Trigger witness events for host simulation/test
     #[cfg(not(target_os = "espidf"))]
-    usb.simulate_events();
+    usb.simulate_events_for_test();
 
     // 2. Initialize storage (In-memory for M1/M2)
     let storage = InMemoryStore::new();
@@ -43,7 +43,7 @@ pub fn main() {
     uart.write_all(format!("Name: {}\n", FIRMWARE_NAME).as_bytes());
     uart.write_all(format!("Version: {}\n", FIRMWARE_VERSION).as_bytes());
     uart.write_all(format!("Contract Version: {}\n", CONTRACT_VERSION).as_bytes());
-    uart.write_all(b"Status: M2 Real\n");
+    uart.write_all(b"Status: M2A Groundwork\n");
     uart.write_all(b"Ready for commands.\n");
 
     // 5. Main loop

@@ -116,7 +116,7 @@ pub fn init() {
     }
 }
 
-/// A minimal USB ingress implementation for M2.
+/// A minimal USB ingress implementation for M2 groundwork.
 pub struct EspUsbIngress {
     rx: mpsc::Receiver<UsbIngressEvent>,
     #[allow(dead_code)]
@@ -132,16 +132,16 @@ impl EspUsbIngress {
         Self { rx, host }
     }
 
-    /// Initialize the USB host stack.
+    /// Initialize the USB host stack (Groundwork).
     #[cfg(target_os = "espidf")]
     pub fn init_host(&self) {
         self.host.init();
     }
 
-    /// Trigger witness events for simulation.
+    /// Trigger witness events for simulation on host.
     #[cfg(not(target_os = "espidf"))]
-    pub fn simulate_events(&self) {
-        self.host.simulate_events();
+    pub fn simulate_events_for_test(&self) {
+        self.host.simulate_events_for_test();
     }
 }
 
