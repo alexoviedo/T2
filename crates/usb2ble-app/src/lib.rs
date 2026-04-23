@@ -88,10 +88,8 @@ where
     /// Handle a USB ingress event.
     pub fn handle_usb_event(&mut self, event: UsbIngressEvent) {
         match event {
-            UsbIngressEvent::DeviceAttached(dev) => {
-                if !self.state.physical_devices.contains(&dev) {
-                    self.state.physical_devices.push(dev);
-                }
+            UsbIngressEvent::DeviceAttached(dev) if !self.state.physical_devices.contains(&dev) => {
+                self.state.physical_devices.push(dev);
             }
             UsbIngressEvent::DeviceDetached { source } => {
                 self.state
@@ -110,10 +108,10 @@ where
                     .descriptors
                     .retain(|(k, _)| k.device_id != source.device_id);
             }
-            UsbIngressEvent::InterfaceDiscovered { source, .. } => {
-                if !self.state.hid_interfaces.contains(&source) {
-                    self.state.hid_interfaces.push(source);
-                }
+            UsbIngressEvent::InterfaceDiscovered { source, .. }
+                if !self.state.hid_interfaces.contains(&source) =>
+            {
+                self.state.hid_interfaces.push(source);
             }
             UsbIngressEvent::ReportDescriptorReceived(blob) => {
                 let key = DescriptorKey {
