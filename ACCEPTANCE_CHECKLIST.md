@@ -80,3 +80,41 @@ Ready for commands.
 - `GET_STATUS`
 - `GET_PROFILE`
 - Explicit error handling for malformed input
+
+## M2A — USB witness: contracts, app-state, and control-plane groundwork
+
+- [x] Contracts defined for USB device/interface identity and events.
+- [x] `AppState` refactored to separate physical devices from HID interfaces.
+- [x] `GET_USB_STATUS` and `LIST_USB_DEVICES` implemented in control plane.
+- [x] `GET_USB_DESCRIPTOR` and `GET_LAST_USB_REPORT` support explicit `NotFound` error.
+- [x] `handle_usb_event` logic verified with multi-interface cleanup tests on host.
+- [x] Platform `EspUsbIngress` plumbing (channel-based) established.
+- [x] Real target USB stack initialization placeholder added.
+
+## M2A Validation Commands
+
+```bash
+# Full workspace validation
+cargo fmt --all
+cargo clippy --workspace -- -D warnings
+cargo test --workspace
+```
+
+## M2A Acceptance Evidence
+
+### Host Verification
+- **App Logic:** `crates/usb2ble-app/src/lib.rs` unit tests verify correct tracking and cleanup of physical devices and multiple HID interfaces.
+- **Control Plane:** `crates/usb2ble-control/src/lib.rs` unit tests verify M2A command decoding and response encoding, including `NotFound` errors.
+- **Integration:** `crates/usb2ble-fw/src/main.rs` verified via simulation path on host to confirm end-to-end groundwork plumbing.
+
+### Target Status (ESP32-S3)
+- **Status:** Groundwork only.
+- **Verified:** Firmware boots (`0.2.0-m2a`) and responds to groundwork control commands.
+- **Pending (M2B):** Real HID device attach/detach detection and report capture on hardware.
+
+## M2B — Real target USB witness (Pending)
+
+- [ ] Firmware detects USB HID device attach and detach on ESP32-S3.
+- [ ] `GET_USB_DESCRIPTOR` returns real descriptor bytes from hardware.
+- [ ] `GET_LAST_USB_REPORT` returns real input reports from hardware.
+- [ ] Verified with real USB HID devices on target.

@@ -4,8 +4,12 @@
 //! - ESP-IDF bindings,
 //! - UART/NVS adapters.
 
+pub mod usb_host;
+
 use std::cell::RefCell;
 use std::io::{self, Read, Write};
+use std::sync::mpsc;
+use usb2ble_contracts::{UsbIngress, UsbIngressEvent};
 
 /// Result of a UART read operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +113,47 @@ pub fn init() {
     {
         // Required for ESP-IDF linkage
         esp_idf_svc::sys::link_patches();
+    }
+}
+
+/// A minimal USB ingress implementation for M2 groundwork.
+pub struct EspUsbIngress {
+    rx: mpsc::Receiver<UsbIngressEvent>,
+    #[allow(dead_code)]
+    host: usb_host::EspUsbHost,
+}
+
+impl EspUsbIngress {
+    /// Create a new `EspUsbIngress` instance.
+    #[must_use]
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::channel();
+        let host = usb_host::EspUsbHost::new(tx);
+        Self { rx, host }
+    }
+
+    /// Initialize the USB host stack (Groundwork).
+    #[cfg(target_os = "espidf")]
+    pub fn init_host(&self) {
+        self.host.init();
+    }
+
+    /// Trigger witness events for simulation on host.
+    #[cfg(not(target_os = "espidf"))]
+    pub fn simulate_events_for_test(&self) {
+        self.host.simulate_events_for_test();
+    }
+}
+
+impl UsbIngress for EspUsbIngress {
+    fn poll_event(&mut self) -> Option<UsbIngressEvent> {
+        self.rx.try_recv().ok()
+    }
+}
+
+impl Default for EspUsbIngress {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

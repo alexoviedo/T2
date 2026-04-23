@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 usb2ble-contracts = { path = "../usb2ble-contracts" }
+hex = "0.4"
 
 
 [lints]

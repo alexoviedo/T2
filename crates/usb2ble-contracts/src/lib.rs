@@ -72,22 +72,31 @@ pub struct UsbDeviceRef {
     pub vendor_id: u16,
     /// USB Product ID.
     pub product_id: u16,
-    /// Interface identifier if known.
-    pub interface_id: Option<InterfaceId>,
+}
+
+/// A stable reference to a USB interface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsbInterfaceRef {
+    /// Source device reference.
+    pub device: UsbDeviceRef,
+    /// Interface identifier.
+    pub interface_id: InterfaceId,
 }
 
 /// Raw HID report descriptor bytes from a specific source.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportDescriptorBlob {
-    /// The USB source device.
-    pub source: UsbDeviceRef,
+    /// The USB source interface.
+    pub source: UsbInterfaceRef,
     /// Raw descriptor bytes.
     pub bytes: Vec<u8>,
 }
 
 /// A single input report received from a USB device.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputReportPacket {
-    /// The USB source device.
-    pub source: UsbDeviceRef,
+    /// The USB source interface.
+    pub source: UsbInterfaceRef,
     /// HID report ID.
     pub report_id: ReportId,
     /// Raw report payload.
@@ -111,6 +120,7 @@ pub enum UsbIngressErrorCode {
 }
 
 /// High-level events from the USB ingress layer.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsbIngressEvent {
     /// A new USB device has been attached.
     DeviceAttached(UsbDeviceRef),
@@ -121,8 +131,8 @@ pub enum UsbIngressEvent {
     },
     /// A USB HID interface was discovered on a device.
     InterfaceDiscovered {
-        /// The source device.
-        source: UsbDeviceRef,
+        /// The source interface.
+        source: UsbInterfaceRef,
         /// HID class code.
         class_code: u8,
         /// HID subclass code.
@@ -159,6 +169,7 @@ pub trait UsbIngress {
 // --- HID ---
 
 /// Intermediate representation of an HID descriptor.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HidDescriptorIr {
     /// Logical collections defined in the descriptor.
     pub collections: Vec<HidCollection>,
@@ -169,11 +180,13 @@ pub struct HidDescriptorIr {
 }
 
 /// A logical grouping of HID fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HidCollection {
     // Placeholder for M3
 }
 
 /// Metadata for a single field within an HID report.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HidField {
     /// Report ID this field belongs to.
     pub report_id: ReportId,
@@ -273,8 +286,8 @@ pub enum NormalizedControlValue {
 
 /// A normalized event from a specific source control.
 pub struct NormalizedControlEvent {
-    /// The USB source device.
-    pub source: UsbDeviceRef,
+    /// The USB source interface.
+    pub source: UsbInterfaceRef,
     /// Stable identifier for the control.
     pub control_id: String,
     /// Normalized value.
@@ -285,8 +298,8 @@ pub struct NormalizedControlEvent {
 
 /// A full frame of normalized input from a single source.
 pub struct NormalizedInputFrame {
-    /// The USB source device.
-    pub source: UsbDeviceRef,
+    /// The USB source interface.
+    pub source: UsbInterfaceRef,
     /// List of control updates in this frame.
     pub controls: Vec<NormalizedControlEvent>,
 }
@@ -299,7 +312,7 @@ pub struct NormalizedCompositeValue {
 /// A composed frame representing state from multiple sources.
 pub struct CompositeInputFrame {
     /// All contributing USB sources.
-    pub sources: Vec<UsbDeviceRef>,
+    pub sources: Vec<UsbInterfaceRef>,
     /// Composed control states.
     pub controls: Vec<NormalizedCompositeValue>,
     /// Aggregated timestamp.
@@ -582,6 +595,29 @@ pub struct ProfileResponse {
     pub active_profile: Option<ProfileId>,
 }
 
+/// Response payload for `GET_USB_STATUS`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsbStatusResponse {
+    /// Number of physical devices.
+    pub physical_devices: usize,
+    /// Total number of HID interfaces discovered.
+    pub total_interfaces: usize,
+}
+
+/// Response payload for `GET_USB_DESCRIPTOR`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsbDescriptorResponse {
+    /// Raw descriptor bytes.
+    pub bytes: Vec<u8>,
+}
+
+/// Response payload for `GET_LAST_USB_REPORT`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsbReportResponse {
+    /// Raw report bytes.
+    pub bytes: Vec<u8>,
+}
+
 /// A command received over the serial control plane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlCommand {
@@ -591,6 +627,14 @@ pub enum ControlCommand {
     GetStatus,
     /// Request the active profile.
     GetProfile,
+    /// Request USB status.
+    GetUsbStatus,
+    /// List all USB devices.
+    ListUsbDevices,
+    /// Request the raw HID descriptor for a device/interface.
+    GetUsbDescriptor(DescriptorKey),
+    /// Request the last raw input report for a device/interface.
+    GetLastUsbReport(DescriptorKey),
 }
 
 /// A response to be sent over the serial control plane.
@@ -602,6 +646,14 @@ pub enum ControlResponse {
     Status(StatusResponse),
     /// Response to `GET_PROFILE`.
     Profile(ProfileResponse),
+    /// Response to `GET_USB_STATUS`.
+    UsbStatus(UsbStatusResponse),
+    /// Response to `LIST_USB_DEVICES`.
+    UsbDevices(Vec<UsbDeviceRef>),
+    /// Response to `GET_USB_DESCRIPTOR`.
+    UsbDescriptor(UsbDescriptorResponse),
+    /// Response to `GET_LAST_USB_REPORT`.
+    UsbReport(UsbReportResponse),
     /// An error response.
     Error(ControlError),
 }
@@ -611,6 +663,8 @@ pub enum ControlResponse {
 pub enum ControlError {
     /// Generic control plane failure.
     Generic,
+    /// Requested resource was not found.
+    NotFound,
 }
 
 /// Trait for serial control plane framing and schema.
@@ -634,10 +688,16 @@ pub struct DescriptorKey {
 
 /// Current state of the application.
 pub struct AppState {
-    /// List of currently attached USB devices.
-    pub known_devices: Vec<UsbDeviceRef>,
+    /// Currently attached physical USB devices.
+    pub physical_devices: Vec<UsbDeviceRef>,
+    /// Discovered HID interfaces.
+    pub hid_interfaces: Vec<UsbInterfaceRef>,
     /// Active HID descriptors keyed by device/interface.
     pub descriptors: Vec<(DescriptorKey, HidDescriptorIr)>,
+    /// Raw HID descriptors keyed by device/interface.
+    pub raw_descriptors: Vec<(DescriptorKey, Vec<u8>)>,
+    /// Last raw input reports keyed by device/interface.
+    pub last_reports: Vec<(DescriptorKey, Vec<u8>)>,
     /// Currently active mapping profile.
     pub active_profile: Option<ProfileId>,
     /// Currently active BLE persona.

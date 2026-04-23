@@ -6,7 +6,10 @@
 //! - schema validation.
 
 use std::fmt::Write;
-use usb2ble_contracts::{ControlCommand, ControlError, ControlPlane, ControlResponse};
+use usb2ble_contracts::{
+    ControlCommand, ControlError, ControlPlane, ControlResponse, DescriptorKey, DeviceId,
+    InterfaceId,
+};
 
 /// Implementation of the newline-framed serial control plane.
 #[derive(Default)]
@@ -25,12 +28,33 @@ impl ControlPlane for SerialControlPlane {
         let s = std::str::from_utf8(bytes).map_err(|_| ControlError::Generic)?;
         let s = s.trim();
 
-        match s {
-            "GET_INFO" => Ok(ControlCommand::GetInfo),
-            "GET_STATUS" => Ok(ControlCommand::GetStatus),
-            "GET_PROFILE" => Ok(ControlCommand::GetProfile),
-            _ => Err(ControlError::Generic),
+        if s == "GET_INFO" {
+            return Ok(ControlCommand::GetInfo);
         }
+        if s == "GET_STATUS" {
+            return Ok(ControlCommand::GetStatus);
+        }
+        if s == "GET_PROFILE" {
+            return Ok(ControlCommand::GetProfile);
+        }
+        if s == "GET_USB_STATUS" {
+            return Ok(ControlCommand::GetUsbStatus);
+        }
+        if s == "LIST_USB_DEVICES" {
+            return Ok(ControlCommand::ListUsbDevices);
+        }
+
+        if let Some(rest) = s.strip_prefix("GET_USB_DESCRIPTOR ") {
+            let key = parse_descriptor_key(rest.trim()).ok_or(ControlError::Generic)?;
+            return Ok(ControlCommand::GetUsbDescriptor(key));
+        }
+
+        if let Some(rest) = s.strip_prefix("GET_LAST_USB_REPORT ") {
+            let key = parse_descriptor_key(rest.trim()).ok_or(ControlError::Generic)?;
+            return Ok(ControlCommand::GetLastUsbReport(key));
+        }
+
+        Err(ControlError::Generic)
     }
 
     fn encode_response(&self, response: &ControlResponse) -> Result<Vec<u8>, ControlError> {
@@ -65,6 +89,35 @@ impl ControlPlane for SerialControlPlane {
                     out.push_str("none");
                 }
             }
+            ControlResponse::UsbStatus(status) => {
+                out.push_str("USB_STATUS:");
+                let _ = write!(
+                    out,
+                    "devices={};interfaces={};",
+                    status.physical_devices, status.total_interfaces
+                );
+            }
+            ControlResponse::UsbDevices(devices) => {
+                out.push_str("USB_DEVICES:");
+                for (i, dev) in devices.iter().enumerate() {
+                    let _ = write!(
+                        out,
+                        "id={},vid={:04x},pid={:04x}",
+                        dev.device_id.0, dev.vendor_id, dev.product_id
+                    );
+                    if i < devices.len() - 1 {
+                        out.push('|');
+                    }
+                }
+            }
+            ControlResponse::UsbDescriptor(resp) => {
+                out.push_str("USB_DESCRIPTOR:");
+                out.push_str(&hex::encode(&resp.bytes));
+            }
+            ControlResponse::UsbReport(resp) => {
+                out.push_str("USB_REPORT:");
+                out.push_str(&hex::encode(&resp.bytes));
+            }
             ControlResponse::Error(err) => {
                 let _ = write!(out, "ERROR:{err:?}");
             }
@@ -72,6 +125,23 @@ impl ControlPlane for SerialControlPlane {
 
         out.push('\n');
         Ok(out.into_bytes())
+    }
+}
+
+fn parse_descriptor_key(s: &str) -> Option<DescriptorKey> {
+    if let Some((dev_str, iface_str)) = s.split_once(':') {
+        let device_id = dev_str.parse::<u32>().ok()?;
+        let interface_id = iface_str.parse::<u32>().ok()?;
+        Some(DescriptorKey {
+            device_id: DeviceId(device_id),
+            interface_id: Some(InterfaceId(interface_id)),
+        })
+    } else {
+        let device_id = s.parse::<u32>().ok()?;
+        Some(DescriptorKey {
+            device_id: DeviceId(device_id),
+            interface_id: None,
+        })
     }
 }
 
@@ -126,5 +196,92 @@ mod tests {
             std::str::from_utf8(&bytes).unwrap(),
             "STATUS:ble=Advertising;profile=test-profile;bonds=true;\n"
         );
+    }
+
+    #[test]
+    fn test_decode_m2_commands() {
+        let cp = SerialControlPlane::new();
+
+        assert_eq!(
+            cp.decode_command(b"GET_USB_STATUS").unwrap(),
+            ControlCommand::GetUsbStatus
+        );
+        assert_eq!(
+            cp.decode_command(b"LIST_USB_DEVICES").unwrap(),
+            ControlCommand::ListUsbDevices
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_USB_DESCRIPTOR 1").unwrap(),
+            ControlCommand::GetUsbDescriptor(DescriptorKey {
+                device_id: DeviceId(1),
+                interface_id: None
+            })
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_USB_DESCRIPTOR 1:0").unwrap(),
+            ControlCommand::GetUsbDescriptor(DescriptorKey {
+                device_id: DeviceId(1),
+                interface_id: Some(InterfaceId(0))
+            })
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_LAST_USB_REPORT 2:1").unwrap(),
+            ControlCommand::GetLastUsbReport(DescriptorKey {
+                device_id: DeviceId(2),
+                interface_id: Some(InterfaceId(1))
+            })
+        );
+    }
+
+    #[test]
+    fn test_encode_m2_responses() {
+        use usb2ble_contracts::{
+            ConnectionTopology, UsbDescriptorResponse, UsbDeviceRef, UsbReportResponse,
+            UsbStatusResponse,
+        };
+
+        let cp = SerialControlPlane::new();
+
+        // UsbStatus
+        let resp = ControlResponse::UsbStatus(UsbStatusResponse {
+            physical_devices: 2,
+            total_interfaces: 3,
+        });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "USB_STATUS:devices=2;interfaces=3;\n"
+        );
+
+        // UsbDevices
+        let dev1 = UsbDeviceRef {
+            device_id: DeviceId(1),
+            topology: ConnectionTopology::Direct,
+            vendor_id: 0x1234,
+            product_id: 0x5678,
+        };
+        let resp = ControlResponse::UsbDevices(vec![dev1]);
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "USB_DEVICES:id=1,vid=1234,pid=5678\n"
+        );
+
+        // UsbDescriptor
+        let resp = ControlResponse::UsbDescriptor(UsbDescriptorResponse {
+            bytes: vec![0xDE, 0xAD, 0xBE, 0xEF],
+        });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "USB_DESCRIPTOR:deadbeef\n"
+        );
+
+        // UsbReport
+        let resp = ControlResponse::UsbReport(UsbReportResponse {
+            bytes: vec![0x01, 0x02],
+        });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(std::str::from_utf8(&bytes).unwrap(), "USB_REPORT:0102\n");
     }
 }
