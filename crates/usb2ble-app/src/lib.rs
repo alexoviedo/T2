@@ -56,13 +56,12 @@ where
                 active_profile: self.state.active_profile,
             }),
             ControlCommand::GetUsbStatus => {
-                let physical_devices = self
+                let mut unique_devices = self
                     .state
                     .known_devices
                     .iter()
                     .map(|d| d.device_id)
                     .collect::<Vec<_>>();
-                let mut unique_devices = physical_devices.clone();
                 unique_devices.sort_by_key(|d| d.0);
                 unique_devices.dedup();
 
@@ -100,10 +99,8 @@ where
     /// Handle a USB ingress event.
     pub fn handle_usb_event(&mut self, event: UsbIngressEvent) {
         match event {
-            UsbIngressEvent::DeviceAttached(dev) => {
-                if !self.state.known_devices.contains(&dev) {
-                    self.state.known_devices.push(dev);
-                }
+            UsbIngressEvent::DeviceAttached(dev) if !self.state.known_devices.contains(&dev) => {
+                self.state.known_devices.push(dev);
             }
             UsbIngressEvent::DeviceDetached { source } => {
                 self.state
@@ -119,10 +116,10 @@ where
                     .descriptors
                     .retain(|(k, _)| k.device_id != source.device_id);
             }
-            UsbIngressEvent::InterfaceDiscovered { source, .. } => {
-                if !self.state.known_devices.contains(&source) {
-                    self.state.known_devices.push(source);
-                }
+            UsbIngressEvent::InterfaceDiscovered { source, .. }
+                if !self.state.known_devices.contains(&source) =>
+            {
+                self.state.known_devices.push(source);
             }
             UsbIngressEvent::ReportDescriptorReceived(blob) => {
                 let key = DescriptorKey {
