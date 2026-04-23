@@ -52,7 +52,9 @@ impl EspUsbHost {
             vendor_id: 0x045e,
             product_id: 0x028e,
         };
-        let _ = self.event_tx.send(UsbIngressEvent::DeviceAttached(dev_ref.clone()));
+        let _ = self
+            .event_tx
+            .send(UsbIngressEvent::DeviceAttached(dev_ref.clone()));
 
         // HID Interface discovery
         let iface_ref = UsbInterfaceRef {
@@ -68,20 +70,24 @@ impl EspUsbHost {
 
         // HID Report Descriptor capture
         let descriptor = vec![0x05, 0x01, 0x09, 0x05]; // Minimal dummy for groundwork test
-        let _ = self.event_tx.send(UsbIngressEvent::ReportDescriptorReceived(
-            ReportDescriptorBlob {
-                source: iface_ref.clone(),
-                bytes: descriptor,
-            },
-        ));
+        let _ = self
+            .event_tx
+            .send(UsbIngressEvent::ReportDescriptorReceived(
+                ReportDescriptorBlob {
+                    source: iface_ref.clone(),
+                    bytes: descriptor,
+                },
+            ));
 
         // Raw input report capture
         let report = vec![0x00, 0x01, 0x02];
-        let _ = self.event_tx.send(UsbIngressEvent::InputReportReceived(InputReportPacket {
-            source: iface_ref,
-            report_id: usb2ble_contracts::ReportId(0),
-            payload: report,
-            timestamp_micros: 1000,
-        }));
+        let _ = self
+            .event_tx
+            .send(UsbIngressEvent::InputReportReceived(InputReportPacket {
+                source: iface_ref,
+                report_id: usb2ble_contracts::ReportId(0),
+                payload: report,
+                timestamp_micros: 1000,
+            }));
     }
 }
