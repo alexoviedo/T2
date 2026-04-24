@@ -47,9 +47,10 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Install Rust Xtensa toolchain
-      uses: esp-rs/xtensa-toolchain@v1.6
+      uses: esp-rs/xtensa-toolchain@v1.7
       with:
         default: true
+        buildtargets: esp32s3
         ldproxy: true
 
     - name: Rust Cache
