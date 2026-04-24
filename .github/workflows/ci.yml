@@ -46,6 +46,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install native dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build python3 python3-pip python3-venv libusb-1.0-0 libudev-dev
+
     - name: Install Rust Xtensa toolchain
       uses: esp-rs/xtensa-toolchain@v1.7
       with:
