@@ -292,4 +292,46 @@ mod tests {
         assert_eq!(app.state().raw_descriptors.len(), 0);
         assert_eq!(app.state().last_reports.len(), 0);
     }
+
+    #[test]
+    fn test_usb_status_and_list_follow_attach_detach() {
+        use usb2ble_contracts::{ConnectionTopology, DeviceId, UsbDeviceRef};
+
+        let storage = InMemoryStore::new();
+        let mut app = App::new(storage);
+
+        let before = app.handle_control_command(&ControlCommand::GetUsbStatus);
+        if let ControlResponse::UsbStatus(status) = before {
+            assert_eq!(status.physical_devices, 0);
+            assert_eq!(status.total_interfaces, 0);
+        } else {
+            panic!("Expected UsbStatus response");
+        }
+
+        let dev = UsbDeviceRef {
+            device_id: DeviceId(42),
+            topology: ConnectionTopology::Direct,
+            vendor_id: 0x046d,
+            product_id: 0xc534,
+        };
+        app.handle_usb_event(UsbIngressEvent::DeviceAttached(dev.clone()));
+
+        let listed = app.handle_control_command(&ControlCommand::ListUsbDevices);
+        if let ControlResponse::UsbDevices(devices) = listed {
+            assert_eq!(devices.len(), 1);
+            assert_eq!(devices[0].vendor_id, 0x046d);
+            assert_eq!(devices[0].product_id, 0xc534);
+        } else {
+            panic!("Expected UsbDevices response");
+        }
+
+        app.handle_usb_event(UsbIngressEvent::DeviceDetached { source: dev });
+
+        let after = app.handle_control_command(&ControlCommand::GetUsbStatus);
+        if let ControlResponse::UsbStatus(status) = after {
+            assert_eq!(status.physical_devices, 0);
+        } else {
+            panic!("Expected UsbStatus response");
+        }
+    }
 }

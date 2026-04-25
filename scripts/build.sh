@@ -11,7 +11,15 @@ if ! command -v ldproxy &> /dev/null; then
     echo "Install with: cargo install ldproxy"
 fi
 
+# Use the Espressif Rust toolchain explicitly when available
+if rustup toolchain list | grep -q '^esp'; then
+    CARGO_BIN=(cargo +esp)
+else
+    CARGO_BIN=(cargo)
+    echo "Warning: esp toolchain not found in rustup; using default cargo toolchain."
+fi
+
 # Build with correct target
-cargo build --package usb2ble-fw --target $TARGET
+"${CARGO_BIN[@]}" build --package usb2ble-fw --target $TARGET
 
 echo "Build complete."
