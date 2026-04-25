@@ -6,7 +6,7 @@
 mod integration_tests;
 
 use usb2ble_app::App;
-use usb2ble_contracts::{CONTRACT_VERSION, ControlPlane, ControlResponse, UsbIngress};
+use usb2ble_contracts::{ControlPlane, ControlResponse, UsbIngress, CONTRACT_VERSION};
 use usb2ble_control::SerialControlPlane;
 use usb2ble_platform_esp32::{self as platform, EspUsbIngress, Uart, UartReadResult};
 use usb2ble_storage::InMemoryStore;
