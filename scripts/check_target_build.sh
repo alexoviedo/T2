@@ -21,6 +21,6 @@ if ! "${RUSTC_BIN[@]}" --print target-list | grep -q xtensa; then
     exit 1
 fi
 
-"${CARGO_BIN[@]}" build --package usb2ble-fw --target "$TARGET"
+"${CARGO_BIN[@]}" build -Zbuild-std --package usb2ble-fw --target "$TARGET"
 
 echo "Target build preflight passed for $TARGET."
