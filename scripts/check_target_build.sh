@@ -7,8 +7,10 @@ TARGET="xtensa-esp32s3-espidf"
 # Use the Espressif Rust toolchain explicitly when available (CI via xtensa-toolchain action).
 if rustup toolchain list | grep -q '^esp'; then
     CARGO_BIN=(cargo +esp)
+    RUSTC_BIN=(rustc +esp)
 else
     CARGO_BIN=(cargo)
+    RUSTC_BIN=(rustc)
     echo "Warning: esp toolchain not found in rustup; using default cargo toolchain."
 fi
 

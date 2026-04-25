@@ -3,9 +3,9 @@
 //! Responsible for orchestration and application state.
 
 use usb2ble_contracts::{
-    AppState, BleLinkState, BondStore, ControlCommand, ControlError, ControlResponse,
-    DescriptorKey, InfoResponse, ProfileResponse, ProfileStore, StatusResponse,
-    UsbDescriptorResponse, UsbIngressEvent, UsbReportResponse, UsbStatusResponse, CONTRACT_VERSION,
+    AppState, BleLinkState, BondStore, CONTRACT_VERSION, ControlCommand, ControlError,
+    ControlResponse, DescriptorKey, InfoResponse, ProfileResponse, ProfileStore, StatusResponse,
+    UsbDescriptorResponse, UsbIngressEvent, UsbReportResponse, UsbStatusResponse,
 };
 
 /// The main application structure.

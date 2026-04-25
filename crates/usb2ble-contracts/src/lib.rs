@@ -516,7 +516,7 @@ pub trait BleTransport {
 
     /// Activate a specific persona on the BLE stack.
     fn activate_persona(&mut self, descriptor: &PersonaDescriptor)
-        -> Result<(), BleTransportError>;
+    -> Result<(), BleTransportError>;
 
     /// Publish an encoded report to the connected host.
     fn publish_report(&mut self, report: &EncodedBleReport) -> Result<(), BleTransportError>;
