@@ -23,11 +23,14 @@ pub fn main() {
     let uart = Uart::new();
     let mut usb = EspUsbIngress::new();
 
+    #[allow(unused_mut)]
+    let mut host_init_success = true;
     // Start USB host stack witness path on target
     #[cfg(target_os = "espidf")]
     {
         if let Err(err) = usb.init_host() {
             uart.write_all(format!("ERROR: USB host init failed: {err}\n").as_bytes());
+            host_init_success = false;
         }
     }
 
@@ -53,14 +56,16 @@ pub fn main() {
     // 5. Main loop
     let mut buf = [0u8; 128];
     loop {
-        #[cfg(target_os = "espidf")]
-        {
-            if let Err(err) = usb.service_host() {
-                uart.write_all(format!("ERROR: USB host service failed: {err}\n").as_bytes());
+        if host_init_success {
+            #[cfg(target_os = "espidf")]
+            {
+                if let Err(err) = usb.service_host() {
+                    uart.write_all(format!("ERROR: USB host service failed: {err}\n").as_bytes());
+                }
             }
+            #[cfg(not(target_os = "espidf"))]
+            usb.service_host();
         }
-        #[cfg(not(target_os = "espidf"))]
-        usb.service_host();
 
         // Poll USB events
         while let Some(event) = usb.poll_event() {

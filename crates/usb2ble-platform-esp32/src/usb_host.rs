@@ -123,7 +123,7 @@ impl EspUsbHost {
         }
 
         let mut client_cfg: usb_host_client_config_t = Default::default();
-        client_cfg.is_synchronous = true;
+        client_cfg.is_synchronous = false;
         client_cfg.max_num_event_msg = 8;
 
         let mut client_hdl: usb_host_client_handle_t = core::ptr::null_mut();
