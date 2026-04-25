@@ -240,7 +240,7 @@ mod tests {
 
         // 4. Report
         app.handle_usb_event(UsbIngressEvent::InputReportReceived(InputReportPacket {
-            source: iface.clone(),
+            source: iface,
             report_id: usb2ble_contracts::ReportId(0),
             payload: vec![0xAA, 0xBB],
             timestamp_micros: 100,
@@ -280,10 +280,7 @@ mod tests {
             interface_id: Some(InterfaceId(0)),
         };
         let resp = app.handle_control_command(&ControlCommand::GetUsbDescriptor(missing_key));
-        if let ControlResponse::Error(ControlError::NotFound) = resp {
-        } else {
-            panic!("Expected NotFound error");
-        }
+        assert_eq!(resp, ControlResponse::Error(ControlError::NotFound));
 
         // 6. Detach
         app.handle_usb_event(UsbIngressEvent::DeviceDetached { source: dev });

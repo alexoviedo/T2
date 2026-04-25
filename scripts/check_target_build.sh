@@ -12,13 +12,6 @@ else
     echo "Warning: esp toolchain not found in rustup; using default cargo toolchain."
 fi
 
-# Diagnostic: check for xtensa target support
-if ! rustc --print target-list | grep -q xtensa; then
-    echo "Error: current rustc does not support xtensa targets."
-    rustc -V
-    exit 1
-fi
-
-"${CARGO_BIN[@]}" build --package usb2ble-fw --target "$TARGET"
+"${CARGO_BIN[@]}" build --locked --package usb2ble-fw --target "$TARGET"
 
 echo "Target build preflight passed for $TARGET."

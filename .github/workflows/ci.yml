@@ -32,13 +32,13 @@ jobs:
       run: cargo fmt --all -- --check
 
     - name: Lint with Clippy
-      run: cargo clippy --workspace -- -D warnings
+      run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
     - name: Build
-      run: cargo build --workspace
+      run: cargo build --workspace --locked
 
     - name: Run host tests
-      run: cargo test --workspace
+      run: cargo test --workspace --locked
 
   esp32s3_target_preflight:
     name: ESP32-S3 target preflight
@@ -54,6 +54,7 @@ jobs:
     - name: Install Rust Xtensa toolchain
       uses: esp-rs/xtensa-toolchain@v1.7
       with:
+        version: "1.90.0.0"
         default: true
         buildtargets: esp32s3
         ldproxy: true

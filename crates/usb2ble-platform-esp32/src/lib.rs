@@ -112,7 +112,7 @@ pub fn init() {
     #[cfg(target_os = "espidf")]
     {
         // Required for ESP-IDF linkage
-        esp_idf_svc::sys::link_patches();
+        esp_idf_sys::link_patches();
     }
 }
 
