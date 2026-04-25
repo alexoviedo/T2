@@ -3,9 +3,9 @@
 //! Responsible for orchestration and application state.
 
 use usb2ble_contracts::{
-    AppState, BleLinkState, BondStore, CONTRACT_VERSION, ControlCommand, ControlError,
-    ControlResponse, DescriptorKey, InfoResponse, ProfileResponse, ProfileStore, StatusResponse,
-    UsbDescriptorResponse, UsbIngressEvent, UsbReportResponse, UsbStatusResponse,
+    AppState, BleLinkState, BondStore, ControlCommand, ControlError, ControlResponse,
+    DescriptorKey, InfoResponse, ProfileResponse, ProfileStore, StatusResponse,
+    UsbDescriptorResponse, UsbIngressEvent, UsbReportResponse, UsbStatusResponse, CONTRACT_VERSION,
 };
 
 /// The main application structure.
@@ -145,7 +145,8 @@ where
     }
 
     /// Set the BLE state (e.g. from platform glue).
-    pub const fn set_ble_state(&mut self, state: BleLinkState) {
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn set_ble_state(&mut self, state: BleLinkState) {
         self.state.ble_state = state;
     }
 

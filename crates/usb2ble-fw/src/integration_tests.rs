@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod tests {
     use usb2ble_app::App;
-    use usb2ble_contracts::{CONTRACT_VERSION, ControlCommand, ControlPlane, ControlResponse};
+    use usb2ble_contracts::{ControlCommand, ControlPlane, ControlResponse, CONTRACT_VERSION};
     use usb2ble_control::SerialControlPlane;
     use usb2ble_platform_esp32::{Uart, UartReadResult};
     use usb2ble_storage::InMemoryStore;
