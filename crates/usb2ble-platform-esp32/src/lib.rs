@@ -112,7 +112,7 @@ pub fn init() {
     #[cfg(target_os = "espidf")]
     {
         // Required for ESP-IDF linkage
-        esp_idf_svc::sys::link_patches();
+        esp_idf_sys::link_patches();
     }
 }
 
@@ -134,14 +134,26 @@ impl EspUsbIngress {
 
     /// Initialize the USB host stack (Groundwork).
     #[cfg(target_os = "espidf")]
-    pub fn init_host(&self) {
-        self.host.init();
+    pub fn init_host(&self) -> Result<(), &'static str> {
+        self.host.init()
     }
 
     /// Trigger witness events for simulation on host.
     #[cfg(not(target_os = "espidf"))]
-    pub fn simulate_events_for_test(&self) {
+    pub fn simulate_events_for_test(&mut self) {
         self.host.simulate_events_for_test();
+    }
+
+    /// Service platform USB host event pumps.
+    #[cfg(target_os = "espidf")]
+    pub fn service_host(&self) -> Result<(), &'static str> {
+        self.host.poll_target_events()
+    }
+
+    /// Host no-op to keep call-site uniform.
+    #[cfg(not(target_os = "espidf"))]
+    pub fn service_host(&self) {
+        self.host.tick_host_noop();
     }
 }
 

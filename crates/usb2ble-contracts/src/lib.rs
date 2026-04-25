@@ -746,11 +746,13 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn test_contract_version() {
         assert!(CONTRACT_VERSION > 0);
     }
 
     #[test]
+    #[allow(clippy::match_wildcard_for_single_variants)]
     fn test_topology_direct() {
         let topo = ConnectionTopology::Direct;
         match topo {
@@ -760,6 +762,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::match_wildcard_for_single_variants)]
     fn test_topology_hub() {
         let mut ports = heapless::Vec::new();
         ports.push(1).unwrap();
