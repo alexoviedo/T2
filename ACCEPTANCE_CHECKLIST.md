@@ -43,7 +43,7 @@ This document defines the validation steps required for each milestone.
 - [x] Code-path emits `DeviceDetached` and removes device/interface bookkeeping.
 - [x] `GET_USB_STATUS` and `LIST_USB_DEVICES` provide the witness surface for attach/detach identity state.
 - [x] CI workflow includes ESP32-S3 target-build preflight job (`scripts/check_target_build.sh`).
-- [x] Target build preflight verified for `xtensa-esp32s3-espidf` in GitHub Actions.
+- [ ] Target build preflight verified for `xtensa-esp32s3-espidf` in GitHub Actions.
 - [ ] Real-hardware witness transcript captured and checked in for this revision.
 
 ## M2B.1 Validation Commands

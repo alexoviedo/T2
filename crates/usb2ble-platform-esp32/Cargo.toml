@@ -10,7 +10,7 @@ usb2ble-control = { path = "../usb2ble-control" }
 usb2ble-contracts = { path = "../usb2ble-contracts" }
 
 [target.'cfg(target_os = "espidf")'.dependencies]
-esp-idf-sys = "0.35"
+esp-idf-sys = "0.37"
 
 [lints.rust]
 unsafe_code = "allow"
