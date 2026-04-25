@@ -20,6 +20,6 @@ else
 fi
 
 # Build with correct target
-"${CARGO_BIN[@]}" build -Zbuild-std --package usb2ble-fw --target $TARGET
+"${CARGO_BIN[@]}" build --package usb2ble-fw --target $TARGET
 
 echo "Build complete."
