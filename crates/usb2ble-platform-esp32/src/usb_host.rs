@@ -170,10 +170,15 @@ impl EspUsbHost {
     #[cfg(target_os = "espidf")]
     fn scan_for_new_devices(&self) -> Result<(), &'static str> {
         let mut addr_list = [0u8; 16];
-        let mut num_devices: u8 = addr_list.len() as u8;
+        let mut num_devices: i32 = 0;
 
-        let fill_err =
-            unsafe { usb_host_device_addr_list_fill(addr_list.as_mut_ptr(), &mut num_devices) };
+        let fill_err = unsafe {
+            usb_host_device_addr_list_fill(
+                addr_list.len() as i32,
+                addr_list.as_mut_ptr(),
+                &mut num_devices,
+            )
+        };
         if fill_err != ESP_OK as i32 {
             return Err("usb_host_device_addr_list_fill failed");
         }
@@ -239,9 +244,9 @@ impl EspUsbHost {
         // - register_device_if_needed() owns device-handle close.
         // - emit_hid_interfaces_from_active_config() owns config-descriptor release.
         let register_result = (|| -> Result<(), &'static str> {
-            let mut descriptor: usb_device_desc_t = unsafe { core::mem::zeroed() };
-            let desc_err = unsafe { usb_host_get_device_descriptor(dev_hdl, &mut descriptor) };
-            if desc_err != ESP_OK as i32 {
+            let mut desc_ptr: *const usb_device_desc_t = core::ptr::null();
+            let desc_err = unsafe { usb_host_get_device_descriptor(dev_hdl, &mut desc_ptr) };
+            if desc_err != ESP_OK as i32 || desc_ptr.is_null() {
                 return Err("usb_host_get_device_descriptor failed");
             }
 
@@ -250,8 +255,8 @@ impl EspUsbHost {
                 let dev_ref = UsbDeviceRef {
                     device_id: state.alloc_device_id(),
                     topology: ConnectionTopology::Direct,
-                    vendor_id: descriptor.idVendor,
-                    product_id: descriptor.idProduct,
+                    vendor_id: unsafe { (*desc_ptr).__bindgen_anon_1.idVendor },
+                    product_id: unsafe { (*desc_ptr).__bindgen_anon_1.idProduct },
                 };
                 state.by_addr.insert(dev_addr, dev_ref.clone());
                 dev_ref
@@ -287,7 +292,7 @@ impl EspUsbHost {
             return Ok(());
         }
 
-        let cfg_len = unsafe { (*cfg_ptr).wTotalLength as usize };
+        let cfg_len = unsafe { (*cfg_ptr).__bindgen_anon_1.wTotalLength as usize };
         let cfg_blob = unsafe {
             let ptr = (*cfg_ptr).val.as_ptr();
             core::slice::from_raw_parts(ptr, cfg_len)
@@ -314,11 +319,6 @@ impl EspUsbHost {
                     protocol_code: protocol,
                 });
             }
-        }
-
-        let free_err = unsafe { usb_host_release_config_descriptor(cfg_ptr) };
-        if free_err != ESP_OK as i32 {
-            return Err("usb_host_release_config_descriptor failed");
         }
 
         Ok(())

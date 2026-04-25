@@ -12,6 +12,6 @@ if ! command -v ldproxy &> /dev/null; then
 fi
 
 # Build with correct target
-cargo build --package usb2ble-fw --target $TARGET
+cargo build -Z build-std=std,panic_abort --package usb2ble-fw --target $TARGET
 
 echo "Build complete."
