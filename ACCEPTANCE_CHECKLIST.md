@@ -49,9 +49,12 @@ This document defines the validation steps required for each milestone.
 ## M2B.1 Validation Commands
 
 ```bash
-cargo fmt --all
-cargo clippy --workspace -- -D warnings
-cargo test --workspace
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo build --workspace --locked
+cargo test --workspace --locked
+bash -n scripts/*.sh
+./scripts/check_target_build.sh
 ```
 
 ## M2B.1 Required Evidence (real hardware only)

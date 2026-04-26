@@ -28,8 +28,10 @@ Out of scope for this playbook:
 
 Equivalent direct command:
 ```bash
-cargo build --package usb2ble-fw --target xtensa-esp32s3-espidf
+cargo +esp build -Z build-std=std,panic_abort --locked --package usb2ble-fw --target xtensa-esp32s3-espidf
 ```
+
+If the `esp` toolchain is not installed locally, run `./scripts/check_target_build.sh` first and follow its warning output. In CI, the `esp` toolchain is installed by the Xtensa toolchain action.
 
 ### 2) Build wrapper (optional convenience)
 ```bash
