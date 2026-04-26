@@ -43,6 +43,16 @@
 
 ## Repository layout
 
+- `.cargo/config.toml` — ESP-IDF target build configuration for `xtensa-esp32s3-espidf`.
+- `.github/workflows/ci.yml` — host checks and ESP32-S3 target preflight build.
+- `crates/usb2ble-contracts` — shared contract types, DTOs, and protocol-facing identifiers.
+- `crates/usb2ble-control` — serial command decoding and response encoding.
+- `crates/usb2ble-app` — application state and command/event handling.
+- `crates/usb2ble-platform-esp32` — ESP32/ESP-IDF platform adapters, including USB host witness plumbing.
+- `crates/usb2ble-fw` — firmware binary entrypoint and ESP-IDF root crate.
+- `scripts/` — build, flash, monitor, and validation helpers.
+- `docs/HARDWARE_M2B1_VERIFICATION.md` — local hardware verification playbook.
+
 ## Cloud validation
 ```bash
 cargo fmt --all -- --check
