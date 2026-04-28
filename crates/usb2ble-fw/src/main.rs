@@ -20,15 +20,26 @@ pub const FIRMWARE_VERSION: &str = "0.2.1-m2b1";
 pub fn main() {
     // 1. Initialize platform
     platform::init();
+
+    // Raw printf to bypass any Rust std::io VFS issues during early boot
+    unsafe {
+        esp_idf_sys::printf(b"[TRACE] ENTERED main()\n\0".as_ptr() as *const _);
+    }
+
     let uart = Uart::new();
+    unsafe { esp_idf_sys::printf(b"[TRACE] Uart initialized\n\0".as_ptr() as *const _); }
+
     let mut usb = EspUsbIngress::new();
+    unsafe { esp_idf_sys::printf(b"[TRACE] UsbIngress initialized\n\0".as_ptr() as *const _); }
 
     // Start USB host stack witness path on target
     #[cfg(target_os = "espidf")]
     {
+        unsafe { esp_idf_sys::printf(b"[TRACE] Calling usb.init_host()\n\0".as_ptr() as *const _); }
         if let Err(err) = usb.init_host() {
             uart.write_all(format!("ERROR: USB host init failed: {err}\n").as_bytes());
         }
+        unsafe { esp_idf_sys::printf(b"[TRACE] usb.init_host() returned\n\0".as_ptr() as *const _); }
     }
 
     // Trigger witness events for host simulation/test
@@ -36,23 +47,28 @@ pub fn main() {
     usb.simulate_events_for_test();
 
     // 2. Initialize storage (In-memory for M1/M2)
+    unsafe { esp_idf_sys::printf(b"[TRACE] Initializing storage\n\0".as_ptr() as *const _); }
     let storage = InMemoryStore::new();
 
     // 3. Initialize app
+    unsafe { esp_idf_sys::printf(b"[TRACE] Initializing app\n\0".as_ptr() as *const _); }
     let mut app = App::new(storage);
     let control = SerialControlPlane::new();
 
     // 4. Print startup banner
-    uart.write_all(b"--- USB2BLE FIRMWARE BOOT ---\n");
+    unsafe { esp_idf_sys::printf(b"--- USB2BLE FIRMWARE BOOT ---\n\0".as_ptr() as *const _); }
     uart.write_all(format!("Name: {}\n", FIRMWARE_NAME).as_bytes());
     uart.write_all(format!("Version: {}\n", FIRMWARE_VERSION).as_bytes());
     uart.write_all(format!("Contract Version: {}\n", CONTRACT_VERSION).as_bytes());
     uart.write_all(b"Status: M2B.1 Code-path (HW Verification Pending)\n");
     uart.write_all(b"Ready for commands.\n");
 
+    unsafe { esp_idf_sys::printf(b"[TRACE] ENTERED MAIN LOOP\n\0".as_ptr() as *const _); }
+
     // 5. Main loop
     let mut buf = [0u8; 128];
     loop {
+        unsafe { esp_idf_sys::printf(b"[TRACE] LOOP TICK\n\0".as_ptr() as *const _); }
         #[cfg(target_os = "espidf")]
         {
             if let Err(err) = usb.service_host() {
@@ -64,6 +80,23 @@ pub fn main() {
 
         // Poll USB events
         while let Some(event) = usb.poll_event() {
+            match &event {
+                usb2ble_contracts::UsbIngressEvent::DeviceAttached(dev) => {
+                    uart.write_all(
+                        format!(
+                            "[ATTACH] Device: ID={}, VID={:04x}, PID={:04x}\n",
+                            dev.device_id.0, dev.vendor_id, dev.product_id
+                        )
+                        .as_bytes(),
+                    );
+                }
+                usb2ble_contracts::UsbIngressEvent::DeviceDetached { source } => {
+                    uart.write_all(
+                        format!("[DETACH] Device: ID={}\n", source.device_id.0).as_bytes(),
+                    );
+                }
+                _ => {}
+            }
             app.handle_usb_event(event);
         }
 
@@ -87,6 +120,8 @@ pub fn main() {
             }
             UartReadResult::Pending => {
                 // Continue looping, wait for more data
+                #[cfg(target_os = "espidf")]
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
             UartReadResult::Eof => {
                 // On host, stdin closed.
@@ -94,7 +129,9 @@ pub fn main() {
                 break;
             }
             UartReadResult::Error => {
-                uart.write_all(b"ERROR: UART Read Error\n");
+                // uart.write_all(b"ERROR: UART Read Error\n");
+                #[cfg(target_os = "espidf")]
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
         }
     }

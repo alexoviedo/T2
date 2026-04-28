@@ -1,0 +1,14 @@
+Script started on Tue Apr 28 14:33:25 2026
+command: espflash flash target/xtensa-esp32s3-espidf/debug/usb2ble-fw --monitor
+[90m[[0m2026-04-28T20:33:25Z [32mINFO [0m[90m][0m Detected 2 serial ports
+[90m[[0m2026-04-28T20:33:25Z [32mINFO [0m[90m][0m Ports which match a known common dev board are highlighted
+[90m[[0m2026-04-28T20:33:25Z [32mINFO [0m[90m][0m Please select a port
+[?25l[32m❯[0m [36m[1m/dev/cu.wchusbserial5B5E0200881[0m - USB Single Serial[0m
+  [1m/dev/cu.usbmodem5B5E0200881[0m - USB Single Serial
+[2A[2K[1B[2K[1B[2A[?25h[90m[[0m2026-04-28T20:33:28Z [32mINFO [0m[90m][0m Serial port: '/dev/cu.wchusbserial5B5E0200881'
+[90m[[0m2026-04-28T20:33:28Z [32mINFO [0m[90m][0m Connecting...
+[90m[[0m2026-04-28T20:33:29Z [32mINFO [0m[90m][0m Using flash stub
+Error:   [31m×[0m No such file or directory (os error 2)
+
+
+Script done on Tue Apr 28 14:33:29 2026

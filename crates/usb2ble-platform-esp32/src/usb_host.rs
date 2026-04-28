@@ -8,16 +8,31 @@
 
 #[cfg(target_os = "espidf")]
 use std::collections::{HashMap, HashSet};
-use std::sync::mpsc;
+use std::collections::VecDeque;
 use usb2ble_contracts::{
     ConnectionTopology, DeviceId, InterfaceId, UsbDeviceRef, UsbIngressEvent, UsbInterfaceRef,
 };
 
-#[cfg(target_os = "espidf")]
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "espidf")]
 use esp_idf_sys::*;
+
+#[cfg(target_os = "espidf")]
+#[repr(C)]
+pub struct ext_hub_config_t {
+    pub proc_req_cb: Option<unsafe extern "C" fn()>,
+}
+
+#[cfg(target_os = "espidf")]
+unsafe extern "C" {
+    pub fn ext_hub_install(config: *const ext_hub_config_t) -> i32;
+    pub fn ext_hub_process() -> i32;
+}
+
+
+
+
 
 /// Parse HID interfaces from a raw active configuration descriptor blob.
 ///
@@ -56,7 +71,7 @@ fn parse_hid_interfaces_from_config(config_blob: &[u8]) -> Vec<(u8, u8, u8)> {
 
 /// Internal state for the USB host witness implementation.
 pub struct EspUsbHost {
-    event_tx: mpsc::Sender<UsbIngressEvent>,
+    event_tx: Arc<Mutex<VecDeque<UsbIngressEvent>>>,
 
     #[cfg(target_os = "espidf")]
     inner: Arc<Mutex<TargetUsbHostState>>,
@@ -94,7 +109,7 @@ impl TargetUsbHostState {
 }
 
 impl EspUsbHost {
-    pub fn new(event_tx: mpsc::Sender<UsbIngressEvent>) -> Self {
+    pub fn new(event_tx: Arc<Mutex<VecDeque<UsbIngressEvent>>>) -> Self {
         Self {
             event_tx,
             #[cfg(target_os = "espidf")]
@@ -113,8 +128,9 @@ impl EspUsbHost {
         }
 
         let lib_cfg = usb_host_config_t {
-            intr_flags: ESP_INTR_FLAG_LEVEL1 as i32,
-            ..Default::default()
+            skip_phy_setup: false,
+            intr_flags: 0,
+            enum_filter_cb: None,
         };
 
         let install_err = unsafe { usb_host_install(&lib_cfg) };
@@ -122,9 +138,28 @@ impl EspUsbHost {
             return Err("usb_host_install failed");
         }
 
+        let ext_hub_cfg = ext_hub_config_t { proc_req_cb: None };
+        let ext_hub_err = unsafe { ext_hub_install(&ext_hub_cfg) };
+        if ext_hub_err != ESP_OK as i32 {
+            unsafe {
+                let _ = usb_host_uninstall();
+            }
+            return Err("ext_hub_install failed");
+        }
+
+        unsafe extern "C" fn dummy_client_event_cb(
+            _event_msg: *const esp_idf_sys::usb_host_client_event_msg_t,
+            _arg: *mut core::ffi::c_void,
+        ) {
+        }
+
         let mut client_cfg: usb_host_client_config_t = Default::default();
-        client_cfg.is_synchronous = true;
+        client_cfg.is_synchronous = false;
         client_cfg.max_num_event_msg = 8;
+        client_cfg.__bindgen_anon_1.async_ = esp_idf_sys::usb_host_client_config_t__bindgen_ty_1__bindgen_ty_1 {
+            client_event_callback: Some(dummy_client_event_cb),
+            callback_arg: core::ptr::null_mut(),
+        };
 
         let mut client_hdl: usb_host_client_handle_t = core::ptr::null_mut();
         let client_err = unsafe { usb_host_client_register(&client_cfg, &mut client_hdl) };
@@ -148,6 +183,8 @@ impl EspUsbHost {
         if lib_err != ESP_OK as i32 {
             return Err("usb_host_lib_handle_events failed");
         }
+
+        unsafe { ext_hub_process(); }
 
         let client_hdl = {
             let state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
@@ -212,9 +249,9 @@ impl EspUsbHost {
         }
 
         for source in detached {
-            let _ = self
-                .event_tx
-                .send(UsbIngressEvent::DeviceDetached { source });
+            if let Ok(mut q) = self.event_tx.lock() {
+                q.push_back(UsbIngressEvent::DeviceDetached { source });
+            }
         }
 
         Ok(())
@@ -262,9 +299,9 @@ impl EspUsbHost {
                 dev_ref
             };
 
-            let _ = self
-                .event_tx
-                .send(UsbIngressEvent::DeviceAttached(dev_ref.clone()));
+            if let Ok(mut q) = self.event_tx.lock() {
+                q.push_back(UsbIngressEvent::DeviceAttached(dev_ref.clone()));
+            }
 
             self.emit_hid_interfaces_from_active_config(dev_ref, dev_hdl)?;
             Ok(())
@@ -312,12 +349,14 @@ impl EspUsbHost {
                     device: dev_ref.clone(),
                     interface_id: iface_id,
                 };
-                let _ = self.event_tx.send(UsbIngressEvent::InterfaceDiscovered {
-                    source,
-                    class_code: 3,
-                    subclass_code: subclass,
-                    protocol_code: protocol,
-                });
+                if let Ok(mut q) = self.event_tx.lock() {
+                    q.push_back(UsbIngressEvent::InterfaceDiscovered {
+                        source,
+                        class_code: 3,
+                        subclass_code: subclass,
+                        protocol_code: protocol,
+                    });
+                }
             }
         }
 
@@ -339,20 +378,22 @@ impl EspUsbHost {
             vendor_id: 0x045e,
             product_id: 0x028e,
         };
-        let _ = self
-            .event_tx
-            .send(UsbIngressEvent::DeviceAttached(dev_ref.clone()));
+        if let Ok(mut q) = self.event_tx.lock() {
+            q.push_back(UsbIngressEvent::DeviceAttached(dev_ref.clone()));
+        }
 
         let iface_ref = UsbInterfaceRef {
             device: dev_ref.clone(),
             interface_id: InterfaceId(0),
         };
-        let _ = self.event_tx.send(UsbIngressEvent::InterfaceDiscovered {
-            source: iface_ref,
-            class_code: 3,
-            subclass_code: 0,
-            protocol_code: 0,
-        });
+        if let Ok(mut q) = self.event_tx.lock() {
+            q.push_back(UsbIngressEvent::InterfaceDiscovered {
+                source: iface_ref,
+                class_code: 3,
+                subclass_code: 0,
+                protocol_code: 0,
+            });
+        }
     }
 
     #[cfg(not(target_os = "espidf"))]

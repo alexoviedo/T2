@@ -1,2 +1,28 @@
-target/
+# Rust / Cargo
+/target/
 **/*.rs.bk
+
+# embuild / ESP-IDF generated toolchains, downloads, and build state
+/.embuild/
+/.idf_tools/
+/build/
+/managed_components/
+/sdkconfig
+/sdkconfig.old
+crates/*/build/
+crates/*/managed_components/
+crates/*/sdkconfig
+crates/*/sdkconfig.old
+
+# Firmware/linker outputs
+*.bin
+*.elf
+*.map
+*.lst
+
+# Local editor/OS state
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -7,8 +7,9 @@
 pub mod usb_host;
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::io::{self, Read, Write};
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use usb2ble_contracts::{UsbIngress, UsbIngressEvent};
 
 /// Result of a UART read operation.
@@ -55,9 +56,22 @@ impl Uart {
         }
 
         // Not enough data, try to read from the underlying stream
-        // On host tests, stdin might return 0 (EOF) immediately.
         let mut chunk = [0u8; 128];
-        match io::stdin().read(&mut chunk) {
+        let read_res = {
+            #[cfg(target_os = "espidf")]
+            unsafe {
+                let n = esp_idf_sys::read(0, chunk.as_mut_ptr() as *mut _, chunk.len());
+                if n < 0 {
+                    Err(io::Error::last_os_error())
+                } else {
+                    Ok(n as usize)
+                }
+            }
+            #[cfg(not(target_os = "espidf"))]
+            io::stdin().read(&mut chunk)
+        };
+
+        match read_res {
             Ok(0) => {
                 // If we are in a test and we manually pushed data,
                 // we should return Pending if there's no newline.
@@ -85,14 +99,30 @@ impl Uart {
 
     /// Write bytes to UART.
     pub fn write_all(&self, data: &[u8]) {
-        let mut stdout = io::stdout();
-        let _ = stdout.write_all(data);
-        let _ = stdout.flush();
+        #[cfg(target_os = "espidf")]
+        {
+            unsafe {
+                for &b in data {
+                    esp_idf_sys::putchar(b as i32);
+                }
+            }
+        }
+        #[cfg(not(target_os = "espidf"))]
+        {
+            let mut stdout = io::stdout();
+            let _ = stdout.write_all(data);
+            let _ = stdout.flush();
+        }
     }
 
     /// Flush UART.
     pub fn flush(&self) {
-        let _ = io::stdout().flush();
+        #[cfg(not(target_os = "espidf"))]
+        {
+            let _ = io::stdout().flush();
+        }
+        // fsync or equivalent is usually not needed for ESP-IDF UART tx buffering,
+        // it flushes automatically or blocks until written.
     }
 
     /// Push data into the internal buffer.
@@ -113,12 +143,20 @@ pub fn init() {
     {
         // Required for ESP-IDF linkage
         esp_idf_sys::link_patches();
+
+        // Ensure stdin is non-blocking so the main event loop does not halt on read
+        unsafe {
+            let flags = esp_idf_sys::fcntl(0, esp_idf_sys::F_GETFL as i32, 0);
+            if flags >= 0 {
+                esp_idf_sys::fcntl(0, esp_idf_sys::F_SETFL as i32, flags | (esp_idf_sys::O_NONBLOCK as i32));
+            }
+        }
     }
 }
 
 /// A minimal USB ingress implementation for M2 groundwork.
 pub struct EspUsbIngress {
-    rx: mpsc::Receiver<UsbIngressEvent>,
+    rx: Arc<Mutex<VecDeque<UsbIngressEvent>>>,
     #[allow(dead_code)]
     host: usb_host::EspUsbHost,
 }
@@ -127,9 +165,9 @@ impl EspUsbIngress {
     /// Create a new `EspUsbIngress` instance.
     #[must_use]
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel();
-        let host = usb_host::EspUsbHost::new(tx);
-        Self { rx, host }
+        let queue = Arc::new(Mutex::new(VecDeque::new()));
+        let host = usb_host::EspUsbHost::new(queue.clone());
+        Self { rx: queue, host }
     }
 
     /// Initialize the USB host stack (Groundwork).
@@ -159,7 +197,7 @@ impl EspUsbIngress {
 
 impl UsbIngress for EspUsbIngress {
     fn poll_event(&mut self) -> Option<UsbIngressEvent> {
-        self.rx.try_recv().ok()
+        self.rx.lock().ok().and_then(|mut q| q.pop_front())
     }
 }
 
