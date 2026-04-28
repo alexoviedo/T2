@@ -2,6 +2,11 @@
 
 Status: **Required for milestone evidence. Not yet captured in this repository revision.**
 
+Current checked-in partial evidence:
+- Hub attach/detach identity witness: `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
+- Direct-attach witness: pending
+- HID interface discovery witness: pending
+
 ## Target scope
 Verify M2B.1 code-path behavior on real hardware only:
 - USB attach detection
@@ -17,7 +22,8 @@ Out of scope for this playbook:
 ## Hardware
 - Board model: **ESP32-S3-DevKitC-1** (or equivalent ESP32-S3 board with USB-host wiring known-good)
 - HID device type: **one known-good USB HID input device** (keyboard, mouse, or gamepad)
-- Power/connection path: board powered stably; HID device attached to ESP32-S3 USB host path (direct, no hub for this check)
+- Powered hub: **exact model required** for hub-attached witness
+- Power/connection path: board powered stably; HID device attached first directly to the ESP32-S3 USB host path, then through the powered hub
 
 ## Commands
 
@@ -40,7 +46,7 @@ If the `esp` toolchain is not installed locally, run `./scripts/check_target_bui
 
 ### 3) Flash
 ```bash
-espflash flash target/xtensa-esp32s3-espidf/debug/usb2ble-fw --monitor
+./scripts/flash.sh --monitor
 ```
 
 ### 4) Monitor (alternative wrapper)
@@ -52,37 +58,64 @@ espflash flash target/xtensa-esp32s3-espidf/debug/usb2ble-fw --monitor
 1. Run target build preflight (`./scripts/check_target_build.sh`).
 2. Boot board and open monitor.
 3. Send `GET_USB_STATUS`.
-4. Plug HID device into host path.
-5. Send `GET_USB_STATUS`.
-6. Send `LIST_USB_DEVICES`.
-7. Unplug HID device.
-8. Send `GET_USB_STATUS`.
-9. Send `LIST_USB_DEVICES`.
+4. Send `LIST_USB_DEVICES`.
+5. Plug HID device directly into host path.
+6. Send `GET_USB_STATUS`.
+7. Send `LIST_USB_DEVICES`.
+8. Unplug HID device.
+9. Send `GET_USB_STATUS`.
+10. Send `LIST_USB_DEVICES`.
+11. Repeat the same pre-plug, post-plug, and post-unplug sequence through the powered hub.
 
 ## Transcript template (paste filled real output back into repo)
 
 ```text
 Board: <exact board model>
 Firmware commit: <git sha>
+ESP-IDF baseline: v5.5.3
+Powered hub: <exact model, power supply, and upstream/downstream cabling>
 HID device: <vendor/product/model if known>
-Connection path: <direct cable/adapter details>
+Direct connection path: <direct cable/adapter details>
+Hub connection path: <hub/cable/port details>
 
 --- Boot ---
 <paste exact boot output>
 
---- Pre-plug ---
+--- Direct pre-plug ---
 >> GET_USB_STATUS
 << <actual output>
 >> LIST_USB_DEVICES
 << <actual output>
 
---- Post-plug ---
+--- Direct post-plug ---
+<paste attach transcript>
 >> GET_USB_STATUS
 << <actual output>
 >> LIST_USB_DEVICES
 << <actual output>
 
---- Post-unplug ---
+--- Direct post-unplug ---
+<paste detach transcript>
+>> GET_USB_STATUS
+<< <actual output>
+>> LIST_USB_DEVICES
+<< <actual output>
+
+--- Hub pre-plug ---
+>> GET_USB_STATUS
+<< <actual output>
+>> LIST_USB_DEVICES
+<< <actual output>
+
+--- Hub post-plug ---
+<paste attach transcript>
+>> GET_USB_STATUS
+<< <actual output>
+>> LIST_USB_DEVICES
+<< <actual output>
+
+--- Hub post-unplug ---
+<paste detach transcript>
 >> GET_USB_STATUS
 << <actual output>
 >> LIST_USB_DEVICES

@@ -17,5 +17,9 @@ esp-idf-sys = { version = "0.37", features = ["binstart"] }
 [build-dependencies]
 embuild = { version = "0.33", features = ["espidf"] }
 
+[package.metadata.esp-idf-sys]
+esp_idf_version = "v5.5.3"
+esp_idf_tools_install_dir = "workspace"
+
 [lints.rust]
 unsafe_code = "allow"

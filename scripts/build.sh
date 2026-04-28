@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euxo pipefail
 echo "Building USB2BLE firmware for ESP32-S3..."
+echo "Default ESP-IDF pin: v5.5.3 (crates/usb2ble-fw/Cargo.toml)"
+if [[ -n "${IDF_PATH:-}" || -n "${ESP_IDF_VERSION:-}" ]]; then
+    echo "Warning: IDF_PATH or ESP_IDF_VERSION is set and will override the checked-in ESP-IDF pin."
+fi
 TARGET="xtensa-esp32s3-espidf"
 if ! command -v ldproxy &> /dev/null; then
     echo "Warning: ldproxy not found. This is usually needed for ESP-IDF builds."

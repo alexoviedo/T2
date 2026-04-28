@@ -61,16 +61,21 @@ bash -n scripts/*.sh
 
 > NOTE: Do not paste simulated output in this section.
 
-- **Board model:** TODO (required for acceptance)
-- **HID device used:** TODO (required for acceptance)
-- **Power / connection path:** TODO (required for acceptance)
-- **Build command:** `./scripts/build.sh`
-- **Flash command:** `espflash flash target/xtensa-esp32s3-espidf/debug/usb2ble-fw --monitor`
-- **Monitor command:** `./scripts/monitor.sh`
-- **Actual boot transcript:** TODO (required for acceptance)
-- **Actual pre-plug `GET_USB_STATUS` / `LIST_USB_DEVICES`:** TODO (required for acceptance)
-- **Actual post-plug `GET_USB_STATUS` / `LIST_USB_DEVICES`:** TODO (required for acceptance)
-- **Actual post-unplug `GET_USB_STATUS` / `LIST_USB_DEVICES`:** TODO (required for acceptance)
+- **Board model:** TODO exact carrier board model; observed target is ESP32-S3 rev v0.2, 16 MB flash over WCH USB Single Serial
+- **Powered hub used:** HooToo SHUTTLE HT-UC001, observed as `VID=2109, PID=2813`
+- **HID device(s) used:** AFTERGLOW PL-3702 Xbox-style wired gamepad, observed as `VID=0e6f, PID=0213`
+- **Direct connection topology:** TODO (required for acceptance)
+- **Hub connection topology:** ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> AFTERGLOW PL-3702
+- **Build command:** `RUSTUP_TOOLCHAIN=esp ./scripts/verify_cloud_equivalent.sh`
+- **Flash command:** `./scripts/flash.sh --chip esp32s3 --port /dev/cu.usbmodem5B5E0200881 --monitor --non-interactive`
+- **Monitor command:** `./scripts/monitor.sh --port /dev/cu.usbmodem5B5E0200881`
+- **Actual boot transcript:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
+- **Direct pre-plug `GET_USB_STATUS` / `LIST_USB_DEVICES`:** TODO (required for acceptance)
+- **Direct post-plug attach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** TODO (required for acceptance)
+- **Direct post-unplug detach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** TODO (required for acceptance)
+- **Hub pre-plug `GET_USB_STATUS` / `LIST_USB_DEVICES`:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
+- **Hub post-plug attach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
+- **Hub post-unplug detach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
 
 ## M2B.2 — descriptor/report capture (Pending)
 

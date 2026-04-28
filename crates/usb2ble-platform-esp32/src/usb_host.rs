@@ -6,9 +6,9 @@
 //! - HID interface discovery from active config descriptor.
 //! - No descriptor/report capture yet (deferred to M2B.2).
 
+use std::collections::VecDeque;
 #[cfg(target_os = "espidf")]
 use std::collections::{HashMap, HashSet};
-use std::collections::VecDeque;
 use usb2ble_contracts::{
     ConnectionTopology, DeviceId, InterfaceId, UsbDeviceRef, UsbIngressEvent, UsbInterfaceRef,
 };
@@ -17,22 +17,6 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "espidf")]
 use esp_idf_sys::*;
-
-#[cfg(target_os = "espidf")]
-#[repr(C)]
-pub struct ext_hub_config_t {
-    pub proc_req_cb: Option<unsafe extern "C" fn()>,
-}
-
-#[cfg(target_os = "espidf")]
-unsafe extern "C" {
-    pub fn ext_hub_install(config: *const ext_hub_config_t) -> i32;
-    pub fn ext_hub_process() -> i32;
-}
-
-
-
-
 
 /// Parse HID interfaces from a raw active configuration descriptor blob.
 ///
@@ -127,24 +111,14 @@ impl EspUsbHost {
             return Ok(());
         }
 
-        let lib_cfg = usb_host_config_t {
-            skip_phy_setup: false,
-            intr_flags: 0,
-            enum_filter_cb: None,
-        };
+        let mut lib_cfg: usb_host_config_t = Default::default();
+        lib_cfg.skip_phy_setup = false;
+        lib_cfg.intr_flags = 0;
+        lib_cfg.enum_filter_cb = None;
 
         let install_err = unsafe { usb_host_install(&lib_cfg) };
         if install_err != ESP_OK as i32 {
             return Err("usb_host_install failed");
-        }
-
-        let ext_hub_cfg = ext_hub_config_t { proc_req_cb: None };
-        let ext_hub_err = unsafe { ext_hub_install(&ext_hub_cfg) };
-        if ext_hub_err != ESP_OK as i32 {
-            unsafe {
-                let _ = usb_host_uninstall();
-            }
-            return Err("ext_hub_install failed");
         }
 
         unsafe extern "C" fn dummy_client_event_cb(
@@ -156,10 +130,11 @@ impl EspUsbHost {
         let mut client_cfg: usb_host_client_config_t = Default::default();
         client_cfg.is_synchronous = false;
         client_cfg.max_num_event_msg = 8;
-        client_cfg.__bindgen_anon_1.async_ = esp_idf_sys::usb_host_client_config_t__bindgen_ty_1__bindgen_ty_1 {
-            client_event_callback: Some(dummy_client_event_cb),
-            callback_arg: core::ptr::null_mut(),
-        };
+        client_cfg.__bindgen_anon_1.async_ =
+            esp_idf_sys::usb_host_client_config_t__bindgen_ty_1__bindgen_ty_1 {
+                client_event_callback: Some(dummy_client_event_cb),
+                callback_arg: core::ptr::null_mut(),
+            };
 
         let mut client_hdl: usb_host_client_handle_t = core::ptr::null_mut();
         let client_err = unsafe { usb_host_client_register(&client_cfg, &mut client_hdl) };
@@ -183,8 +158,6 @@ impl EspUsbHost {
         if lib_err != ESP_OK as i32 {
             return Err("usb_host_lib_handle_events failed");
         }
-
-        unsafe { ext_hub_process(); }
 
         let client_hdl = {
             let state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;

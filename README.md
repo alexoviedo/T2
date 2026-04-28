@@ -63,6 +63,19 @@ bash -n scripts/*.sh
 ./scripts/check_target_build.sh
 ```
 
+## ESP-IDF toolchain pin
+The firmware root crate pins ESP-IDF through `crates/usb2ble-fw/Cargo.toml`:
+
+```toml
+[package.metadata.esp-idf-sys]
+esp_idf_version = "v5.5.3"
+esp_idf_tools_install_dir = "workspace"
+```
+
+The checked-in Cargo config must not set `IDF_PATH`; local `IDF_PATH` or
+`ESP_IDF_VERSION` environment variables are developer overrides and bypass the
+repo default.
+
 ## Local ESP32-S3 build
 The authoritative command is:
 ```bash

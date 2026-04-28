@@ -8,7 +8,9 @@ pub mod usb_host;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::io::{self, Read, Write};
+use std::io;
+#[cfg(not(target_os = "espidf"))]
+use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use usb2ble_contracts::{UsbIngress, UsbIngressEvent};
 
@@ -148,9 +150,27 @@ pub fn init() {
         unsafe {
             let flags = esp_idf_sys::fcntl(0, esp_idf_sys::F_GETFL as i32, 0);
             if flags >= 0 {
-                esp_idf_sys::fcntl(0, esp_idf_sys::F_SETFL as i32, flags | (esp_idf_sys::O_NONBLOCK as i32));
+                esp_idf_sys::fcntl(
+                    0,
+                    esp_idf_sys::F_SETFL as i32,
+                    flags | (esp_idf_sys::O_NONBLOCK as i32),
+                );
             }
         }
+    }
+}
+
+/// Emit an early target trace message.
+///
+/// `message` must be nul-terminated for ESP-IDF `printf`.
+pub fn trace_printf(message: &'static [u8]) {
+    #[cfg(target_os = "espidf")]
+    unsafe {
+        esp_idf_sys::printf(message.as_ptr() as *const _);
+    }
+    #[cfg(not(target_os = "espidf"))]
+    {
+        let _ = message;
     }
 }
 

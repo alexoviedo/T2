@@ -22,24 +22,22 @@ pub fn main() {
     platform::init();
 
     // Raw printf to bypass any Rust std::io VFS issues during early boot
-    unsafe {
-        esp_idf_sys::printf(b"[TRACE] ENTERED main()\n\0".as_ptr() as *const _);
-    }
+    platform::trace_printf(b"[TRACE] ENTERED main()\n\0");
 
     let uart = Uart::new();
-    unsafe { esp_idf_sys::printf(b"[TRACE] Uart initialized\n\0".as_ptr() as *const _); }
+    platform::trace_printf(b"[TRACE] Uart initialized\n\0");
 
     let mut usb = EspUsbIngress::new();
-    unsafe { esp_idf_sys::printf(b"[TRACE] UsbIngress initialized\n\0".as_ptr() as *const _); }
+    platform::trace_printf(b"[TRACE] UsbIngress initialized\n\0");
 
     // Start USB host stack witness path on target
     #[cfg(target_os = "espidf")]
     {
-        unsafe { esp_idf_sys::printf(b"[TRACE] Calling usb.init_host()\n\0".as_ptr() as *const _); }
+        platform::trace_printf(b"[TRACE] Calling usb.init_host()\n\0");
         if let Err(err) = usb.init_host() {
             uart.write_all(format!("ERROR: USB host init failed: {err}\n").as_bytes());
         }
-        unsafe { esp_idf_sys::printf(b"[TRACE] usb.init_host() returned\n\0".as_ptr() as *const _); }
+        platform::trace_printf(b"[TRACE] usb.init_host() returned\n\0");
     }
 
     // Trigger witness events for host simulation/test
@@ -47,28 +45,27 @@ pub fn main() {
     usb.simulate_events_for_test();
 
     // 2. Initialize storage (In-memory for M1/M2)
-    unsafe { esp_idf_sys::printf(b"[TRACE] Initializing storage\n\0".as_ptr() as *const _); }
+    platform::trace_printf(b"[TRACE] Initializing storage\n\0");
     let storage = InMemoryStore::new();
 
     // 3. Initialize app
-    unsafe { esp_idf_sys::printf(b"[TRACE] Initializing app\n\0".as_ptr() as *const _); }
+    platform::trace_printf(b"[TRACE] Initializing app\n\0");
     let mut app = App::new(storage);
     let control = SerialControlPlane::new();
 
     // 4. Print startup banner
-    unsafe { esp_idf_sys::printf(b"--- USB2BLE FIRMWARE BOOT ---\n\0".as_ptr() as *const _); }
+    platform::trace_printf(b"--- USB2BLE FIRMWARE BOOT ---\n\0");
     uart.write_all(format!("Name: {}\n", FIRMWARE_NAME).as_bytes());
     uart.write_all(format!("Version: {}\n", FIRMWARE_VERSION).as_bytes());
     uart.write_all(format!("Contract Version: {}\n", CONTRACT_VERSION).as_bytes());
     uart.write_all(b"Status: M2B.1 Code-path (HW Verification Pending)\n");
     uart.write_all(b"Ready for commands.\n");
 
-    unsafe { esp_idf_sys::printf(b"[TRACE] ENTERED MAIN LOOP\n\0".as_ptr() as *const _); }
+    platform::trace_printf(b"[TRACE] ENTERED MAIN LOOP\n\0");
 
     // 5. Main loop
     let mut buf = [0u8; 128];
     loop {
-        unsafe { esp_idf_sys::printf(b"[TRACE] LOOP TICK\n\0".as_ptr() as *const _); }
         #[cfg(target_os = "espidf")]
         {
             if let Err(err) = usb.service_host() {

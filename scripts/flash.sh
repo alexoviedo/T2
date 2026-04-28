@@ -20,6 +20,6 @@ if [ ! -f "$BINARY" ]; then
 fi
 
 # Invoke espflash. Arguments like --port can be passed to this script.
-espflash flash "$BINARY" "$@"
+espflash flash "$@" "$BINARY"
 
 echo "Flash complete."

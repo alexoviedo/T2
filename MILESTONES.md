@@ -84,31 +84,16 @@ This milestone intentionally proves operator visibility before device functional
 ### M2A (Complete)
 Groundwork complete: contracts, app bookkeeping, control-plane USB visibility, and platform plumbing.
 
-### M2B.1 (Complete)
-Real attach/detach + identity witness plumbing on ESP32-S3; on-device evidence successfully captured.
+### M2B.1 (Code-path implemented; hardware verification pending)
+Real attach/detach + identity witness plumbing exists for ESP32-S3, but this milestone is not complete until reproducible real-hardware evidence is checked in for the current revision.
 
-#### Evidence
-- **What changed:** Replaced `mpsc` with `VecDeque` to avoid ESP-IDF bare-metal heap corruption, set USB Host config to `is_synchronous = false` with a dummy callback to fix `InstrFetchProhibited` event dispatch crashes, forced `CONFIG_ESP_MAIN_TASK_STACK_SIZE=12288` via `sdkconfig.defaults` in the workspace root, and added proactive `[ATTACH]`/`[DETACH]` logging to the main loop.
-- **Files/crates changed:** 
-  - `sdkconfig.defaults` (new)
-  - `crates/usb2ble-platform-esp32/src/lib.rs` (mpsc -> VecDeque)
-  - `crates/usb2ble-platform-esp32/src/usb_host.rs` (queue replacement, async client config)
-  - `crates/usb2ble-fw/src/main.rs` (witness logging)
-- **Tests added/updated:** Host tests remain passing.
-- **Exact commands run:** `./scripts/build.sh && script m2b1_witness.log espflash flash target/xtensa-esp32s3-espidf/debug/usb2ble-fw --monitor`
-- **Hardware evidence:**
-  ```text
-  --- USB2BLE FIRMWARE BOOT ---
-  Name: usb2ble
-  Version: 0.2.1-m2b1
-  Contract Version: 1
-  Status: M2B.1 Code-path (HW Verification Pending)
-  Ready for commands.
-  [ATTACH] Device: ID=1, VID=2109, PID=2813
-  [DETACH] Device: ID=1
-  [ATTACH] Device: ID=2, VID=2109, PID=2813
-  ```
-- **Known limitations:** ESP-IDF v5.2.3 does not natively traverse downstream USB hub ports. The hub itself (`VID=2109, PID=2813`) enumerates perfectly, which satisfies the physical PHY/interrupt witness goals, but devices behind the hub cannot be parsed without ESP-IDF v5.3+.
+#### Current evidence status
+- **Implemented code path:** USB host install/client registration, target-side device address scan, VID/PID attach witness, HID interface discovery from active config descriptor, detach bookkeeping, and serial control-plane visibility.
+- **Build/toolchain baseline:** ESP-IDF is pinned to `v5.5.3` through `esp-idf-sys` metadata in `crates/usb2ble-fw/Cargo.toml`; the repo must not rely on a checked-in local `IDF_PATH`.
+- **Hub evidence:** HooToo SHUTTLE HT-UC001 (`VID=2109, PID=2813`) and downstream AFTERGLOW PL-3702 (`VID=0e6f, PID=0213`) attach/detach identity witness is checked in at `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`.
+- **Hub baseline:** `CONFIG_USB_HOST_HUBS_SUPPORTED=y` enables stable ESP-IDF hub support. Experimental hub flags are not accepted unless current upstream evidence proves they are required.
+- **Missing acceptance evidence:** direct-attach witness for this revision is not checked in, exact carrier board model is still TODO, and HID interface discovery remains unproven because the hub run reported `interfaces=0`.
+- **Do not claim complete until:** direct-attach and powered-hub witness results are captured with board, hub, HID device, topology, build/flash/monitor commands, and control-plane transcripts.
 
 ### M2B.2 (Pending)
 Descriptor and input-report capture exposed through control plane.
