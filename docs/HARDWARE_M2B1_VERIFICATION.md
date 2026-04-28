@@ -3,9 +3,10 @@
 Status: **Required for milestone evidence. Not yet captured in this repository revision.**
 
 Current checked-in partial evidence:
-- Hub attach/detach identity witness: `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
-- Direct-attach witness: pending
-- HID interface discovery witness: pending
+- Hub attach/detach identity and interface-class witness: `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
+- HID interface discovery through the powered hub: `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md` (USB keyboard and THRUSTMASTER T.16000 FCS HOTAS)
+- Direct-attach witness: blocked with current cabling/port geometry
+- AFTERGLOW PL-3702 note: this controller reports vendor-specific `CLASS=ff` interfaces, not HID `CLASS=03`
 
 ## Target scope
 Verify M2B.1 code-path behavior on real hardware only:
@@ -21,7 +22,7 @@ Out of scope for this playbook:
 
 ## Hardware
 - Board model: **ESP32-S3-DevKitC-1** (or equivalent ESP32-S3 board with USB-host wiring known-good)
-- HID device type: **one known-good USB HID input device** (keyboard, mouse, or gamepad)
+- HID device type: **one known-good USB HID input device** (keyboard, mouse, or gamepad that reports USB interface class `03`)
 - Powered hub: **exact model required** for hub-attached witness
 - Power/connection path: board powered stably; HID device attached first directly to the ESP32-S3 USB host path, then through the powered hub
 
@@ -59,13 +60,14 @@ If the `esp` toolchain is not installed locally, run `./scripts/check_target_bui
 2. Boot board and open monitor.
 3. Send `GET_USB_STATUS`.
 4. Send `LIST_USB_DEVICES`.
-5. Plug HID device directly into host path.
+5. Plug HID device directly into host path, if the available cabling supports it.
 6. Send `GET_USB_STATUS`.
 7. Send `LIST_USB_DEVICES`.
 8. Unplug HID device.
 9. Send `GET_USB_STATUS`.
 10. Send `LIST_USB_DEVICES`.
 11. Repeat the same pre-plug, post-plug, and post-unplug sequence through the powered hub.
+12. If direct attach is physically blocked, record that as a blocker instead of using a synthetic direct transcript.
 
 ## Transcript template (paste filled real output back into repo)
 

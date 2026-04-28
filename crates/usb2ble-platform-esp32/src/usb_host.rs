@@ -18,13 +18,12 @@ use std::sync::{Arc, Mutex};
 #[cfg(target_os = "espidf")]
 use esp_idf_sys::*;
 
-/// Parse HID interfaces from a raw active configuration descriptor blob.
+/// Parse interface descriptors from a raw active configuration descriptor blob.
 ///
-/// Returns `(interface_number, subclass, protocol)` tuples for HID interfaces.
+/// Returns `(interface_number, class, subclass, protocol)` tuples.
 #[cfg(any(test, target_os = "espidf"))]
-fn parse_hid_interfaces_from_config(config_blob: &[u8]) -> Vec<(u8, u8, u8)> {
+fn parse_interfaces_from_config(config_blob: &[u8]) -> Vec<(u8, u8, u8, u8)> {
     const DESC_TYPE_INTERFACE: u8 = 0x04;
-    const USB_CLASS_HID: u8 = 0x03;
 
     let mut out = Vec::new();
     let mut i = 0usize;
@@ -42,15 +41,34 @@ fn parse_hid_interfaces_from_config(config_blob: &[u8]) -> Vec<(u8, u8, u8)> {
             let subclass_code = config_blob[i + 6];
             let protocol_code = config_blob[i + 7];
 
-            if class_code == USB_CLASS_HID {
-                out.push((interface_number, subclass_code, protocol_code));
-            }
+            out.push((interface_number, class_code, subclass_code, protocol_code));
         }
 
         i += len;
     }
 
     out
+}
+
+/// Parse HID interfaces from a raw active configuration descriptor blob.
+///
+/// Returns `(interface_number, subclass, protocol)` tuples for HID interfaces.
+#[cfg(test)]
+fn parse_hid_interfaces_from_config(config_blob: &[u8]) -> Vec<(u8, u8, u8)> {
+    const USB_CLASS_HID: u8 = 0x03;
+
+    parse_interfaces_from_config(config_blob)
+        .into_iter()
+        .filter_map(
+            |(interface_number, class_code, subclass_code, protocol_code)| {
+                (class_code == USB_CLASS_HID).then_some((
+                    interface_number,
+                    subclass_code,
+                    protocol_code,
+                ))
+            },
+        )
+        .collect()
 }
 
 /// Internal state for the USB host witness implementation.
@@ -252,7 +270,7 @@ impl EspUsbHost {
 
         // Ownership model:
         // - register_device_if_needed() owns device-handle close.
-        // - emit_hid_interfaces_from_active_config() owns config-descriptor release.
+        // - active config descriptor is cached by ESP-IDF and must not be freed here.
         let register_result = (|| -> Result<(), &'static str> {
             let mut desc_ptr: *const usb_device_desc_t = core::ptr::null();
             let desc_err = unsafe { usb_host_get_device_descriptor(dev_hdl, &mut desc_ptr) };
@@ -308,7 +326,28 @@ impl EspUsbHost {
             core::slice::from_raw_parts(ptr, cfg_len)
         };
 
-        for (iface_num, subclass, protocol) in parse_hid_interfaces_from_config(cfg_blob) {
+        let interfaces = parse_interfaces_from_config(cfg_blob);
+        for (iface_num, class_code, subclass, protocol) in &interfaces {
+            unsafe {
+                printf(
+                    b"[USB_IFACE] Device: ID=%lu, IFACE=%u, CLASS=%02x, SUBCLASS=%02x, PROTOCOL=%02x\n\0"
+                        .as_ptr() as *const _,
+                    dev_ref.device_id.0 as u32,
+                    *iface_num as u32,
+                    *class_code as u32,
+                    *subclass as u32,
+                    *protocol as u32,
+                );
+            }
+        }
+
+        for (iface_num, subclass, protocol) in
+            interfaces
+                .into_iter()
+                .filter_map(|(iface_num, class_code, subclass, protocol)| {
+                    (class_code == 3).then_some((iface_num, subclass, protocol))
+                })
+        {
             let iface_id = InterfaceId(iface_num as u32);
             let should_emit = {
                 let mut state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
@@ -375,7 +414,7 @@ impl EspUsbHost {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_hid_interfaces_from_config;
+    use super::{parse_hid_interfaces_from_config, parse_interfaces_from_config};
 
     #[test]
     fn parses_hid_interface_descriptors_only() {
@@ -387,6 +426,18 @@ mod tests {
 
         let hid = parse_hid_interfaces_from_config(&blob);
         assert_eq!(hid, vec![(0, 1, 2)]);
+    }
+
+    #[test]
+    fn parses_all_interface_descriptors_for_target_witness() {
+        let blob = [
+            9, 2, 34, 0, 2, 1, 0, 0x80, 50, // config desc
+            9, 4, 0, 0, 1, 3, 1, 2, 0, // HID iface (boot keyboard)
+            9, 4, 1, 0, 1, 255, 93, 1, 0, // vendor-specific iface
+        ];
+
+        let interfaces = parse_interfaces_from_config(&blob);
+        assert_eq!(interfaces, vec![(0, 3, 1, 2), (1, 255, 93, 1)]);
     }
 
     #[test]

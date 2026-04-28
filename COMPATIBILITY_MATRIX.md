@@ -9,7 +9,7 @@ This matrix tracks the support status for devices, personas, and milestones.
 | M0 | Complete | Repo skeleton and contracts baseline | Host test evidence |
 | M1 | Complete | Boot + serial control witness | Real target transcript (historical) |
 | M2A | Complete | USB contracts/app/control groundwork | Host tests |
-| M2B.1 | Partial hardware evidence | Hub attach/detach identity witness captured; direct attach and HID interface discovery still pending | `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md` |
+| M2B.1 | Partial hardware evidence | Hub attach/detach identity and HID-class discovery captured; direct attach blocked by cabling | `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md` |
 | M2B.2 | Planned | Descriptor/report capture via control-plane | |
 | M3 | Planned | HID Parser | |
 | M4 | Planned | Live input | |
@@ -28,8 +28,10 @@ This matrix tracks the support status for devices, personas, and milestones.
 
 | Device | VID | PID | Status | Note |
 |--------|-----|-----|--------|------|
-| HooToo SHUTTLE HT-UC001 powered hub | 2109 | 2813 | Hub identity witness captured | Enumerates through ESP32-S3 USB host path; no HID interface |
-| AFTERGLOW PL-3702 Xbox-style wired gamepad | 0e6f | 0213 | Hub downstream identity witness captured | Enumerates behind HooToo hub; `interfaces=0` in this run |
+| HooToo SHUTTLE HT-UC001 powered hub | 2109 | 2813 | Hub identity and interface-class witness captured | Enumerates through ESP32-S3 USB host path as USB hub class `09` |
+| AFTERGLOW PL-3702 Xbox-style wired gamepad | 0e6f | 0213 | Hub downstream identity and interface-class witness captured | Enumerates behind HooToo hub with four vendor-specific `CLASS=ff` interfaces; `interfaces=0` is expected for HID-only bookkeeping |
+| USB keyboard, exact model not captured | 30fa | 2031 | Hub downstream identity and HID interface witness captured | Enumerates behind HooToo hub with two HID `CLASS=03` interfaces; app reports `interfaces=2` |
+| THRUSTMASTER T.16000 FCS HOTAS | 044f | b10a | Hub downstream identity and HID interface witness captured | Enumerates behind HooToo hub with one HID `CLASS=03` interface; app reports `interfaces=1` |
 
 ## Personas
 

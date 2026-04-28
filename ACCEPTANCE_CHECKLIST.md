@@ -63,16 +63,18 @@ bash -n scripts/*.sh
 
 - **Board model:** TODO exact carrier board model; observed target is ESP32-S3 rev v0.2, 16 MB flash over WCH USB Single Serial
 - **Powered hub used:** HooToo SHUTTLE HT-UC001, observed as `VID=2109, PID=2813`
-- **HID device(s) used:** AFTERGLOW PL-3702 Xbox-style wired gamepad, observed as `VID=0e6f, PID=0213`
-- **Direct connection topology:** TODO (required for acceptance)
-- **Hub connection topology:** ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> AFTERGLOW PL-3702
+- **Candidate USB input device used:** AFTERGLOW PL-3702 Xbox-style wired gamepad, observed as `VID=0e6f, PID=0213`; instrumented run shows vendor-specific interfaces (`CLASS=ff`), not HID class `03`
+- **HID-class USB input device used:** USB keyboard, exact model not captured, observed as `VID=30fa, PID=2031` with HID interfaces `CLASS=03, SUBCLASS=01, PROTOCOL=01` and `CLASS=03, SUBCLASS=00, PROTOCOL=02`
+- **HID-class HOTAS device used:** THRUSTMASTER T.16000 FCS HOTAS, observed as `VID=044f, PID=b10a` with HID interface `CLASS=03, SUBCLASS=00, PROTOCOL=00`
+- **Direct connection topology:** Blocked with available hardware; physical connector/port geometry did not allow direct AFTERGLOW-to-ESP32-S3 host-path attachment
+- **Hub connection topology:** ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> AFTERGLOW PL-3702; ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> USB keyboard; ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> THRUSTMASTER T.16000 FCS HOTAS
 - **Build command:** `RUSTUP_TOOLCHAIN=esp ./scripts/verify_cloud_equivalent.sh`
 - **Flash command:** `./scripts/flash.sh --chip esp32s3 --port /dev/cu.usbmodem5B5E0200881 --monitor --non-interactive`
 - **Monitor command:** `./scripts/monitor.sh --port /dev/cu.usbmodem5B5E0200881`
 - **Actual boot transcript:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
-- **Direct pre-plug `GET_USB_STATUS` / `LIST_USB_DEVICES`:** TODO (required for acceptance)
-- **Direct post-plug attach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** TODO (required for acceptance)
-- **Direct post-unplug detach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** TODO (required for acceptance)
+- **Direct pre-plug `GET_USB_STATUS` / `LIST_USB_DEVICES`:** Not captured; blocked by available cabling/port geometry
+- **Direct post-plug attach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** Not captured; blocked by available cabling/port geometry
+- **Direct post-unplug detach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** Not captured; blocked by available cabling/port geometry
 - **Hub pre-plug `GET_USB_STATUS` / `LIST_USB_DEVICES`:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
 - **Hub post-plug attach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
 - **Hub post-unplug detach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`

@@ -92,6 +92,24 @@ pub fn main() {
                         format!("[DETACH] Device: ID={}\n", source.device_id.0).as_bytes(),
                     );
                 }
+                usb2ble_contracts::UsbIngressEvent::InterfaceDiscovered {
+                    source,
+                    class_code,
+                    subclass_code,
+                    protocol_code,
+                } => {
+                    uart.write_all(
+                        format!(
+                            "[INTERFACE] Device: ID={}, IFACE={}, CLASS={:02x}, SUBCLASS={:02x}, PROTOCOL={:02x}\n",
+                            source.device.device_id.0,
+                            source.interface_id.0,
+                            class_code,
+                            subclass_code,
+                            protocol_code
+                        )
+                        .as_bytes(),
+                    );
+                }
                 _ => {}
             }
             app.handle_usb_event(event);
