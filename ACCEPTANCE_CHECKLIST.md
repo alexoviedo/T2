@@ -66,8 +66,9 @@ bash -n scripts/*.sh
 - **Candidate USB input device used:** AFTERGLOW PL-3702 Xbox-style wired gamepad, observed as `VID=0e6f, PID=0213`; instrumented run shows vendor-specific interfaces (`CLASS=ff`), not HID class `03`
 - **HID-class USB input device used:** USB keyboard, exact model not captured, observed as `VID=30fa, PID=2031` with HID interfaces `CLASS=03, SUBCLASS=01, PROTOCOL=01` and `CLASS=03, SUBCLASS=00, PROTOCOL=02`
 - **HID-class HOTAS device used:** THRUSTMASTER T.16000 FCS HOTAS, observed as `VID=044f, PID=b10a` with HID interface `CLASS=03, SUBCLASS=00, PROTOCOL=00`
+- **HID-class Flight Pack device set used:** THRUSTMASTER T.16000M FCS FLIGHT PACK, composed of T.16000M FCS flight stick, TWCS throttle, and TFRP rudder pedals; observed as `VID=044f, PID=b687`, `VID=044f, PID=b679`, and `VID=044f, PID=b10a`, each with HID interface `CLASS=03, SUBCLASS=00, PROTOCOL=00`
 - **Direct connection topology:** Blocked with available hardware; physical connector/port geometry did not allow direct AFTERGLOW-to-ESP32-S3 host-path attachment
-- **Hub connection topology:** ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> AFTERGLOW PL-3702; ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> USB keyboard; ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> THRUSTMASTER T.16000 FCS HOTAS
+- **Hub connection topology:** ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> AFTERGLOW PL-3702; ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> USB keyboard; ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> THRUSTMASTER T.16000 FCS HOTAS; ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> THRUSTMASTER T.16000M FCS FLIGHT PACK devices
 - **Build command:** `RUSTUP_TOOLCHAIN=esp ./scripts/verify_cloud_equivalent.sh`
 - **Flash command:** `./scripts/flash.sh --chip esp32s3 --port /dev/cu.usbmodem5B5E0200881 --monitor --non-interactive`
 - **Monitor command:** `./scripts/monitor.sh --port /dev/cu.usbmodem5B5E0200881`
@@ -81,6 +82,15 @@ bash -n scripts/*.sh
 
 ## M2B.2 — descriptor/report capture (Pending)
 
-- [ ] `GET_USB_DESCRIPTOR` returns real descriptor bytes from hardware.
+- [x] `GET_USB_DESCRIPTOR` returns real descriptor bytes from hardware.
 - [ ] `GET_LAST_USB_REPORT` returns real input reports from hardware.
-- [ ] Verified with real USB HID devices on target.
+- [ ] Verified complete descriptor/report flow with real USB HID devices on target.
+
+## M2B.2 Current Evidence
+
+- **Descriptor capture evidence:** `docs/milestone-evidence/M2B2_DESCRIPTOR_WITNESS_2026-04-29.md`
+- **Verified descriptor device:** THRUSTMASTER T.16000 FCS HOTAS through HooToo SHUTTLE HT-UC001, `VID=044f, PID=b10a`, interface `0`
+- **Descriptor command:** `GET_USB_DESCRIPTOR 4:0`
+- **Descriptor result:** 134-byte HID report descriptor returned as `USB_DESCRIPTOR:<hex>`
+- **Input report command:** `GET_LAST_USB_REPORT 4:0`
+- **Input report result:** `ERROR:NotFound` (pending implementation)

@@ -110,6 +110,17 @@ pub fn main() {
                         .as_bytes(),
                     );
                 }
+                usb2ble_contracts::UsbIngressEvent::ReportDescriptorReceived(blob) => {
+                    uart.write_all(
+                        format!(
+                            "[DESCRIPTOR] Device: ID={}, IFACE={}, BYTES={}\n",
+                            blob.source.device.device_id.0,
+                            blob.source.interface_id.0,
+                            blob.bytes.len()
+                        )
+                        .as_bytes(),
+                    );
+                }
                 _ => {}
             }
             app.handle_usb_event(event);

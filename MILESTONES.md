@@ -90,17 +90,20 @@ Real attach/detach + identity witness plumbing exists for ESP32-S3, but this mil
 #### Current evidence status
 - **Implemented code path:** USB host install/client registration, target-side device address scan, VID/PID attach witness, HID interface discovery from active config descriptor, detach bookkeeping, and serial control-plane visibility.
 - **Build/toolchain baseline:** ESP-IDF is pinned to `v5.5.3` through `esp-idf-sys` metadata in `crates/usb2ble-fw/Cargo.toml`; the repo must not rely on a checked-in local `IDF_PATH`.
-- **Hub evidence:** HooToo SHUTTLE HT-UC001 (`VID=2109, PID=2813`), downstream AFTERGLOW PL-3702 (`VID=0e6f, PID=0213`), downstream USB keyboard (`VID=30fa, PID=2031`), and downstream THRUSTMASTER T.16000 FCS HOTAS (`VID=044f, PID=b10a`) attach/detach identity witness is checked in at `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`.
-- **Interface-class evidence:** the HooToo hub reports USB hub class `09`; the AFTERGLOW PL-3702 reports four vendor-specific `CLASS=ff` interfaces; the USB keyboard reports two HID `CLASS=03` interfaces and drives app-visible `interfaces=2`; the THRUSTMASTER T.16000 FCS HOTAS reports one HID `CLASS=03` interface and drives app-visible `interfaces=1`.
+- **Hub evidence:** HooToo SHUTTLE HT-UC001 (`VID=2109, PID=2813`), downstream AFTERGLOW PL-3702 (`VID=0e6f, PID=0213`), downstream USB keyboard (`VID=30fa, PID=2031`), downstream THRUSTMASTER T.16000 FCS HOTAS (`VID=044f, PID=b10a`), and downstream THRUSTMASTER T.16000M FCS FLIGHT PACK devices (`VID=044f`, `PID=b687`, `PID=b679`, `PID=b10a`) attach/detach identity witness is checked in at `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`.
+- **Interface-class evidence:** the HooToo hub reports USB hub class `09`; the AFTERGLOW PL-3702 reports four vendor-specific `CLASS=ff` interfaces; the USB keyboard reports two HID `CLASS=03` interfaces and drives app-visible `interfaces=2`; the THRUSTMASTER T.16000 FCS HOTAS reports one HID `CLASS=03` interface and drives app-visible `interfaces=1`; the THRUSTMASTER T.16000M FCS FLIGHT PACK reports three simultaneous HID `CLASS=03` interfaces and drives app-visible `interfaces=3`.
 - **Hub baseline:** `CONFIG_USB_HOST_HUBS_SUPPORTED=y` enables stable ESP-IDF hub support. Experimental hub flags are not accepted unless current upstream evidence proves they are required.
 - **Missing acceptance evidence:** direct-attach witness is blocked by current cabling/port geometry, and exact carrier board model is still TODO.
 - **Do not claim complete until:** direct-attach and powered-hub witness results are captured with board, hub, HID device, topology, build/flash/monitor commands, and control-plane transcripts.
 
-### M2B.2 (Pending)
+### M2B.2 (Partial)
 Descriptor and input-report capture exposed through control plane.
 
-> Review note for current PR scope: only M2B.1 code-path work (attach/detach + identity witness)
-> is in scope; descriptor/report capture remains deferred to M2B.2.
+#### Current evidence status
+- **Implemented code path:** HID report descriptor length is parsed from the active configuration descriptor; target code issues a one-shot standard GET_DESCRIPTOR request for descriptor type `0x22`; successful descriptor bytes are emitted as `ReportDescriptorReceived` and exposed via `GET_USB_DESCRIPTOR <device>:<interface>`.
+- **Descriptor evidence:** THRUSTMASTER T.16000 FCS HOTAS (`VID=044f, PID=b10a`) returned a 134-byte HID report descriptor through the HooToo SHUTTLE HT-UC001 hub. Evidence is checked in at `docs/milestone-evidence/M2B2_DESCRIPTOR_WITNESS_2026-04-29.md`.
+- **Negative evidence:** an initial transfer-pump attempt left a control transfer in flight and asserted on close; the accepted code services both USB host library and client events before closing the device handle.
+- **Missing acceptance evidence:** live interrupt input-report capture is not implemented; `GET_LAST_USB_REPORT 4:0` still returns `ERROR:NotFound`.
 
 ### Goal
 Prove real USB host viability on ESP32-S3 with curated supported hardware.

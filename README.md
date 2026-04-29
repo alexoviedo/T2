@@ -26,14 +26,14 @@
 - `GET_PROFILE`
 - `GET_USB_STATUS`
 - `LIST_USB_DEVICES`
-- `GET_USB_DESCRIPTOR` returns explicit `NotFound` until M2B.2.
-- `GET_LAST_USB_REPORT` returns explicit `NotFound` until M2B.2.
+- `GET_USB_DESCRIPTOR <device>:<interface>` returns captured HID report descriptor bytes for discovered HID interfaces.
+- `GET_LAST_USB_REPORT` returns explicit `NotFound` until live input-report capture lands.
 - ESP32-S3 target preflight build.
 - host simulation for app/control-plane testing only.
 
 ## What is not implemented yet
-- real hardware transcript not checked in.
-- descriptor/report capture.
+- direct-attach hardware transcript remains blocked by available cabling/port geometry.
+- live input-report capture.
 - HID semantic parser.
 - normalization.
 - mapping.

@@ -4,7 +4,7 @@ Status: **Required for milestone evidence. Not yet captured in this repository r
 
 Current checked-in partial evidence:
 - Hub attach/detach identity and interface-class witness: `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
-- HID interface discovery through the powered hub: `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md` (USB keyboard and THRUSTMASTER T.16000 FCS HOTAS)
+- HID interface discovery through the powered hub: `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md` (USB keyboard, THRUSTMASTER T.16000 FCS HOTAS, and THRUSTMASTER T.16000M FCS FLIGHT PACK)
 - Direct-attach witness: blocked with current cabling/port geometry
 - AFTERGLOW PL-3702 note: this controller reports vendor-specific `CLASS=ff` interfaces, not HID `CLASS=03`
 

@@ -11,6 +11,9 @@ hardware.
 It also captures a THRUSTMASTER T.16000 FCS HOTAS through the same powered hub
 proving HID class interface discovery and app bookkeeping (`interfaces=1`) for
 a flight-control device.
+It also captures the THRUSTMASTER T.16000M FCS FLIGHT PACK as three simultaneous
+HID-class devices through the same powered hub, proving multi-device HID
+bookkeeping (`interfaces=3`) and staged detach cleanup.
 
 It does not complete M2B.1 by itself because direct-attach witness is blocked by
 the currently available cabling/port geometry.
@@ -33,9 +36,14 @@ the currently available cabling/port geometry.
 - HID-class HOTAS device: THRUSTMASTER T.16000 FCS HOTAS
 - HID-class HOTAS observed identity: `VID=044f`, `PID=b10a`
 - HID-class HOTAS observed interface: `03:00:00`
+- HID-class Flight Pack device set: THRUSTMASTER T.16000M FCS FLIGHT PACK
+- Flight Pack composition per operator: T.16000M FCS flight stick, TWCS throttle, TFRP rudder pedals
+- Flight Pack observed USB identities: `VID=044f PID=b687`, `VID=044f PID=b679`, `VID=044f PID=b10a`
+- Flight Pack observed interfaces: each observed device reported `03:00:00`
 - Topology: ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> AFTERGLOW PL-3702
 - HID topology: ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> USB keyboard
 - HOTAS topology: ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> THRUSTMASTER T.16000 FCS HOTAS
+- Flight Pack topology: ESP32-S3 USB host path -> HooToo SHUTTLE HT-UC001 -> THRUSTMASTER T.16000M FCS FLIGHT PACK devices
 - Direct topology: not captured; available physical connectors did not allow direct USB device-to-ESP32-S3 host-path attachment.
 
 ## Commands
@@ -284,6 +292,78 @@ USB_STATUS:devices=0;interfaces=0;
 USB_DEVICES:
 ```
 
+## Hub-Attached THRUSTMASTER T.16000M FCS FLIGHT PACK HID-Class Run
+
+The powered HooToo hub was connected to the ESP32-S3 host path with all three
+T.16000M FCS FLIGHT PACK USB devices connected downstream. Per operator, the
+pack is composed of the T.16000M FCS flight stick, TWCS throttle, and TFRP
+rudder pedals. The transcript proves the three devices enumerate simultaneously
+as HID-class interfaces through the hub. It does not assign each PID to an
+individual physical unit because the staged unplug order was not independently
+labeled in the transcript.
+
+```text
+I (570) main_task: Calling app_main()
+[TRACE] ENTERED main()
+[TRACE] Uart initialized
+[TRACE] UsbIngress initialized
+[TRACE] Calling usb.init_host()
+[TRACE] usb.init_host() returned
+[TRACE] Initializing storage
+[TRACE] Initializing app
+--- USB2BLE FIRMWARE BOOT ---
+Name: usb2ble
+Version: 0.2.1-m2b1
+Contract Version: 1
+Status: M2B.1 Code-path (HW Verification Pending)
+Ready for commands.
+[TRACE] ENTERED MAIN LOOP
+[USB_IFACE] Device: ID=1, IFACE=0, CLASS=09, SUBCLASS=00, PROTOCOL=00
+[ATTACH] Device: ID=1, VID=2109, PID=2813
+[USB_IFACE] Device: ID=2, IFACE=0, CLASS=03, SUBCLASS=00, PROTOCOL=00
+[ATTACH] Device: ID=2, VID=044f, PID=b687
+[INTERFACE] Device: ID=2, IFACE=0, CLASS=03, SUBCLASS=00, PROTOCOL=00
+[USB_IFACE] Device: ID=3, IFACE=0, CLASS=03, SUBCLASS=00, PROTOCOL=00
+[ATTACH] Device: ID=3, VID=044f, PID=b679
+[INTERFACE] Device: ID=3, IFACE=0, CLASS=03, SUBCLASS=00, PROTOCOL=00
+[USB_IFACE] Device: ID=4, IFACE=0, CLASS=03, SUBCLASS=00, PROTOCOL=00
+[ATTACH] Device: ID=4, VID=044f, PID=b10a
+[INTERFACE] Device: ID=4, IFACE=0, CLASS=03, SUBCLASS=00, PROTOCOL=00
+
+>> GET_USB_STATUS
+USB_STATUS:devices=4;interfaces=3;
+>> LIST_USB_DEVICES
+USB_DEVICES:id=1,vid=2109,pid=2813|id=2,vid=044f,pid=b687|id=3,vid=044f,pid=b679|id=4,vid=044f,pid=b10a
+
+[DETACH] Device: ID=3
+
+>> GET_USB_STATUS
+USB_STATUS:devices=3;interfaces=2;
+>> LIST_USB_DEVICES
+USB_DEVICES:id=1,vid=2109,pid=2813|id=2,vid=044f,pid=b687|id=4,vid=044f,pid=b10a
+
+[DETACH] Device: ID=2
+
+>> GET_USB_STATUS
+USB_STATUS:devices=2;interfaces=1;
+>> LIST_USB_DEVICES
+USB_DEVICES:id=1,vid=2109,pid=2813|id=4,vid=044f,pid=b10a
+
+[DETACH] Device: ID=4
+
+>> GET_USB_STATUS
+USB_STATUS:devices=1;interfaces=0;
+>> LIST_USB_DEVICES
+USB_DEVICES:id=1,vid=2109,pid=2813
+
+[DETACH] Device: ID=1
+
+>> GET_USB_STATUS
+USB_STATUS:devices=0;interfaces=0;
+>> LIST_USB_DEVICES
+USB_DEVICES:
+```
+
 ## Results
 
 - Hub attach identity witness: **pass** (`2109:2813`)
@@ -294,6 +374,9 @@ USB_DEVICES:
 - HID interface discovery through hub: **pass** (`interfaces=2`; `CLASS=03`)
 - HID-class HOTAS identity witness through hub: **pass** (`044f:b10a`)
 - HOTAS HID interface discovery through hub: **pass** (`interfaces=1`; `CLASS=03`)
+- Flight Pack identity witness through hub: **pass** (`044f:b687`, `044f:b679`, `044f:b10a`)
+- Flight Pack HID interface discovery through hub: **pass** (`interfaces=3`; each observed device reported `CLASS=03`)
+- Flight Pack staged detach bookkeeping: **pass** (`interfaces=3 -> 2 -> 1 -> 0`; `devices=4 -> 3 -> 2 -> 1 -> 0`)
 - Detach bookkeeping returns to zero devices: **pass**
 - AFTERGLOW HID-class discovery: **not satisfied by this controller** (`interfaces=0`; no `CLASS=03` interface observed)
 - Direct-attach witness for this revision: **not captured**; blocked by available physical cabling/port geometry
