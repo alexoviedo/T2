@@ -80,17 +80,61 @@ bash -n scripts/*.sh
 - **Hub post-plug attach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
 - **Hub post-unplug detach transcript and `GET_USB_STATUS` / `LIST_USB_DEVICES`:** `docs/milestone-evidence/M2B1_HUB_WITNESS_2026-04-28.md`
 
-## M2B.2 — descriptor/report capture (Pending)
+## M2B.2 — descriptor/report capture (Hardware witness captured)
 
 - [x] `GET_USB_DESCRIPTOR` returns real descriptor bytes from hardware.
-- [ ] `GET_LAST_USB_REPORT` returns real input reports from hardware.
-- [ ] Verified complete descriptor/report flow with real USB HID devices on target.
+- [x] `GET_LAST_USB_REPORT` returns real input reports from hardware.
+- [x] Verified complete descriptor/report flow with a real USB HID device on target.
 
 ## M2B.2 Current Evidence
 
 - **Descriptor capture evidence:** `docs/milestone-evidence/M2B2_DESCRIPTOR_WITNESS_2026-04-29.md`
-- **Verified descriptor device:** THRUSTMASTER T.16000 FCS HOTAS through HooToo SHUTTLE HT-UC001, `VID=044f, PID=b10a`, interface `0`
-- **Descriptor command:** `GET_USB_DESCRIPTOR 4:0`
+- **Verified descriptor/report device:** THRUSTMASTER T.16000 FCS HOTAS through HooToo SHUTTLE HT-UC001, `VID=044f, PID=b10a`, interface `0`
+- **Descriptor command:** `GET_USB_DESCRIPTOR 4:0` in the descriptor-only run; `[DESCRIPTOR] Device: ID=2, IFACE=0, BYTES=134` in the final report-capture boot
 - **Descriptor result:** 134-byte HID report descriptor returned as `USB_DESCRIPTOR:<hex>`
-- **Input report command:** `GET_LAST_USB_REPORT 4:0`
-- **Input report result:** `ERROR:NotFound` (pending implementation)
+- **Input report command:** `GET_LAST_USB_REPORT 2:0`
+- **Input report result:** 64-byte HID input report returned as `USB_REPORT:<hex>`
+- **Remaining scope:** BLE publishing and report coverage for every Flight Pack component remain future work.
+
+## M3 — HID descriptor IR and hardware/host parity (Summary witness captured)
+
+- [x] `usb2ble-hid` parses HID short-item report descriptors into `HidDescriptorIr`.
+- [x] Parse failures are surfaced as typed errors (`EmptyDescriptor`, `TruncatedItem`, unsupported long items, missing report globals).
+- [x] Hardware-captured T.16000 descriptor fixture is committed.
+- [x] Capability summary includes axes/buttons/hats/report IDs.
+- [x] `GET_HID_SUMMARY` returns target-side parsed summary for a real HID device.
+- [x] Host fixture summary matches target `GET_HID_SUMMARY` output for the T.16000 FCS HOTAS.
+- [ ] Full target IR dump/parity is exposed over diagnostics.
+
+## M3 Current Evidence
+
+- **Summary evidence:** `docs/milestone-evidence/M3_HID_SUMMARY_WITNESS_2026-04-29.md`
+- **Fixture:** `crates/usb2ble-hid/fixtures/thrustmaster_t16000_fcs_044f_b10a_report_descriptor.hex`
+- **Verified descriptor device:** THRUSTMASTER T.16000 FCS HOTAS through HooToo SHUTTLE HT-UC001, `VID=044f, PID=b10a`, interface `0`
+- **Summary command:** `GET_HID_SUMMARY 2:0`
+- **Summary result:** `axes=4`, `buttons=16`, `hats=1`, `report_ids=0`, axis usages `01:30,01:31,01:35,01:36`, hat usage `01:39`
+- **Remaining scope:** Full IR diagnostic dump, BLE publishing, and all-device Flight Pack coverage remain future work.
+
+## M4 — live normalized input on hardware (baseline witness captured)
+
+- [x] `usb2ble-hid` decodes input report bit fields from parsed HID IR.
+- [x] `usb2ble-input` normalizes buttons, axes, hats, and unknown controls into the shared input model.
+- [x] `AppState` retains the latest input report packet by descriptor key.
+- [x] `GET_NORMALIZED_INPUT <device>:<interface>` returns a target-side normalized frame for a real HID input report.
+- [x] Host tests cover descriptor parsing, report decoding, and normalization for committed fixtures.
+- [x] Operator movement delta transcript captured for normalized input.
+- [ ] Operator button-press delta transcript captured for normalized input.
+- [ ] Detach cleanup transcript captured for normalized input state.
+- [x] Normalized report coverage captured for TFRP pedals.
+- [x] Normalized report coverage captured for TWCS throttle when connected through the hub without the other Flight Pack devices.
+- [x] Normalized report coverage captured for the practical RJ12 Flight Pack topology: TFRP pedals connected to TWCS by RJ12, with TWCS USB plus T.16000M stick USB through the HooToo hub.
+- [ ] Normalized report coverage captured for all three separate simultaneous Flight Pack USB devices.
+
+## M4 Current Evidence
+
+- **Normalized input evidence:** `docs/milestone-evidence/M4_NORMALIZED_INPUT_WITNESS_2026-04-29.md`; `docs/milestone-evidence/M4_FLIGHT_PACK_NORMALIZED_WITNESS_2026-04-29.md`; `docs/milestone-evidence/M4_RJ12_TWO_USB_FLIGHT_PACK_WITNESS_2026-04-29.md`
+- **Verified normalized-input device:** THRUSTMASTER T.16000 FCS HOTAS through HooToo SHUTTLE HT-UC001, `VID=044f`, `PID=b10a`, interface `0`
+- **Additional Flight Pack coverage:** TFRP pedals `044f:b679` normalized in a full-pack run; TWCS throttle `044f:b687` normalized when connected through the hub without the other Flight Pack devices; RJ12 topology normalized with pedals connected to TWCS and both TWCS USB plus T.16000M stick USB streaming together through the hub
+- **Normalized command:** `GET_NORMALIZED_INPUT 2:0`
+- **Normalized result:** `controls=21`, including 16 buttons, 1 hat, and 4 axes from a real 64-byte target input report
+- **Remaining scope:** Button-press delta evidence, normalized detach cleanup evidence, exact RJ12 pedal axis labels, BLE publishing, and all-device simultaneous Flight Pack streaming with three separate USB Flight Pack devices remain future work.

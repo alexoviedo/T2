@@ -1,9 +1,9 @@
 # USB2BLE
 
 ## Current status
-- `main` is at M2B.1 code-path status.
+- `main` is at M4 normalized-input code-path status.
 - ESP32-S3 target-build preflight is expected to pass in CI.
-- Real hardware witness transcript is still pending.
+- Real powered-hub hardware witness transcripts are checked in for attach/detach identity, HID descriptor capture, raw input-report capture, HID capability summary, baseline normalized input, and the practical RJ12 Flight Pack topology.
 
 ## What this project is building toward
 - ESP32-S3 USB HID to BLE bridge.
@@ -13,10 +13,11 @@
 - eventual BLE Xbox Wireless-style output.
 - current milestone does not implement those yet.
 
-## Current milestone: M2B.1
-- target scope is attach/detach + VID/PID identity witness + HID interface discovery.
-- no descriptor/report control-plane fulfillment yet.
-- no HID semantic parsing yet.
+## Current milestone: M4
+- target scope is HID report decoding and normalized live-input diagnostics.
+- descriptor/report/summary/normalized-input control-plane fulfillment is proven for the THRUSTMASTER T.16000 FCS HOTAS through the HooToo powered hub.
+- expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, and simultaneous normalized input for the recommended two-USB topology: pedals connected to TWCS by RJ12, with TWCS USB plus stick USB through the HooToo hub.
+- button-press delta capture, detach cleanup evidence, exact RJ12 pedal axis labels, and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4 completion.
 - no BLE publishing yet.
 
 ## What works today
@@ -27,19 +28,21 @@
 - `GET_USB_STATUS`
 - `LIST_USB_DEVICES`
 - `GET_USB_DESCRIPTOR <device>:<interface>` returns captured HID report descriptor bytes for discovered HID interfaces.
-- `GET_LAST_USB_REPORT` returns explicit `NotFound` until live input-report capture lands.
+- `GET_LAST_USB_REPORT <device>:<interface>` returns the most recent raw input report after a report is received.
+- `GET_HID_SUMMARY <device>:<interface>` returns parsed axes/buttons/hats/report IDs for descriptors that parse successfully.
+- `GET_NORMALIZED_INPUT <device>:<interface>` returns a normalized control frame decoded from the latest input report for descriptors that parse successfully.
 - ESP32-S3 target preflight build.
 - host simulation for app/control-plane testing only.
 
 ## What is not implemented yet
 - direct-attach hardware transcript remains blocked by available cabling/port geometry.
-- live input-report capture.
-- HID semantic parser.
-- normalization.
+- full target IR diagnostic dump.
+- button-press delta witness for normalized input.
+- normalized detach cleanup witness.
 - mapping.
 - BLE Generic Gamepad output.
 - BLE Xbox output.
-- powered hub multi-device merge.
+- powered hub all-device Flight Pack simultaneous report merge for three separate USB Flight Pack devices.
 
 ## Repository layout
 
@@ -101,4 +104,4 @@ See: `docs/HARDWARE_M2B1_VERIFICATION.md`
 * code and checked-in evidence are the source of truth.
 * do not claim hardware verification without real transcript evidence.
 * do not present host simulation as target proof.
-* do not start M2B.2/M3 before M2B.1 hardware verification.
+* do not advance a future milestone before its prerequisite hardware evidence is checked in.

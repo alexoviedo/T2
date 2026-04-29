@@ -5,20 +5,40 @@
 //! - Real VID/PID identity reporting.
 //! - HID interface discovery from active config descriptor.
 //! - HID report descriptor capture for M2B.2.
+//! - Raw HID interrupt input-report capture for M2B.2.
 
 use std::collections::VecDeque;
 #[cfg(target_os = "espidf")]
 use std::collections::{HashMap, HashSet};
-#[cfg(target_os = "espidf")]
-use usb2ble_contracts::ReportDescriptorBlob;
 use usb2ble_contracts::{
     ConnectionTopology, DeviceId, InterfaceId, UsbDeviceRef, UsbIngressEvent, UsbInterfaceRef,
 };
+#[cfg(target_os = "espidf")]
+use usb2ble_contracts::{InputReportPacket, ReportDescriptorBlob, ReportId};
 
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "espidf")]
 use esp_idf_sys::*;
+
+#[cfg(any(test, target_os = "espidf"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EndpointDescriptorInfo {
+    address: u8,
+    attributes: u8,
+    max_packet_size: u16,
+    interval: u8,
+}
+
+#[cfg(any(test, target_os = "espidf"))]
+impl EndpointDescriptorInfo {
+    const fn is_interrupt_in(self) -> bool {
+        (self.address & USB_ENDPOINT_DIR_IN) != 0
+            && (self.attributes & USB_ENDPOINT_TRANSFER_TYPE_MASK)
+                == USB_ENDPOINT_TRANSFER_TYPE_INTERRUPT
+            && self.max_packet_size != 0
+    }
+}
 
 #[cfg(any(test, target_os = "espidf"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,12 +48,21 @@ struct InterfaceDescriptorInfo {
     subclass_code: u8,
     protocol_code: u8,
     report_descriptor_len: Option<u16>,
+    interrupt_in_endpoint: Option<EndpointDescriptorInfo>,
 }
+
+#[cfg(any(test, target_os = "espidf"))]
+const USB_ENDPOINT_DIR_IN: u8 = 0x80;
+#[cfg(any(test, target_os = "espidf"))]
+const USB_ENDPOINT_TRANSFER_TYPE_MASK: u8 = 0x03;
+#[cfg(any(test, target_os = "espidf"))]
+const USB_ENDPOINT_TRANSFER_TYPE_INTERRUPT: u8 = 0x03;
 
 /// Parse interface descriptors from a raw active configuration descriptor blob.
 #[cfg(any(test, target_os = "espidf"))]
 fn parse_interfaces_from_config(config_blob: &[u8]) -> Vec<InterfaceDescriptorInfo> {
     const DESC_TYPE_INTERFACE: u8 = 0x04;
+    const DESC_TYPE_ENDPOINT: u8 = 0x05;
     const DESC_TYPE_HID: u8 = 0x21;
     const DESC_TYPE_HID_REPORT: u8 = 0x22;
 
@@ -60,6 +89,7 @@ fn parse_interfaces_from_config(config_blob: &[u8]) -> Vec<InterfaceDescriptorIn
                 subclass_code,
                 protocol_code,
                 report_descriptor_len: None,
+                interrupt_in_endpoint: None,
             });
             current_interface = Some(out.len() - 1);
         } else if desc_type == DESC_TYPE_HID
@@ -82,6 +112,21 @@ fn parse_interfaces_from_config(config_blob: &[u8]) -> Vec<InterfaceDescriptorIn
                     break;
                 }
                 desc_offset += 3;
+            }
+        } else if desc_type == DESC_TYPE_ENDPOINT
+            && len >= 7
+            && let Some(interface_idx) = current_interface
+        {
+            let raw_max_packet_size = u16::from_le_bytes([config_blob[i + 4], config_blob[i + 5]]);
+            let endpoint = EndpointDescriptorInfo {
+                address: config_blob[i + 2],
+                attributes: config_blob[i + 3],
+                max_packet_size: raw_max_packet_size & 0x07ff,
+                interval: config_blob[i + 6],
+            };
+
+            if endpoint.is_interrupt_in() && out[interface_idx].interrupt_in_endpoint.is_none() {
+                out[interface_idx].interrupt_in_endpoint = Some(endpoint);
             }
         }
 
@@ -127,12 +172,82 @@ struct ControlTransferResult {
 }
 
 #[cfg(target_os = "espidf")]
+#[derive(Debug)]
+struct InterruptTransferResult {
+    done: bool,
+    status: usb_transfer_status_t,
+    actual_num_bytes: i32,
+}
+
+#[cfg(target_os = "espidf")]
+#[derive(Debug, Clone, Copy)]
+enum ReportCaptureError {
+    InterfaceClaim(i32),
+    TransferAlloc(i32),
+    TransferSubmit(i32),
+}
+
+#[cfg(target_os = "espidf")]
+impl ReportCaptureError {
+    const fn stage_code(self) -> u32 {
+        match self {
+            Self::InterfaceClaim(_) => 1,
+            Self::TransferAlloc(_) => 2,
+            Self::TransferSubmit(_) => 3,
+        }
+    }
+
+    const fn esp_error(self) -> i32 {
+        match self {
+            Self::InterfaceClaim(err) | Self::TransferAlloc(err) | Self::TransferSubmit(err) => err,
+        }
+    }
+}
+
+#[cfg(target_os = "espidf")]
+struct TargetDeviceSession {
+    dev_ref: UsbDeviceRef,
+    dev_hdl: usb_device_handle_t,
+    interfaces: Vec<TargetHidInterfaceSession>,
+    detach_announced: bool,
+}
+
+#[cfg(target_os = "espidf")]
+struct TargetHidInterfaceSession {
+    source: UsbInterfaceRef,
+    endpoint: EndpointDescriptorInfo,
+    transfer: *mut usb_transfer_t,
+    result: Box<InterruptTransferResult>,
+    in_flight: bool,
+    claimed: bool,
+    last_report_log_micros: u64,
+}
+
+#[cfg(target_os = "espidf")]
 unsafe extern "C" fn control_transfer_cb(transfer: *mut usb_transfer_t) {
     if transfer.is_null() {
         return;
     }
 
     let result = unsafe { (*transfer).context as *mut ControlTransferResult };
+    if result.is_null() {
+        return;
+    }
+
+    unsafe {
+        (*result).done = true;
+        (*result).status = (*transfer).status;
+        (*result).actual_num_bytes = (*transfer).actual_num_bytes;
+    }
+}
+
+#[cfg(target_os = "espidf")]
+unsafe extern "C" fn interrupt_transfer_cb(transfer: *mut usb_transfer_t) {
+    if transfer.is_null() {
+        return;
+    }
+
+    let result = unsafe { (*transfer).context as *mut InterruptTransferResult };
     if result.is_null() {
         return;
     }
@@ -160,7 +275,7 @@ struct TargetUsbHostState {
     installed: bool,
     client_hdl: usb_host_client_handle_t,
     next_device_id: u32,
-    by_addr: HashMap<u8, UsbDeviceRef>,
+    by_addr: HashMap<u8, TargetDeviceSession>,
     announced_interfaces: HashSet<(DeviceId, InterfaceId)>,
 }
 
@@ -263,6 +378,7 @@ impl EspUsbHost {
             return Err("usb_host_client_handle_events failed");
         }
 
+        self.poll_completed_interrupt_transfers()?;
         self.scan_for_new_devices()?;
 
         Ok(())
@@ -293,30 +409,44 @@ impl EspUsbHost {
             self.register_device_if_needed(addr)?;
         }
 
-        let detached = {
+        let detached_addrs = {
             let state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
             state
                 .by_addr
                 .iter()
-                .filter_map(|(addr, dev)| (!present.contains(addr)).then_some(dev.clone()))
+                .filter_map(|(addr, session)| {
+                    (!present.contains(addr) && !session.detach_announced).then_some(*addr)
+                })
                 .collect::<Vec<_>>()
         };
 
-        if !detached.is_empty() {
+        let detached = if detached_addrs.is_empty() {
+            Vec::new()
+        } else {
             let mut state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
-            for dev in &detached {
-                state.by_addr.retain(|_, v| v.device_id != dev.device_id);
+            let mut detached = Vec::new();
+            for addr in detached_addrs {
+                let Some(dev_ref) = state.by_addr.get_mut(&addr).map(|session| {
+                    session.detach_announced = true;
+                    session.dev_ref.clone()
+                }) else {
+                    continue;
+                };
                 state
                     .announced_interfaces
-                    .retain(|(dev_id, _)| *dev_id != dev.device_id);
+                    .retain(|(dev_id, _)| *dev_id != dev_ref.device_id);
+                detached.push(dev_ref);
             }
-        }
+            detached
+        };
 
         for source in detached {
             if let Ok(mut q) = self.event_tx.lock() {
                 q.push_back(UsbIngressEvent::DeviceDetached { source });
             }
         }
+
+        self.cleanup_detached_sessions()?;
 
         Ok(())
     }
@@ -342,7 +472,7 @@ impl EspUsbHost {
         }
 
         // Ownership model:
-        // - register_device_if_needed() owns device-handle close.
+        // - TargetDeviceSession owns the device handle until detach cleanup.
         // - active config descriptor is cached by ESP-IDF and must not be freed here.
         let register_result = (|| -> Result<(), &'static str> {
             let mut desc_ptr: *const usb_device_desc_t = core::ptr::null();
@@ -359,7 +489,15 @@ impl EspUsbHost {
                     vendor_id: unsafe { (*desc_ptr).__bindgen_anon_1.idVendor },
                     product_id: unsafe { (*desc_ptr).__bindgen_anon_1.idProduct },
                 };
-                state.by_addr.insert(dev_addr, dev_ref.clone());
+                state.by_addr.insert(
+                    dev_addr,
+                    TargetDeviceSession {
+                        dev_ref: dev_ref.clone(),
+                        dev_hdl,
+                        interfaces: Vec::new(),
+                        detach_announced: false,
+                    },
+                );
                 dev_ref
             };
 
@@ -368,13 +506,23 @@ impl EspUsbHost {
             }
 
             let ep0_mps = unsafe { (*desc_ptr).__bindgen_anon_1.bMaxPacketSize0 };
-            self.emit_hid_interfaces_from_active_config(dev_ref, dev_hdl, client_hdl, ep0_mps)?;
+            self.emit_hid_interfaces_from_active_config(
+                dev_addr, dev_ref, dev_hdl, client_hdl, ep0_mps,
+            )?;
             Ok(())
         })();
 
-        let close_err = unsafe { usb_host_device_close(client_hdl, dev_hdl) };
-        if close_err != ESP_OK as i32 {
-            return Err("usb_host_device_close failed");
+        if register_result.is_err() {
+            let removed_session = self
+                .inner
+                .lock()
+                .ok()
+                .and_then(|mut state| state.by_addr.remove(&dev_addr));
+            if let Some(mut session) = removed_session {
+                let _ = cleanup_device_session(client_hdl, &mut session);
+            } else {
+                let _ = unsafe { usb_host_device_close(client_hdl, dev_hdl) };
+            }
         }
 
         register_result
@@ -383,6 +531,7 @@ impl EspUsbHost {
     #[cfg(target_os = "espidf")]
     fn emit_hid_interfaces_from_active_config(
         &self,
+        dev_addr: u8,
         dev_ref: UsbDeviceRef,
         dev_hdl: usb_device_handle_t,
         client_hdl: usb_host_client_handle_t,
@@ -459,7 +608,10 @@ impl EspUsbHost {
                             }
                             if let Ok(mut q) = self.event_tx.lock() {
                                 q.push_back(UsbIngressEvent::ReportDescriptorReceived(
-                                    ReportDescriptorBlob { source, bytes },
+                                    ReportDescriptorBlob {
+                                        source: source.clone(),
+                                        bytes,
+                                    },
                                 ));
                             }
                         }
@@ -473,6 +625,231 @@ impl EspUsbHost {
                         },
                     }
                 }
+
+                if let Some(endpoint) = iface.interrupt_in_endpoint {
+                    match self.start_interrupt_report_capture(
+                        client_hdl,
+                        dev_hdl,
+                        source.clone(),
+                        iface.interface_number,
+                        endpoint,
+                    ) {
+                        Ok(session) => {
+                            let mut state =
+                                self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
+                            if let Some(device_session) = state.by_addr.get_mut(&dev_addr) {
+                                device_session.interfaces.push(session);
+                            }
+                        }
+                        Err(err) => unsafe {
+                            printf(
+                                b"[USB_REPORT_WARN] Device: ID=%lu, IFACE=%u, STATUS=unavailable, STAGE=%u, ERR=%d, EP=%02x, MPS=%u, INTERVAL=%u\n\0"
+                                    .as_ptr() as *const _,
+                                dev_ref.device_id.0 as u32,
+                                iface.interface_number as u32,
+                                err.stage_code(),
+                                err.esp_error(),
+                                endpoint.address as u32,
+                                endpoint.max_packet_size as u32,
+                                endpoint.interval as u32,
+                            );
+                        },
+                    }
+                } else {
+                    unsafe {
+                        printf(
+                            b"[USB_REPORT_WARN] Device: ID=%lu, IFACE=%u, STATUS=no_interrupt_in\n\0"
+                                .as_ptr() as *const _,
+                            dev_ref.device_id.0 as u32,
+                            iface.interface_number as u32,
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "espidf")]
+    fn start_interrupt_report_capture(
+        &self,
+        client_hdl: usb_host_client_handle_t,
+        dev_hdl: usb_device_handle_t,
+        source: UsbInterfaceRef,
+        interface_number: u8,
+        endpoint: EndpointDescriptorInfo,
+    ) -> Result<TargetHidInterfaceSession, ReportCaptureError> {
+        let claim_err =
+            unsafe { usb_host_interface_claim(client_hdl, dev_hdl, interface_number, 0) };
+        if claim_err != ESP_OK as i32 {
+            return Err(ReportCaptureError::InterfaceClaim(claim_err));
+        }
+
+        let mut transfer: *mut usb_transfer_t = core::ptr::null_mut();
+        let alloc_len = endpoint.max_packet_size as usize;
+        let alloc_err = unsafe { usb_host_transfer_alloc(alloc_len, 0, &mut transfer) };
+        if alloc_err != ESP_OK as i32 || transfer.is_null() {
+            let _ = unsafe { usb_host_interface_release(client_hdl, dev_hdl, interface_number) };
+            return Err(ReportCaptureError::TransferAlloc(alloc_err));
+        }
+
+        let mut result = Box::new(InterruptTransferResult {
+            done: false,
+            status: usb_transfer_status_t_USB_TRANSFER_STATUS_ERROR,
+            actual_num_bytes: 0,
+        });
+
+        unsafe {
+            (*transfer).device_handle = dev_hdl;
+            (*transfer).bEndpointAddress = endpoint.address;
+            (*transfer).num_bytes = endpoint.max_packet_size as i32;
+            (*transfer).callback = Some(interrupt_transfer_cb);
+            (*transfer).context = (&mut *result as *mut InterruptTransferResult).cast();
+        }
+
+        let submit_err = unsafe { usb_host_transfer_submit(transfer) };
+        if submit_err != ESP_OK as i32 {
+            let _ = unsafe { usb_host_transfer_free(transfer) };
+            let _ = unsafe { usb_host_interface_release(client_hdl, dev_hdl, interface_number) };
+            return Err(ReportCaptureError::TransferSubmit(submit_err));
+        }
+
+        Ok(TargetHidInterfaceSession {
+            source,
+            endpoint,
+            transfer,
+            result,
+            in_flight: true,
+            claimed: true,
+            last_report_log_micros: 0,
+        })
+    }
+
+    #[cfg(target_os = "espidf")]
+    fn poll_completed_interrupt_transfers(&self) -> Result<(), &'static str> {
+        let mut reports = Vec::new();
+
+        {
+            let mut state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
+            for device_session in state.by_addr.values_mut() {
+                if device_session.detach_announced {
+                    continue;
+                }
+
+                for interface_session in &mut device_session.interfaces {
+                    if !interface_session.in_flight || !interface_session.result.done {
+                        continue;
+                    }
+
+                    interface_session.in_flight = false;
+                    let status = interface_session.result.status;
+                    let actual_num_bytes =
+                        interface_session.result.actual_num_bytes.max(0) as usize;
+
+                    if status == usb_transfer_status_t_USB_TRANSFER_STATUS_COMPLETED {
+                        if actual_num_bytes > 0 {
+                            let copy_len = actual_num_bytes
+                                .min(unsafe { (*interface_session.transfer).data_buffer_size });
+                            let bytes = unsafe {
+                                core::slice::from_raw_parts(
+                                    (*interface_session.transfer).data_buffer,
+                                    copy_len,
+                                )
+                                .to_vec()
+                            };
+
+                            let timestamp_micros = unsafe { esp_timer_get_time().max(0) as u64 };
+                            if interface_session.last_report_log_micros == 0
+                                || timestamp_micros
+                                    .saturating_sub(interface_session.last_report_log_micros)
+                                    >= 1_000_000
+                            {
+                                unsafe {
+                                    printf(
+                                        b"[USB_REPORT] Device: ID=%lu, IFACE=%u, BYTES=%u\n\0"
+                                            .as_ptr()
+                                            as *const _,
+                                        interface_session.source.device.device_id.0 as u32,
+                                        interface_session.source.interface_id.0 as u32,
+                                        bytes.len() as u32,
+                                    );
+                                }
+                                interface_session.last_report_log_micros = timestamp_micros;
+                            }
+                            reports.push(InputReportPacket {
+                                source: interface_session.source.clone(),
+                                report_id: ReportId(0),
+                                payload: bytes,
+                                timestamp_micros,
+                            });
+                        }
+
+                        if resubmit_interrupt_transfer(interface_session) {
+                            interface_session.in_flight = true;
+                        }
+                    } else if status != usb_transfer_status_t_USB_TRANSFER_STATUS_NO_DEVICE
+                        && status != usb_transfer_status_t_USB_TRANSFER_STATUS_CANCELED
+                    {
+                        unsafe {
+                            printf(
+                                b"[USB_REPORT_WARN] Device: ID=%lu, IFACE=%u, STATUS=%u\n\0"
+                                    .as_ptr() as *const _,
+                                interface_session.source.device.device_id.0 as u32,
+                                interface_session.source.interface_id.0 as u32,
+                                status as u32,
+                            );
+                        }
+                        if recover_interrupt_transfer(device_session.dev_hdl, interface_session) {
+                            interface_session.in_flight = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if !reports.is_empty()
+            && let Ok(mut q) = self.event_tx.lock()
+        {
+            for report in reports {
+                q.push_back(UsbIngressEvent::InputReportReceived(report));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "espidf")]
+    fn cleanup_detached_sessions(&self) -> Result<(), &'static str> {
+        let client_hdl = {
+            let state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
+            state.client_hdl
+        };
+
+        let detached_addrs = {
+            let state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
+            state
+                .by_addr
+                .iter()
+                .filter_map(|(addr, session)| session.detach_announced.then_some(*addr))
+                .collect::<Vec<_>>()
+        };
+
+        if detached_addrs.is_empty() {
+            return Ok(());
+        }
+
+        let mut state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
+        for addr in detached_addrs {
+            let is_clean = {
+                let Some(session) = state.by_addr.get_mut(&addr) else {
+                    continue;
+                };
+                cleanup_device_session(client_hdl, session)
+            };
+
+            if is_clean {
+                let _ = state.by_addr.remove(&addr);
             }
         }
 
@@ -609,6 +986,98 @@ impl EspUsbHost {
 }
 
 #[cfg(target_os = "espidf")]
+fn resubmit_interrupt_transfer(interface_session: &mut TargetHidInterfaceSession) -> bool {
+    interface_session.result.done = false;
+    interface_session.result.status = usb_transfer_status_t_USB_TRANSFER_STATUS_ERROR;
+    interface_session.result.actual_num_bytes = 0;
+
+    unsafe {
+        (*interface_session.transfer).actual_num_bytes = 0;
+        (*interface_session.transfer).num_bytes = interface_session.endpoint.max_packet_size as i32;
+    }
+
+    let submit_err = unsafe { usb_host_transfer_submit(interface_session.transfer) };
+    submit_err == ESP_OK as i32
+}
+
+#[cfg(target_os = "espidf")]
+fn recover_interrupt_transfer(
+    dev_hdl: usb_device_handle_t,
+    interface_session: &mut TargetHidInterfaceSession,
+) -> bool {
+    let _ = unsafe { usb_host_endpoint_flush(dev_hdl, interface_session.endpoint.address) };
+    let _ = unsafe { usb_host_endpoint_clear(dev_hdl, interface_session.endpoint.address) };
+    resubmit_interrupt_transfer(interface_session)
+}
+
+#[cfg(target_os = "espidf")]
+fn cleanup_device_session(
+    client_hdl: usb_host_client_handle_t,
+    session: &mut TargetDeviceSession,
+) -> bool {
+    let mut all_interfaces_clean = true;
+
+    for interface_session in &mut session.interfaces {
+        if interface_session.in_flight {
+            if !interface_session.result.done {
+                let _ = unsafe {
+                    usb_host_endpoint_halt(session.dev_hdl, interface_session.endpoint.address)
+                };
+                let _ = unsafe {
+                    usb_host_endpoint_flush(session.dev_hdl, interface_session.endpoint.address)
+                };
+                for _ in 0..4 {
+                    if interface_session.result.done {
+                        break;
+                    }
+                    let _ = unsafe { usb_host_client_handle_events(client_hdl, 0) };
+                }
+            }
+
+            if interface_session.result.done {
+                interface_session.in_flight = false;
+            }
+        }
+
+        if interface_session.in_flight {
+            all_interfaces_clean = false;
+            continue;
+        }
+
+        if !interface_session.transfer.is_null() {
+            let free_err = unsafe { usb_host_transfer_free(interface_session.transfer) };
+            if free_err == ESP_OK as i32 {
+                interface_session.transfer = core::ptr::null_mut();
+            } else {
+                all_interfaces_clean = false;
+            }
+        }
+
+        if interface_session.claimed {
+            let release_err = unsafe {
+                usb_host_interface_release(
+                    client_hdl,
+                    session.dev_hdl,
+                    interface_session.source.interface_id.0 as u8,
+                )
+            };
+            if release_err == ESP_OK as i32 {
+                interface_session.claimed = false;
+            } else {
+                all_interfaces_clean = false;
+            }
+        }
+    }
+
+    if !all_interfaces_clean {
+        return false;
+    }
+
+    let close_err = unsafe { usb_host_device_close(client_hdl, session.dev_hdl) };
+    close_err == ESP_OK as i32
+}
+
+#[cfg(target_os = "espidf")]
 fn round_up_to_mps(value: usize, mps: usize) -> usize {
     if mps == 0 {
         value
@@ -620,7 +1089,8 @@ fn round_up_to_mps(value: usize, mps: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        InterfaceDescriptorInfo, parse_hid_interfaces_from_config, parse_interfaces_from_config,
+        EndpointDescriptorInfo, InterfaceDescriptorInfo, parse_hid_interfaces_from_config,
+        parse_interfaces_from_config,
     };
 
     #[test]
@@ -653,6 +1123,7 @@ mod tests {
                     subclass_code: 1,
                     protocol_code: 2,
                     report_descriptor_len: None,
+                    interrupt_in_endpoint: None,
                 },
                 InterfaceDescriptorInfo {
                     interface_number: 1,
@@ -660,6 +1131,7 @@ mod tests {
                     subclass_code: 93,
                     protocol_code: 1,
                     report_descriptor_len: None,
+                    interrupt_in_endpoint: None,
                 }
             ]
         );
@@ -682,6 +1154,35 @@ mod tests {
                 subclass_code: 0,
                 protocol_code: 0,
                 report_descriptor_len: Some(63),
+                interrupt_in_endpoint: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn parses_hid_interrupt_in_endpoint() {
+        let blob = [
+            9, 2, 34, 0, 1, 1, 0, 0x80, 50, // config desc
+            9, 4, 2, 0, 1, 3, 0, 0, 0, // HID iface
+            9, 0x21, 0x11, 0x01, 0, 1, 0x22, 0x20, 0, // HID desc
+            7, 5, 0x81, 0x03, 0x10, 0, 10, // interrupt IN endpoint
+        ];
+
+        let interfaces = parse_interfaces_from_config(&blob);
+        assert_eq!(
+            interfaces,
+            vec![InterfaceDescriptorInfo {
+                interface_number: 2,
+                class_code: 3,
+                subclass_code: 0,
+                protocol_code: 0,
+                report_descriptor_len: Some(32),
+                interrupt_in_endpoint: Some(EndpointDescriptorInfo {
+                    address: 0x81,
+                    attributes: 0x03,
+                    max_packet_size: 16,
+                    interval: 10,
+                }),
             }]
         );
     }

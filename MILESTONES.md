@@ -96,14 +96,14 @@ Real attach/detach + identity witness plumbing exists for ESP32-S3, but this mil
 - **Missing acceptance evidence:** direct-attach witness is blocked by current cabling/port geometry, and exact carrier board model is still TODO.
 - **Do not claim complete until:** direct-attach and powered-hub witness results are captured with board, hub, HID device, topology, build/flash/monitor commands, and control-plane transcripts.
 
-### M2B.2 (Partial)
+### M2B.2 (Hardware witness captured)
 Descriptor and input-report capture exposed through control plane.
 
 #### Current evidence status
-- **Implemented code path:** HID report descriptor length is parsed from the active configuration descriptor; target code issues a one-shot standard GET_DESCRIPTOR request for descriptor type `0x22`; successful descriptor bytes are emitted as `ReportDescriptorReceived` and exposed via `GET_USB_DESCRIPTOR <device>:<interface>`.
-- **Descriptor evidence:** THRUSTMASTER T.16000 FCS HOTAS (`VID=044f, PID=b10a`) returned a 134-byte HID report descriptor through the HooToo SHUTTLE HT-UC001 hub. Evidence is checked in at `docs/milestone-evidence/M2B2_DESCRIPTOR_WITNESS_2026-04-29.md`.
+- **Implemented code path:** HID report descriptor length is parsed from the active configuration descriptor; target code issues a one-shot standard GET_DESCRIPTOR request for descriptor type `0x22`; successful descriptor bytes are emitted as `ReportDescriptorReceived` and exposed via `GET_USB_DESCRIPTOR <device>:<interface>`. HID interrupt IN endpoints are parsed from the active configuration descriptor, claimed on target, continuously submitted as interrupt transfers, emitted as `InputReportReceived`, and exposed via `GET_LAST_USB_REPORT <device>:<interface>`.
+- **Descriptor/report evidence:** THRUSTMASTER T.16000 FCS HOTAS (`VID=044f, PID=b10a`) returned a 134-byte HID report descriptor and a 64-byte raw input report through the HooToo SHUTTLE HT-UC001 hub. Evidence is checked in at `docs/milestone-evidence/M2B2_DESCRIPTOR_WITNESS_2026-04-29.md`.
 - **Negative evidence:** an initial transfer-pump attempt left a control transfer in flight and asserted on close; the accepted code services both USB host library and client events before closing the device handle.
-- **Missing acceptance evidence:** live interrupt input-report capture is not implemented; `GET_LAST_USB_REPORT 4:0` still returns `ERROR:NotFound`.
+- **Remaining scope:** BLE publishing and report capture coverage for every Flight Pack component remain future milestones/work items.
 
 ### Goal
 Prove real USB host viability on ESP32-S3 with curated supported hardware.
@@ -148,6 +148,12 @@ Contracts used here must already include topology support for future powered USB
 ### Goal
 Convert raw descriptors into a stable parsed capability model and prove host/device parity.
 
+### Current evidence status
+- **Implemented code path:** `usb2ble-hid` parses HID short items into `HidDescriptorIr`, extracts input fields, summarizes axes/buttons/hats/report IDs, and surfaces typed parse errors. The app parses `ReportDescriptorReceived` events into stored IR and exposes capability summaries via `GET_HID_SUMMARY <device>:<interface>`.
+- **Fixture evidence:** The THRUSTMASTER T.16000 FCS HOTAS (`VID=044f, PID=b10a`) 134-byte report descriptor is committed as `crates/usb2ble-hid/fixtures/thrustmaster_t16000_fcs_044f_b10a_report_descriptor.hex`.
+- **Host/target summary evidence:** Host tests and ESP32-S3 target `GET_HID_SUMMARY 2:0` both produce 4 axes, 16 buttons, 1 hat, and report ID 0 for the same T.16000 descriptor. Evidence is checked in at `docs/milestone-evidence/M3_HID_SUMMARY_WITNESS_2026-04-29.md`.
+- **Remaining scope:** Full target IR dump/parity remains open; M4 owns live normalized input evidence.
+
 ### Scope
 - descriptor parser
 - IR definitions
@@ -182,6 +188,14 @@ Convert raw descriptors into a stable parsed capability model and prove host/dev
 
 ### Goal
 Turn real HID input into a stable normalized model that can be inspected live on hardware.
+
+### Current evidence status
+- **Implemented code path:** `usb2ble-hid` decodes input reports from parsed HID IR, `usb2ble-input` normalizes decoded buttons/axes/hats into shared controls, and the app exposes the latest normalized frame through `GET_NORMALIZED_INPUT <device>:<interface>`.
+- **Fixture evidence:** Host tests decode and normalize a hardware-captured THRUSTMASTER T.16000 FCS HOTAS (`VID=044f`, `PID=b10a`) descriptor/report fixture.
+- **Target baseline normalized witness:** ESP32-S3 target `GET_NORMALIZED_INPUT 2:0` returned a 21-control frame for a real 64-byte T.16000 report through the HooToo powered hub. Evidence is checked in at `docs/milestone-evidence/M4_NORMALIZED_INPUT_WITNESS_2026-04-29.md`.
+- **Expanded Flight Pack evidence:** TFRP pedals (`044f:b679`) and the T.16000 stick (`044f:b10a`) produced normalized frames in a full-pack run; the TWCS throttle (`044f:b687`) produced normalized frames when connected through the same hub without the other Flight Pack devices. Evidence is checked in at `docs/milestone-evidence/M4_FLIGHT_PACK_NORMALIZED_WITNESS_2026-04-29.md`.
+- **RJ12 two-USB Flight Pack evidence:** With TFRP pedals connected to the TWCS by RJ12, and TWCS USB plus T.16000 stick USB connected through the HooToo hub, both USB HID streams produced simultaneous normalized frames. A pedals-only movement pass changed the TWCS normalized axes while the stick stayed essentially fixed. Evidence is checked in at `docs/milestone-evidence/M4_RJ12_TWO_USB_FLIGHT_PACK_WITNESS_2026-04-29.md`.
+- **Remaining scope:** Button-press delta evidence, normalized detach cleanup evidence, exact RJ12 pedal axis labels, BLE publishing, and simultaneous normalized streaming from all three separate Flight Pack USB devices remain future work.
 
 ### Scope
 - HID report decode

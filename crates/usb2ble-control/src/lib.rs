@@ -54,6 +54,16 @@ impl ControlPlane for SerialControlPlane {
             return Ok(ControlCommand::GetLastUsbReport(key));
         }
 
+        if let Some(rest) = s.strip_prefix("GET_HID_SUMMARY ") {
+            let key = parse_descriptor_key(rest.trim()).ok_or(ControlError::Generic)?;
+            return Ok(ControlCommand::GetHidSummary(key));
+        }
+
+        if let Some(rest) = s.strip_prefix("GET_NORMALIZED_INPUT ") {
+            let key = parse_descriptor_key(rest.trim()).ok_or(ControlError::Generic)?;
+            return Ok(ControlCommand::GetNormalizedInput(key));
+        }
+
         Err(ControlError::Generic)
     }
 
@@ -118,6 +128,12 @@ impl ControlPlane for SerialControlPlane {
                 out.push_str("USB_REPORT:");
                 out.push_str(&hex::encode(&resp.bytes));
             }
+            ControlResponse::HidSummary(resp) => {
+                encode_hid_summary(&mut out, resp);
+            }
+            ControlResponse::NormalizedInput(resp) => {
+                encode_normalized_input(&mut out, resp);
+            }
             ControlResponse::Error(err) => {
                 let _ = write!(out, "ERROR:{err:?}");
             }
@@ -125,6 +141,82 @@ impl ControlPlane for SerialControlPlane {
 
         out.push('\n');
         Ok(out.into_bytes())
+    }
+}
+
+fn encode_hid_summary(out: &mut String, resp: &usb2ble_contracts::HidSummaryResponse) {
+    out.push_str("HID_SUMMARY:");
+    let summary = &resp.summary;
+    let _ = write!(
+        out,
+        "axes={};buttons={};hats={};report_ids=",
+        summary.axes.len(),
+        summary.buttons.len(),
+        summary.hats.len()
+    );
+    for (i, report_id) in summary.report_ids.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let _ = write!(out, "{}", report_id.0);
+    }
+    out.push(';');
+
+    out.push_str("axis_usages=");
+    for (i, axis) in summary.axes.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let _ = write!(out, "{:02x}:{:x}", axis.usage_page, axis.usage);
+    }
+    out.push(';');
+
+    out.push_str("button_usages=");
+    for (i, button) in summary.buttons.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let _ = write!(out, "{}", button.usage);
+    }
+    out.push(';');
+
+    out.push_str("hat_usages=");
+    for (i, hat) in summary.hats.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let _ = write!(out, "{:02x}:{:x}", hat.usage_page, hat.usage);
+    }
+    out.push(';');
+}
+
+fn encode_normalized_input(out: &mut String, resp: &usb2ble_contracts::NormalizedInputResponse) {
+    out.push_str("NORMALIZED_INPUT:");
+    let _ = write!(out, "controls={};", resp.frame.controls.len());
+    for control in &resp.frame.controls {
+        let _ = write!(out, "{}=", control.control_id);
+        write_normalized_value(out, control.value);
+        out.push(';');
+    }
+}
+
+fn write_normalized_value(out: &mut String, value: usb2ble_contracts::NormalizedControlValue) {
+    match value {
+        usb2ble_contracts::NormalizedControlValue::Axis(value) => {
+            let _ = write!(out, "axis:{value}");
+        }
+        usb2ble_contracts::NormalizedControlValue::Button(value) => {
+            let _ = write!(out, "button:{}", u8::from(value));
+        }
+        usb2ble_contracts::NormalizedControlValue::Hat(value) => {
+            let _ = write!(out, "hat:{value}");
+        }
+        usb2ble_contracts::NormalizedControlValue::Trigger(value) => {
+            let _ = write!(out, "trigger:{value}");
+        }
+        usb2ble_contracts::NormalizedControlValue::Unknown(value) => {
+            let _ = write!(out, "unknown:{value}");
+        }
     }
 }
 
@@ -231,13 +323,29 @@ mod tests {
                 interface_id: Some(InterfaceId(1))
             })
         );
+        assert_eq!(
+            cp.decode_command(b"GET_HID_SUMMARY 2:1").unwrap(),
+            ControlCommand::GetHidSummary(DescriptorKey {
+                device_id: DeviceId(2),
+                interface_id: Some(InterfaceId(1))
+            })
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_NORMALIZED_INPUT 2:1").unwrap(),
+            ControlCommand::GetNormalizedInput(DescriptorKey {
+                device_id: DeviceId(2),
+                interface_id: Some(InterfaceId(1))
+            })
+        );
     }
 
     #[test]
     fn test_encode_m2_responses() {
         use usb2ble_contracts::{
-            ConnectionTopology, UsbDescriptorResponse, UsbDeviceRef, UsbReportResponse,
-            UsbStatusResponse,
+            ConnectionTopology, HidAxisCapability, HidCapabilitySummary, HidSummaryResponse,
+            NormalizedControlEvent, NormalizedControlValue, NormalizedInputFrame,
+            NormalizedInputResponse, ReportId, UsbDescriptorResponse, UsbDeviceRef,
+            UsbInterfaceRef, UsbReportResponse, UsbStatusResponse,
         };
 
         let cp = SerialControlPlane::new();
@@ -283,5 +391,55 @@ mod tests {
         });
         let bytes = cp.encode_response(&resp).unwrap();
         assert_eq!(std::str::from_utf8(&bytes).unwrap(), "USB_REPORT:0102\n");
+
+        // HidSummary
+        let resp = ControlResponse::HidSummary(HidSummaryResponse {
+            summary: HidCapabilitySummary {
+                axes: vec![HidAxisCapability {
+                    report_id: ReportId(0),
+                    usage_page: 0x01,
+                    usage: 0x30,
+                    bit_offset: 24,
+                    bit_size: 14,
+                    logical_min: 0,
+                    logical_max: 16_383,
+                }],
+                buttons: Vec::new(),
+                hats: Vec::new(),
+                report_ids: vec![ReportId(0)],
+            },
+        });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "HID_SUMMARY:axes=1;buttons=0;hats=0;report_ids=0;axis_usages=01:30;button_usages=;hat_usages=;\n"
+        );
+
+        // NormalizedInput
+        let source = UsbInterfaceRef {
+            device: UsbDeviceRef {
+                device_id: DeviceId(1),
+                topology: ConnectionTopology::Direct,
+                vendor_id: 0x1234,
+                product_id: 0x5678,
+            },
+            interface_id: InterfaceId(0),
+        };
+        let resp = ControlResponse::NormalizedInput(NormalizedInputResponse {
+            frame: NormalizedInputFrame {
+                source: source.clone(),
+                controls: vec![NormalizedControlEvent {
+                    source,
+                    control_id: "button_1".to_string(),
+                    value: NormalizedControlValue::Button(true),
+                    timestamp_micros: 7,
+                }],
+            },
+        });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "NORMALIZED_INPUT:controls=1;button_1=button:1;\n"
+        );
     }
 }

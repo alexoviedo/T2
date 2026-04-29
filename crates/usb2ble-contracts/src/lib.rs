@@ -215,6 +215,16 @@ pub struct HidField {
 pub enum HidParseError {
     /// Generic parsing failure.
     Generic,
+    /// Descriptor was empty.
+    EmptyDescriptor,
+    /// Descriptor ended before an item payload was complete.
+    TruncatedItem,
+    /// HID long items are not supported by the M3 parser.
+    UnsupportedLongItem,
+    /// A main item required a report size but none was active.
+    MissingReportSize,
+    /// A main item required a report count but none was active.
+    MissingReportCount,
 }
 
 /// Trait for parsing raw HID descriptors into IR.
@@ -226,7 +236,8 @@ pub trait HidDescriptorParser {
     ) -> Result<HidDescriptorIr, HidParseError>;
 }
 
-/// High-level summary of a device's HID capabilities.
+/// High-level summary of a device's HID input capabilities.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HidCapabilitySummary {
     /// Available axes.
     pub axes: Vec<HidAxisCapability>,
@@ -239,15 +250,80 @@ pub struct HidCapabilitySummary {
 }
 
 /// Metadata for an axis capability.
-pub struct HidAxisCapability {}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HidAxisCapability {
+    /// Report ID this axis belongs to.
+    pub report_id: ReportId,
+    /// HID usage page.
+    pub usage_page: u16,
+    /// HID usage ID.
+    pub usage: u32,
+    /// Offset in bits within the raw report payload.
+    pub bit_offset: u32,
+    /// Size in bits.
+    pub bit_size: u16,
+    /// Logical minimum value.
+    pub logical_min: i32,
+    /// Logical maximum value.
+    pub logical_max: i32,
+}
+
 /// Metadata for a button capability.
-pub struct HidButtonCapability {}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HidButtonCapability {
+    /// Report ID this button belongs to.
+    pub report_id: ReportId,
+    /// HID button usage ID.
+    pub usage: u32,
+    /// Offset in bits within the raw report payload.
+    pub bit_offset: u32,
+}
+
 /// Metadata for a hat switch capability.
-pub struct HidHatCapability {}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HidHatCapability {
+    /// Report ID this hat belongs to.
+    pub report_id: ReportId,
+    /// HID usage page.
+    pub usage_page: u16,
+    /// HID usage ID.
+    pub usage: u32,
+    /// Offset in bits within the raw report payload.
+    pub bit_offset: u32,
+    /// Size in bits.
+    pub bit_size: u16,
+    /// Logical minimum value.
+    pub logical_min: i32,
+    /// Logical maximum value.
+    pub logical_max: i32,
+}
+
+/// A decoded field value from a HID input report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecodedHidFieldValue {
+    /// HID report ID.
+    pub report_id: ReportId,
+    /// HID usage page.
+    pub usage_page: u16,
+    /// HID usage ID.
+    pub usage: u32,
+    /// Raw decoded integer value.
+    pub value: i32,
+    /// Logical minimum value from the descriptor.
+    pub logical_min: i32,
+    /// Logical maximum value from the descriptor.
+    pub logical_max: i32,
+}
 
 /// A decoded HID input report.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedInputReport {
-    // Placeholder for M4
+    /// The USB source interface.
+    pub source: UsbInterfaceRef,
+    /// Host-relative timestamp in microseconds.
+    pub timestamp_micros: u64,
+    /// Decoded field values.
+    pub values: Vec<DecodedHidFieldValue>,
 }
 
 /// Errors occurring during HID report decoding.
@@ -255,6 +331,10 @@ pub struct DecodedInputReport {
 pub enum HidDecodeError {
     /// Generic decoding failure.
     Generic,
+    /// Raw report bytes are too short for the parsed field layout.
+    TruncatedReport,
+    /// Report ID in the packet does not match the parsed descriptor.
+    ReportIdMismatch,
 }
 
 /// Trait for decoding raw HID reports using a parsed IR.
@@ -285,6 +365,7 @@ pub enum NormalizedControlValue {
 }
 
 /// A normalized event from a specific source control.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedControlEvent {
     /// The USB source interface.
     pub source: UsbInterfaceRef,
@@ -297,6 +378,7 @@ pub struct NormalizedControlEvent {
 }
 
 /// A full frame of normalized input from a single source.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedInputFrame {
     /// The USB source interface.
     pub source: UsbInterfaceRef,
@@ -618,6 +700,20 @@ pub struct UsbReportResponse {
     pub bytes: Vec<u8>,
 }
 
+/// Response payload for `GET_HID_SUMMARY`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HidSummaryResponse {
+    /// Parsed capability summary.
+    pub summary: HidCapabilitySummary,
+}
+
+/// Response payload for `GET_NORMALIZED_INPUT`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizedInputResponse {
+    /// Normalized frame built from the last raw HID input report.
+    pub frame: NormalizedInputFrame,
+}
+
 /// A command received over the serial control plane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlCommand {
@@ -635,6 +731,10 @@ pub enum ControlCommand {
     GetUsbDescriptor(DescriptorKey),
     /// Request the last raw input report for a device/interface.
     GetLastUsbReport(DescriptorKey),
+    /// Request parsed HID capability summary for a device/interface.
+    GetHidSummary(DescriptorKey),
+    /// Request normalized controls decoded from the last raw input report.
+    GetNormalizedInput(DescriptorKey),
 }
 
 /// A response to be sent over the serial control plane.
@@ -654,6 +754,10 @@ pub enum ControlResponse {
     UsbDescriptor(UsbDescriptorResponse),
     /// Response to `GET_LAST_USB_REPORT`.
     UsbReport(UsbReportResponse),
+    /// Response to `GET_HID_SUMMARY`.
+    HidSummary(HidSummaryResponse),
+    /// Response to `GET_NORMALIZED_INPUT`.
+    NormalizedInput(NormalizedInputResponse),
     /// An error response.
     Error(ControlError),
 }
@@ -698,6 +802,8 @@ pub struct AppState {
     pub raw_descriptors: Vec<(DescriptorKey, Vec<u8>)>,
     /// Last raw input reports keyed by device/interface.
     pub last_reports: Vec<(DescriptorKey, Vec<u8>)>,
+    /// Last raw input report packets keyed by device/interface.
+    pub last_report_packets: Vec<(DescriptorKey, InputReportPacket)>,
     /// Currently active mapping profile.
     pub active_profile: Option<ProfileId>,
     /// Currently active BLE persona.

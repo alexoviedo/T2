@@ -6,7 +6,9 @@
 mod integration_tests;
 
 use usb2ble_app::App;
-use usb2ble_contracts::{CONTRACT_VERSION, ControlPlane, ControlResponse, UsbIngress};
+use usb2ble_contracts::{
+    CONTRACT_VERSION, ControlPlane, ControlResponse, DescriptorKey, UsbIngress,
+};
 use usb2ble_control::SerialControlPlane;
 use usb2ble_platform_esp32::{self as platform, EspUsbIngress, Uart, UartReadResult};
 use usb2ble_storage::InMemoryStore;
@@ -14,7 +16,7 @@ use usb2ble_storage::InMemoryStore;
 /// Firmware name.
 pub const FIRMWARE_NAME: &str = "usb2ble";
 /// Firmware version.
-pub const FIRMWARE_VERSION: &str = "0.2.1-m2b1";
+pub const FIRMWARE_VERSION: &str = "0.4.0-m4";
 
 /// Main firmware entrypoint.
 pub fn main() {
@@ -52,13 +54,14 @@ pub fn main() {
     platform::trace_printf(b"[TRACE] Initializing app\n\0");
     let mut app = App::new(storage);
     let control = SerialControlPlane::new();
+    let mut report_log_micros: Vec<(DescriptorKey, u64)> = Vec::new();
 
     // 4. Print startup banner
     platform::trace_printf(b"--- USB2BLE FIRMWARE BOOT ---\n\0");
     uart.write_all(format!("Name: {}\n", FIRMWARE_NAME).as_bytes());
     uart.write_all(format!("Version: {}\n", FIRMWARE_VERSION).as_bytes());
     uart.write_all(format!("Contract Version: {}\n", CONTRACT_VERSION).as_bytes());
-    uart.write_all(b"Status: M2B.1 Code-path (HW Verification Pending)\n");
+    uart.write_all(b"Status: M4 Code-path (Normalized Input Witness)\n");
     uart.write_all(b"Ready for commands.\n");
 
     platform::trace_printf(b"[TRACE] ENTERED MAIN LOOP\n\0");
@@ -91,6 +94,7 @@ pub fn main() {
                     uart.write_all(
                         format!("[DETACH] Device: ID={}\n", source.device_id.0).as_bytes(),
                     );
+                    report_log_micros.retain(|(k, _)| k.device_id != source.device_id);
                 }
                 usb2ble_contracts::UsbIngressEvent::InterfaceDiscovered {
                     source,
@@ -120,6 +124,37 @@ pub fn main() {
                         )
                         .as_bytes(),
                     );
+                }
+                usb2ble_contracts::UsbIngressEvent::InputReportReceived(packet) => {
+                    let key = DescriptorKey {
+                        device_id: packet.source.device.device_id,
+                        interface_id: Some(packet.source.interface_id),
+                    };
+                    let should_log = if let Some((_, last_micros)) =
+                        report_log_micros.iter_mut().find(|(k, _)| *k == key)
+                    {
+                        if packet.timestamp_micros.saturating_sub(*last_micros) >= 1_000_000 {
+                            *last_micros = packet.timestamp_micros;
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        report_log_micros.push((key, packet.timestamp_micros));
+                        true
+                    };
+                    if should_log {
+                        uart.write_all(
+                            format!(
+                                "[REPORT] Device: ID={}, IFACE={}, REPORT_ID={}, BYTES={}\n",
+                                packet.source.device.device_id.0,
+                                packet.source.interface_id.0,
+                                packet.report_id.0,
+                                packet.payload.len()
+                            )
+                            .as_bytes(),
+                        );
+                    }
                 }
                 _ => {}
             }
