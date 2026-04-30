@@ -777,6 +777,32 @@ pub struct EncodedReportResponse {
     pub report: EncodedBleReport,
 }
 
+/// One source-control mapping decision for a persona report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MappingDiagnosticEntry {
+    /// USB source interface that contributed the value.
+    pub source: UsbInterfaceRef,
+    /// Source normalized control identifier.
+    pub source_control_id: String,
+    /// Source normalized value at mapping time.
+    pub source_value: NormalizedControlValue,
+    /// Target persona control, when the source was mapped.
+    pub target_control_id: Option<String>,
+    /// Stable reason string explaining the mapping decision.
+    pub reason: String,
+}
+
+/// Response payload for Generic Gamepad mapping diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MappingDiagnosticsResponse {
+    /// Mapping profile that made the decision.
+    pub profile_id: ProfileId,
+    /// Target persona for the mapped frame.
+    pub target_persona: PersonaId,
+    /// Per-source-control mapping decisions.
+    pub entries: Vec<MappingDiagnosticEntry>,
+}
+
 /// Response payload for BLE transport actions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BleActionResponse {
@@ -811,6 +837,8 @@ pub enum ControlCommand {
     GetNormalizedInput(DescriptorKey),
     /// Request a Generic Gamepad report encoded from all latest normalized inputs.
     GetGenericGamepadReport,
+    /// Request diagnostics explaining the Generic Gamepad auto-mapping result.
+    GetGenericGamepadMapping,
     /// Start the BLE Generic Gamepad persona.
     StartBleGenericGamepad,
     /// Publish the latest Generic Gamepad report over BLE.
@@ -844,6 +872,8 @@ pub enum ControlResponse {
     NormalizedInput(NormalizedInputResponse),
     /// Response to `GET_GENERIC_GAMEPAD_REPORT`.
     EncodedReport(EncodedReportResponse),
+    /// Response to `GET_GENERIC_GAMEPAD_MAPPING`.
+    MappingDiagnostics(MappingDiagnosticsResponse),
     /// Response to a BLE transport action.
     BleAction(BleActionResponse),
     /// An error response.

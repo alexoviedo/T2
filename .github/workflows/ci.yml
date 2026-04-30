@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  ESPFLASH_SKIP_UPDATE_CHECK: "1"
 
 jobs:
   host_checks:
@@ -24,6 +25,9 @@ jobs:
 
     - name: Rust Cache
       uses: Swatinem/rust-cache@v2
+
+    - name: Install espflash
+      run: cargo install espflash --version 4.4.0 --locked
 
     - name: Shell syntax check
       run: bash -n scripts/*.sh
@@ -74,9 +78,16 @@ jobs:
     - name: Target build preflight
       run: ./scripts/check_target_build.sh
 
-    - name: Upload target firmware artifact
+    - name: Package flashable firmware image
+      run: ./scripts/package_firmware.sh
+
+    - name: Upload flashable firmware artifact
       uses: actions/upload-artifact@v4
       with:
-        name: usb2ble-fw-xtensa-esp32s3-espidf
-        path: target/xtensa-esp32s3-espidf/debug/usb2ble-fw
+        name: usb2ble-fw-esp32s3-flashable
+        path: |
+          target/firmware/usb2ble-fw-esp32s3-merged.bin
+          target/firmware/usb2ble-fw-esp32s3-manifest.txt
+          target/xtensa-esp32s3-espidf/debug/usb2ble-fw
         if-no-files-found: error
+        retention-days: 30

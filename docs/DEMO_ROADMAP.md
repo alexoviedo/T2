@@ -28,18 +28,24 @@ Operator command:
 
 ```text
 GET_GENERIC_GAMEPAD_REPORT
+GET_GENERIC_GAMEPAD_MAPPING
 ```
 
 Expected response shape:
 
 ```text
 ENCODED_REPORT:persona=generic_gamepad;report_id=1;bytes=<hex>;
+GENERIC_GAMEPAD_MAPPING:profile=generic_auto;persona=generic_gamepad;entries=<n>;mappings=<...>;
 ```
 
 What this proves:
 
 - the app can bridge from current live USB input state into a BLE-ready Generic
   Gamepad report payload
+- mapping decisions can be inspected by source VID/PID/interface, source
+  control, target control, value, and reason
+- the target firmware can return those mapping diagnostics against live TWCS and
+  T.16000M input state
 - mapping/persona logic lives in pure host-testable crates
 - the output payload shape is independent of USB and ESP-IDF details
 
@@ -125,6 +131,8 @@ What hardware evidence now exists:
 - Mac IOHID receives axis values from the live USB-derived BLE report
 - a browser Gamepad API witness receives a change snapshot after a live
   USB-derived BLE publish
+- GitHub Actions is expected to package a flashable merged ESP32-S3 firmware
+  image for demo builds
 
 What still needs demo polish:
 
@@ -162,5 +170,5 @@ Near-term improvements:
 - add calibration and inversion rules for axes
 - add source selectors based on VID/PID, interface, capability fingerprint, and
   eventually serial/topology where available
-- add a diagnostics command that explains why each source control mapped to each
-  output control
+- capture an operator movement/delta witness for `GET_GENERIC_GAMEPAD_MAPPING`
+  while moving one physical control at a time

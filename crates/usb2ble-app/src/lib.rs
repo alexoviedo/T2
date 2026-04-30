@@ -12,7 +12,7 @@ use usb2ble_contracts::{
 };
 use usb2ble_hid::{HidParser, summarize_capabilities};
 use usb2ble_input::{LatestInputMerger, StandardInputNormalizer};
-use usb2ble_mapping::{GenericAutoMapper, generic_auto_profile};
+use usb2ble_mapping::{GenericAutoMapper, diagnose_generic_gamepad_mapping, generic_auto_profile};
 use usb2ble_personas::GenericGamepadEncoder;
 
 /// The main application structure.
@@ -106,6 +106,7 @@ where
                 )
             }
             ControlCommand::GetGenericGamepadReport => self.generic_gamepad_report_response(),
+            ControlCommand::GetGenericGamepadMapping => self.generic_gamepad_mapping_response(),
             ControlCommand::StartBleGenericGamepad
             | ControlCommand::PublishGenericGamepadReport
             | ControlCommand::SendBleSelfTestReport
@@ -137,6 +138,21 @@ where
             .map_or_else(ControlResponse::Error, |report| {
                 ControlResponse::EncodedReport(EncodedReportResponse { report })
             })
+    }
+
+    fn generic_gamepad_mapping_response(&self) -> ControlResponse {
+        let frames = self.latest_normalized_frames();
+        if frames.is_empty() {
+            return ControlResponse::Error(ControlError::NotFound);
+        }
+
+        let Ok(composite) =
+            LatestInputMerger.merge(&frames, &usb2ble_contracts::CompositeProfile::default())
+        else {
+            return ControlResponse::Error(ControlError::Generic);
+        };
+
+        ControlResponse::MappingDiagnostics(diagnose_generic_gamepad_mapping(&composite))
     }
 
     /// Build a Generic Gamepad report from all latest normalized inputs.
@@ -412,6 +428,21 @@ mod tests {
             assert_eq!(report.report.bytes.len(), 15);
         } else {
             panic!("Expected EncodedReport");
+        }
+
+        let resp = app.handle_control_command(&ControlCommand::GetGenericGamepadMapping);
+        if let ControlResponse::MappingDiagnostics(diagnostics) = resp {
+            assert_eq!(diagnostics.profile_id.0, "generic_auto");
+            assert_eq!(diagnostics.target_persona.0, "generic_gamepad");
+            assert_eq!(diagnostics.entries.len(), 1);
+            assert_eq!(diagnostics.entries[0].source_control_id, "button_1");
+            assert_eq!(
+                diagnostics.entries[0].target_control_id.as_deref(),
+                Some("button_1")
+            );
+            assert_eq!(diagnostics.entries[0].reason, "button");
+        } else {
+            panic!("Expected MappingDiagnostics");
         }
 
         // Test missing key

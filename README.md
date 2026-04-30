@@ -5,7 +5,9 @@
 - ESP32-S3 target-build preflight is expected to pass in CI.
 - Real powered-hub hardware witness transcripts are checked in for attach/detach identity, HID descriptor capture, raw input-report capture, HID capability summary, baseline normalized input, and the practical RJ12 Flight Pack topology.
 - Host-tested demo bridge code now encodes current normalized USB state into a Generic Gamepad report via `GET_GENERIC_GAMEPAD_REPORT`.
+- Host-tested mapping diagnostics now explain how normalized source controls map into the Generic Gamepad persona via `GET_GENERIC_GAMEPAD_MAPPING`.
 - Real target smoke evidence for `GET_GENERIC_GAMEPAD_REPORT` is checked in for the RJ12 Flight Pack topology.
+- Real target smoke evidence for `GET_GENERIC_GAMEPAD_MAPPING` is checked in for the TWCS plus T.16000M topology.
 - Target BLE HID demo firmware now starts the Generic Gamepad persona, reaches `ble=Advertising`, connects to a Mac host, and publishes both synthetic and live USB-derived Generic Gamepad reports over BLE.
 - Browser Gamepad API witness evidence is checked in for the BLE Generic Gamepad path, including synthetic self-test changes and one live USB-derived publish.
 
@@ -36,11 +38,14 @@
 - `GET_HID_SUMMARY <device>:<interface>` returns parsed axes/buttons/hats/report IDs for descriptors that parse successfully.
 - `GET_NORMALIZED_INPUT <device>:<interface>` returns a normalized control frame decoded from the latest input report for descriptors that parse successfully.
 - `GET_GENERIC_GAMEPAD_REPORT` returns an encoded Generic Gamepad report from the latest normalized input frames, ready for the future BLE publish layer.
+- `GET_GENERIC_GAMEPAD_MAPPING` explains each Generic Gamepad auto-mapping decision, including source VID/PID/interface, source control, target control, value, and reason.
 - `START_BLE_GENERIC_GAMEPAD` starts the target BLE HID Generic Gamepad persona.
 - `SEND_BLE_SELF_TEST_REPORT` publishes an explicit synthetic Generic Gamepad report when a BLE host is connected.
 - `PUBLISH_GENERIC_GAMEPAD_REPORT` publishes the latest encoded USB-derived Generic Gamepad report when a BLE host is connected.
 - `FORGET_BLE_BONDS` clears BLE bonds through the BLE transport.
 - `tools/gamepad_witness/server.py` serves a repo-local browser Gamepad API witness page and captures snapshots under `target/gamepad-witness/`.
+- `tools/mapping_delta_witness.py` captures clean before/after `GET_GENERIC_GAMEPAD_MAPPING` deltas for one held physical control.
+- CI packages a flashable ESP32-S3 merged firmware image with `scripts/package_firmware.sh` and uploads it as the `usb2ble-fw-esp32s3-flashable` GitHub Actions artifact.
 - ESP32-S3 target preflight build.
 - host simulation for app/control-plane testing only.
 
@@ -49,6 +54,7 @@
 - full target IR diagnostic dump.
 - button-press delta witness for normalized input.
 - normalized detach cleanup witness.
+- operator movement/delta witness for `GET_GENERIC_GAMEPAD_MAPPING`.
 - game/application compatibility beyond the browser Gamepad API witness.
 - BLE Xbox output.
 - powered hub all-device Flight Pack simultaneous report merge for three separate USB Flight Pack devices.
@@ -105,6 +111,15 @@ cargo +esp build -Z build-std=std,panic_abort --locked --package usb2ble-fw --ta
 ./scripts/flash.sh --monitor
 ```
 `--port <PORT>` may be passed through to `scripts/flash.sh` and `scripts/monitor.sh`.
+
+## Firmware artifact
+```bash
+./scripts/check_target_build.sh
+./scripts/package_firmware.sh
+espflash write-bin --chip esp32s3 --port <PORT> 0x0 target/firmware/usb2ble-fw-esp32s3-merged.bin
+```
+GitHub Actions uploads the same merged image plus a manifest and ELF as the
+`usb2ble-fw-esp32s3-flashable` artifact.
 
 ## Hardware verification
 See: `docs/HARDWARE_M2B1_VERIFICATION.md`

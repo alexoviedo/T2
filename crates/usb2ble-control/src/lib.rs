@@ -46,6 +46,9 @@ impl ControlPlane for SerialControlPlane {
         if s == "GET_GENERIC_GAMEPAD_REPORT" {
             return Ok(ControlCommand::GetGenericGamepadReport);
         }
+        if s == "GET_GENERIC_GAMEPAD_MAPPING" {
+            return Ok(ControlCommand::GetGenericGamepadMapping);
+        }
         if s == "START_BLE_GENERIC_GAMEPAD" {
             return Ok(ControlCommand::StartBleGenericGamepad);
         }
@@ -157,6 +160,9 @@ impl ControlPlane for SerialControlPlane {
                 out.push_str(&hex::encode(&resp.report.bytes));
                 out.push(';');
             }
+            ControlResponse::MappingDiagnostics(resp) => {
+                encode_mapping_diagnostics(&mut out, resp);
+            }
             ControlResponse::BleAction(resp) => {
                 out.push_str("BLE_ACTION:");
                 let _ = write!(out, "action={};", resp.action);
@@ -177,6 +183,41 @@ impl ControlPlane for SerialControlPlane {
         out.push('\n');
         Ok(out.into_bytes())
     }
+}
+
+fn encode_mapping_diagnostics(
+    out: &mut String,
+    resp: &usb2ble_contracts::MappingDiagnosticsResponse,
+) {
+    out.push_str("GENERIC_GAMEPAD_MAPPING:");
+    let _ = write!(out, "profile={};", resp.profile_id.0);
+    let _ = write!(out, "persona={};", resp.target_persona.0);
+    let _ = write!(out, "entries={};", resp.entries.len());
+    out.push_str("mappings=");
+    for (i, entry) in resp.entries.iter().enumerate() {
+        if i > 0 {
+            out.push('|');
+        }
+        let _ = write!(
+            out,
+            "src={}:{}:{:04x}:{:04x}:{}",
+            entry.source.device.device_id.0,
+            entry.source.interface_id.0,
+            entry.source.device.vendor_id,
+            entry.source.device.product_id,
+            entry.source_control_id
+        );
+        out.push_str(",target=");
+        if let Some(target) = &entry.target_control_id {
+            out.push_str(target);
+        } else {
+            out.push_str("none");
+        }
+        out.push_str(",value=");
+        write_normalized_value(out, entry.source_value);
+        let _ = write!(out, ",reason={}", entry.reason);
+    }
+    out.push(';');
 }
 
 fn encode_hid_summary(out: &mut String, resp: &usb2ble_contracts::HidSummaryResponse) {
@@ -377,6 +418,10 @@ mod tests {
             ControlCommand::GetGenericGamepadReport
         );
         assert_eq!(
+            cp.decode_command(b"GET_GENERIC_GAMEPAD_MAPPING").unwrap(),
+            ControlCommand::GetGenericGamepadMapping
+        );
+        assert_eq!(
             cp.decode_command(b"START_BLE_GENERIC_GAMEPAD").unwrap(),
             ControlCommand::StartBleGenericGamepad
         );
@@ -526,6 +571,32 @@ mod tests {
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
             "BLE_ACTION:action=self_test;state=Connected;persona=generic_gamepad;report_id=1;bytes=010008;\n"
+        );
+
+        let resp =
+            ControlResponse::MappingDiagnostics(usb2ble_contracts::MappingDiagnosticsResponse {
+                profile_id: ProfileId("generic_auto"),
+                target_persona: PersonaId("generic_gamepad"),
+                entries: vec![usb2ble_contracts::MappingDiagnosticEntry {
+                    source: UsbInterfaceRef {
+                        device: UsbDeviceRef {
+                            device_id: DeviceId(1),
+                            topology: ConnectionTopology::Direct,
+                            vendor_id: 0x044f,
+                            product_id: 0xb10a,
+                        },
+                        interface_id: InterfaceId(0),
+                    },
+                    source_control_id: "axis_01_30".to_string(),
+                    source_value: NormalizedControlValue::Axis(123),
+                    target_control_id: Some("x".to_string()),
+                    reason: "preferred_axis".to_string(),
+                }],
+            });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "GENERIC_GAMEPAD_MAPPING:profile=generic_auto;persona=generic_gamepad;entries=1;mappings=src=1:0:044f:b10a:axis_01_30,target=x,value=axis:123,reason=preferred_axis;\n"
         );
     }
 }

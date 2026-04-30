@@ -6,9 +6,9 @@
 use std::collections::HashSet;
 
 use usb2ble_contracts::{
-    CompositeInputFrame, DeviceSignature, Mapper, MappingError, MappingProfile,
-    NormalizedCompositeValue, NormalizedControlValue, PersonaId, PersonaInputFrame,
-    PersonaLogicalControlValue, ProfileId,
+    CompositeInputFrame, DeviceSignature, Mapper, MappingDiagnosticEntry,
+    MappingDiagnosticsResponse, MappingError, MappingProfile, NormalizedCompositeValue,
+    NormalizedControlValue, PersonaId, PersonaInputFrame, PersonaLogicalControlValue, ProfileId,
 };
 
 /// Generic auto-mapping profile ID for the first demo path.
@@ -62,41 +62,106 @@ pub fn generic_auto_profile() -> MappingProfile {
 /// Best-effort mapping from arbitrary normalized controls to Generic Gamepad controls.
 #[must_use]
 pub fn map_composite_to_generic_gamepad(composite: &CompositeInputFrame) -> PersonaInputFrame {
+    map_composite_to_generic_gamepad_with_diagnostics(composite).frame
+}
+
+/// Explain how the Generic Gamepad auto mapper handles each source control.
+#[must_use]
+pub fn diagnose_generic_gamepad_mapping(
+    composite: &CompositeInputFrame,
+) -> MappingDiagnosticsResponse {
+    map_composite_to_generic_gamepad_with_diagnostics(composite).diagnostics
+}
+
+struct GenericGamepadMappingResult {
+    frame: PersonaInputFrame,
+    diagnostics: MappingDiagnosticsResponse,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProcessedControl {
+    device: u32,
+    interface: u32,
+    control: String,
+}
+
+fn map_composite_to_generic_gamepad_with_diagnostics(
+    composite: &CompositeInputFrame,
+) -> GenericGamepadMappingResult {
     let ordered_controls = controls_in_source_priority(composite);
     let mut logical_controls = Vec::new();
+    let mut diagnostics = Vec::new();
     let mut used_targets = HashSet::new();
+    let mut processed_controls = Vec::new();
 
-    map_buttons_and_hat(&ordered_controls, &mut logical_controls, &mut used_targets);
-    map_axes(&ordered_controls, &mut logical_controls, &mut used_targets);
+    map_buttons_and_hat(
+        &ordered_controls,
+        &mut logical_controls,
+        &mut diagnostics,
+        &mut used_targets,
+        &mut processed_controls,
+    );
+    map_axes(
+        &ordered_controls,
+        &mut logical_controls,
+        &mut diagnostics,
+        &mut used_targets,
+        &mut processed_controls,
+    );
+    mark_unsupported_controls(&ordered_controls, &mut diagnostics, &processed_controls);
 
-    PersonaInputFrame {
-        persona_id: GENERIC_GAMEPAD_PERSONA_ID,
-        logical_controls,
+    GenericGamepadMappingResult {
+        frame: PersonaInputFrame {
+            persona_id: GENERIC_GAMEPAD_PERSONA_ID,
+            logical_controls,
+        },
+        diagnostics: MappingDiagnosticsResponse {
+            profile_id: GENERIC_AUTO_PROFILE_ID,
+            target_persona: GENERIC_GAMEPAD_PERSONA_ID,
+            entries: diagnostics,
+        },
     }
 }
 
 fn map_buttons_and_hat(
     controls: &[&NormalizedCompositeValue],
     logical_controls: &mut Vec<PersonaLogicalControlValue>,
+    diagnostics: &mut Vec<MappingDiagnosticEntry>,
     used_targets: &mut HashSet<String>,
+    processed_controls: &mut Vec<ProcessedControl>,
 ) {
     for control in controls {
         if let Some(button) = parse_button(&control.control_id) {
             let target = format!("button_{button}");
+            processed_controls.push(processed_control(control));
             if button <= 16 && used_targets.insert(target.clone()) {
                 logical_controls.push(PersonaLogicalControlValue {
-                    control_id: target,
+                    control_id: target.clone(),
                     value: control.value,
                 });
+                diagnostics.push(mapping_diagnostic(control, Some(&target), "button"));
+            } else {
+                let reason = if button > 16 {
+                    "button_out_of_range"
+                } else {
+                    "target_already_used"
+                };
+                diagnostics.push(mapping_diagnostic(control, None, reason));
             }
             continue;
         }
 
-        if control.control_id.starts_with("hat_") && used_targets.insert("hat".to_string()) {
-            logical_controls.push(PersonaLogicalControlValue {
-                control_id: "hat".to_string(),
-                value: control.value,
-            });
+        if control.control_id.starts_with("hat_") {
+            processed_controls.push(processed_control(control));
+            if used_targets.insert("hat".to_string()) {
+                logical_controls.push(PersonaLogicalControlValue {
+                    control_id: "hat".to_string(),
+                    value: control.value,
+                });
+                diagnostics.push(mapping_diagnostic(control, Some("hat"), "first_hat"));
+            } else {
+                diagnostics.push(mapping_diagnostic(control, None, "target_already_used"));
+            }
         }
     }
 }
@@ -104,7 +169,9 @@ fn map_buttons_and_hat(
 fn map_axes(
     controls: &[&NormalizedCompositeValue],
     logical_controls: &mut Vec<PersonaLogicalControlValue>,
+    diagnostics: &mut Vec<MappingDiagnosticEntry>,
     used_targets: &mut HashSet<String>,
+    processed_controls: &mut Vec<ProcessedControl>,
 ) {
     for control in controls {
         if !matches!(
@@ -129,13 +196,61 @@ fn map_axes(
                     .find(|target| !used_targets.contains(*target))
             });
 
+        processed_controls.push(processed_control(control));
         if let Some(target) = target {
             used_targets.insert(target.to_string());
             logical_controls.push(PersonaLogicalControlValue {
                 control_id: target.to_string(),
                 value: control.value,
             });
+            let reason = if preferred == Some(target) {
+                "preferred_axis"
+            } else {
+                "next_free_axis"
+            };
+            diagnostics.push(mapping_diagnostic(control, Some(target), reason));
+        } else {
+            diagnostics.push(mapping_diagnostic(control, None, "axis_slots_full"));
         }
+    }
+}
+
+fn mark_unsupported_controls(
+    controls: &[&NormalizedCompositeValue],
+    diagnostics: &mut Vec<MappingDiagnosticEntry>,
+    processed_controls: &[ProcessedControl],
+) {
+    for control in controls {
+        if !is_processed(control, processed_controls) {
+            diagnostics.push(mapping_diagnostic(control, None, "unsupported_control"));
+        }
+    }
+}
+
+fn processed_control(control: &NormalizedCompositeValue) -> ProcessedControl {
+    ProcessedControl {
+        device: control.source.device.device_id.0,
+        interface: control.source.interface_id.0,
+        control: control.control_id.clone(),
+    }
+}
+
+fn is_processed(control: &NormalizedCompositeValue, processed: &[ProcessedControl]) -> bool {
+    let key = processed_control(control);
+    processed.contains(&key)
+}
+
+fn mapping_diagnostic(
+    control: &NormalizedCompositeValue,
+    target: Option<&str>,
+    reason: &str,
+) -> MappingDiagnosticEntry {
+    MappingDiagnosticEntry {
+        source: control.source.clone(),
+        source_control_id: control.control_id.clone(),
+        source_value: control.value,
+        target_control_id: target.map(str::to_string),
+        reason: reason.to_string(),
     }
 }
 
@@ -314,6 +429,62 @@ mod tests {
             Some(NormalizedControlValue::Axis(2000))
         );
         assert_eq!(control(&frame, "hat"), Some(NormalizedControlValue::Hat(8)));
+    }
+
+    #[test]
+    fn diagnoses_mapped_and_unmapped_controls() {
+        let throttle = source(2, 0x044f, 0xb687);
+        let stick = source(3, 0x044f, 0xb10a);
+        let composite = CompositeInputFrame {
+            sources: vec![throttle.clone(), stick.clone()],
+            controls: vec![
+                value(
+                    throttle.clone(),
+                    "axis_01_30",
+                    NormalizedControlValue::Axis(10),
+                ),
+                value(
+                    throttle,
+                    "usage_ff00_21_23",
+                    NormalizedControlValue::Unknown(42),
+                ),
+                value(
+                    stick.clone(),
+                    "axis_01_30",
+                    NormalizedControlValue::Axis(100),
+                ),
+                value(
+                    stick.clone(),
+                    "axis_01_31",
+                    NormalizedControlValue::Axis(200),
+                ),
+                value(stick, "button_1", NormalizedControlValue::Button(true)),
+            ],
+            timestamp_micros: 7,
+        };
+
+        let diagnostics = diagnose_generic_gamepad_mapping(&composite);
+
+        assert_eq!(diagnostics.profile_id, GENERIC_AUTO_PROFILE_ID);
+        assert_eq!(diagnostics.target_persona, GENERIC_GAMEPAD_PERSONA_ID);
+        assert_eq!(diagnostics.entries.len(), 5);
+        assert!(diagnostics.entries.iter().any(|entry| {
+            entry.source_control_id == "axis_01_30"
+                && entry.source.device.product_id == 0xb10a
+                && entry.target_control_id.as_deref() == Some("x")
+                && entry.reason == "preferred_axis"
+        }));
+        assert!(diagnostics.entries.iter().any(|entry| {
+            entry.source_control_id == "axis_01_30"
+                && entry.source.device.product_id == 0xb687
+                && entry.target_control_id.as_deref() == Some("z")
+                && entry.reason == "next_free_axis"
+        }));
+        assert!(diagnostics.entries.iter().any(|entry| {
+            entry.source_control_id == "usage_ff00_21_23"
+                && entry.target_control_id.is_none()
+                && entry.reason == "unsupported_control"
+        }));
     }
 
     fn control(frame: &PersonaInputFrame, control_id: &str) -> Option<NormalizedControlValue> {
