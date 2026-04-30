@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>USB2BLE Gamepad Witness</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7f8f5;
+        --panel: #ffffff;
+        --ink: #17201d;
+        --muted: #66736d;
+        --line: #d8ded8;
+        --good: #138a55;
+        --warn: #b45614;
+        --accent: #1e6bb8;
+        --track: #e8ece7;
+        --button: #17201d;
+        --button-text: #ffffff;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101512;
+          --panel: #171f1a;
+          --ink: #edf4ef;
+          --muted: #a8b4ae;
+          --line: #2b3831;
+          --track: #243029;
+          --button: #edf4ef;
+          --button-text: #111713;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        letter-spacing: 0;
+      }
+
+      main {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 24px auto;
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+        gap: 18px;
+      }
+
+      header {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 16px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.1;
+        font-weight: 720;
+      }
+
+      .subtitle {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      button {
+        min-height: 38px;
+        border: 1px solid var(--line);
+        background: var(--button);
+        color: var(--button-text);
+        border-radius: 6px;
+        padding: 0 14px;
+        font: inherit;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        background: transparent;
+        color: var(--ink);
+      }
+
+      button:disabled {
+        cursor: default;
+        opacity: 0.55;
+      }
+
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+        min-width: 0;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        min-height: 72px;
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .metric-value {
+        margin-top: 8px;
+        font-size: 15px;
+        font-weight: 680;
+        overflow-wrap: anywhere;
+      }
+
+      .metric-value.good {
+        color: var(--good);
+      }
+
+      .metric-value.warn {
+        color: var(--warn);
+      }
+
+      .device-id {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .axis-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .axis-row {
+        display: grid;
+        grid-template-columns: 52px minmax(0, 1fr) 76px;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .axis-name,
+      .axis-value {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .axis-value {
+        text-align: right;
+      }
+
+      .axis-track {
+        position: relative;
+        height: 22px;
+        border-radius: 6px;
+        background: var(--track);
+        overflow: hidden;
+        border: 1px solid var(--line);
+      }
+
+      .axis-zero {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: var(--line);
+      }
+
+      .axis-fill {
+        position: absolute;
+        top: 4px;
+        bottom: 4px;
+        left: 50%;
+        width: 0;
+        background: var(--accent);
+        border-radius: 4px;
+      }
+
+      .button-grid {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(34px, 1fr));
+        gap: 8px;
+        margin-top: 18px;
+      }
+
+      .button-cell {
+        height: 36px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        background: var(--track);
+      }
+
+      .button-cell.on {
+        background: var(--good);
+        color: white;
+        border-color: var(--good);
+      }
+
+      .log {
+        height: 532px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--panel), var(--bg) 45%);
+      }
+
+      .log-line {
+        margin: 0;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .log-line:last-child {
+        border-bottom: 0;
+      }
+
+      @media (max-width: 840px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+
+        header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .controls {
+          justify-content: flex-start;
+        }
+
+        .status-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .button-grid {
+          grid-template-columns: repeat(4, minmax(34px, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>USB2BLE Gamepad Witness</h1>
+          <div class="subtitle" id="pageState">Idle</div>
+        </div>
+        <div class="controls">
+          <button id="armButton" type="button">Arm</button>
+          <button id="markButton" class="secondary" type="button" disabled>Mark</button>
+          <button id="copyButton" class="secondary" type="button" disabled>Copy</button>
+        </div>
+      </header>
+
+      <section aria-label="Gamepad state">
+        <div class="status-grid">
+          <div class="metric">
+            <div class="metric-label">Connection</div>
+            <div class="metric-value warn" id="connectionValue">No device</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Index</div>
+            <div class="metric-value" id="indexValue">-</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Mapping</div>
+            <div class="metric-value" id="mappingValue">-</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Samples</div>
+            <div class="metric-value" id="sampleValue">0</div>
+          </div>
+        </div>
+
+        <div class="device-id" id="deviceValue">No gamepad selected</div>
+        <div class="axis-list" id="axisList" aria-label="Axes"></div>
+        <div class="button-grid" id="buttonGrid" aria-label="Buttons"></div>
+      </section>
+
+      <section aria-label="Capture log">
+        <div class="log" id="log"></div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        armed: false,
+        activeIndex: null,
+        previousSignature: "",
+        samples: 0,
+        log: [],
+        lastPostAt: 0,
+      };
+
+      const els = {
+        armButton: document.querySelector("#armButton"),
+        markButton: document.querySelector("#markButton"),
+        copyButton: document.querySelector("#copyButton"),
+        pageState: document.querySelector("#pageState"),
+        connectionValue: document.querySelector("#connectionValue"),
+        indexValue: document.querySelector("#indexValue"),
+        mappingValue: document.querySelector("#mappingValue"),
+        sampleValue: document.querySelector("#sampleValue"),
+        deviceValue: document.querySelector("#deviceValue"),
+        axisList: document.querySelector("#axisList"),
+        buttonGrid: document.querySelector("#buttonGrid"),
+        log: document.querySelector("#log"),
+      };
+
+      function roundAxis(value) {
+        return Math.round(value * 1000) / 1000;
+      }
+
+      function snapshot(gamepad, type) {
+        return {
+          type,
+          at: new Date().toISOString(),
+          index: gamepad.index,
+          id: gamepad.id,
+          mapping: gamepad.mapping || "",
+          connected: gamepad.connected,
+          axes: gamepad.axes.map(roundAxis),
+          buttons: gamepad.buttons.map((button) => ({
+            pressed: button.pressed,
+            touched: button.touched,
+            value: Math.round(button.value * 1000) / 1000,
+          })),
+        };
+      }
+
+      function signature(snap) {
+        const axes = snap.axes.map((axis) => axis.toFixed(2)).join(",");
+        const buttons = snap.buttons.map((button) => (button.pressed ? "1" : "0")).join("");
+        return `${snap.index}|${axes}|${buttons}`;
+      }
+
+      function appendLog(entry) {
+        state.log.push(entry);
+        if (state.log.length > 120) state.log.shift();
+
+        const line = document.createElement("pre");
+        line.className = "log-line";
+        line.textContent = JSON.stringify(entry);
+        els.log.appendChild(line);
+        while (els.log.children.length > 120) {
+          els.log.removeChild(els.log.firstChild);
+        }
+        els.log.scrollTop = els.log.scrollHeight;
+        els.copyButton.disabled = state.log.length === 0;
+      }
+
+      async function postCapture(entry) {
+        try {
+          await fetch("/capture", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(entry),
+          });
+        } catch {
+          // The page still works when opened as a file or through a static server.
+        }
+      }
+
+      function capture(gamepad, type) {
+        const entry = snapshot(gamepad, type);
+        appendLog(entry);
+        postCapture(entry);
+      }
+
+      function selectGamepad(gamepads) {
+        if (state.activeIndex !== null && gamepads[state.activeIndex]) {
+          return gamepads[state.activeIndex];
+        }
+        return gamepads.find(Boolean) || null;
+      }
+
+      function renderEmpty() {
+        els.connectionValue.textContent = "No device";
+        els.connectionValue.className = "metric-value warn";
+        els.indexValue.textContent = "-";
+        els.mappingValue.textContent = "-";
+        els.deviceValue.textContent = "No gamepad selected";
+        els.axisList.innerHTML = "";
+        els.buttonGrid.innerHTML = "";
+      }
+
+      function renderGamepad(gamepad) {
+        els.connectionValue.textContent = gamepad.connected ? "Connected" : "Detached";
+        els.connectionValue.className = `metric-value ${gamepad.connected ? "good" : "warn"}`;
+        els.indexValue.textContent = String(gamepad.index);
+        els.mappingValue.textContent = gamepad.mapping || "generic";
+        els.sampleValue.textContent = String(state.samples);
+        els.deviceValue.textContent = gamepad.id;
+
+        els.axisList.innerHTML = "";
+        gamepad.axes.forEach((axis, index) => {
+          const row = document.createElement("div");
+          row.className = "axis-row";
+
+          const name = document.createElement("div");
+          name.className = "axis-name";
+          name.textContent = `A${index}`;
+
+          const track = document.createElement("div");
+          track.className = "axis-track";
+
+          const zero = document.createElement("div");
+          zero.className = "axis-zero";
+          const fill = document.createElement("div");
+          fill.className = "axis-fill";
+          const clamped = Math.max(-1, Math.min(1, axis));
+          if (clamped >= 0) {
+            fill.style.left = "50%";
+            fill.style.width = `${clamped * 50}%`;
+          } else {
+            fill.style.left = `${50 + clamped * 50}%`;
+            fill.style.width = `${Math.abs(clamped) * 50}%`;
+          }
+          track.append(zero, fill);
+
+          const value = document.createElement("div");
+          value.className = "axis-value";
+          value.textContent = roundAxis(axis).toFixed(3);
+
+          row.append(name, track, value);
+          els.axisList.appendChild(row);
+        });
+
+        els.buttonGrid.innerHTML = "";
+        gamepad.buttons.forEach((button, index) => {
+          const cell = document.createElement("div");
+          cell.className = `button-cell${button.pressed ? " on" : ""}`;
+          cell.textContent = String(index + 1);
+          els.buttonGrid.appendChild(cell);
+        });
+      }
+
+      function tick() {
+        if (!state.armed) return;
+
+        const gamepads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []);
+        const gamepad = selectGamepad(gamepads);
+        if (!gamepad) {
+          renderEmpty();
+          els.pageState.textContent = "Armed";
+          requestAnimationFrame(tick);
+          return;
+        }
+
+        state.activeIndex = gamepad.index;
+        state.samples += 1;
+        renderGamepad(gamepad);
+
+        const snap = snapshot(gamepad, "change");
+        const currentSignature = signature(snap);
+        const now = performance.now();
+        if (currentSignature !== state.previousSignature && now - state.lastPostAt > 80) {
+          state.previousSignature = currentSignature;
+          state.lastPostAt = now;
+          appendLog(snap);
+          postCapture(snap);
+        }
+
+        els.pageState.textContent = "Armed";
+        requestAnimationFrame(tick);
+      }
+
+      function startWitness(gamepad) {
+        if (state.armed) return;
+        state.armed = true;
+        els.armButton.disabled = true;
+        els.markButton.disabled = false;
+        els.pageState.textContent = "Armed";
+
+        if (gamepad) capture(gamepad, "arm");
+        requestAnimationFrame(tick);
+      }
+
+      els.armButton.addEventListener("click", () => {
+        const gamepad = selectGamepad(Array.from(navigator.getGamepads ? navigator.getGamepads() : []));
+        startWitness(gamepad);
+      });
+
+      els.markButton.addEventListener("click", () => {
+        const gamepad = selectGamepad(Array.from(navigator.getGamepads ? navigator.getGamepads() : []));
+        if (gamepad) capture(gamepad, "mark");
+      });
+
+      els.copyButton.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(state.log.map((entry) => JSON.stringify(entry)).join("\\n"));
+      });
+
+      window.addEventListener("gamepadconnected", (event) => {
+        state.activeIndex = event.gamepad.index;
+        capture(event.gamepad, "connected");
+        renderGamepad(event.gamepad);
+        startWitness(event.gamepad);
+      });
+
+      window.addEventListener("gamepaddisconnected", (event) => {
+        appendLog({
+          type: "disconnected",
+          at: new Date().toISOString(),
+          index: event.gamepad.index,
+          id: event.gamepad.id,
+        });
+        if (state.activeIndex === event.gamepad.index) state.activeIndex = null;
+      });
+    </script>
+  </body>
+</html>

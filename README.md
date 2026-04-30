@@ -1,24 +1,28 @@
 # USB2BLE
 
 ## Current status
-- `main` is at M4 normalized-input code-path status.
+- `main` is at demo-bridge code-path status after M4 normalized-input evidence.
 - ESP32-S3 target-build preflight is expected to pass in CI.
 - Real powered-hub hardware witness transcripts are checked in for attach/detach identity, HID descriptor capture, raw input-report capture, HID capability summary, baseline normalized input, and the practical RJ12 Flight Pack topology.
+- Host-tested demo bridge code now encodes current normalized USB state into a Generic Gamepad report via `GET_GENERIC_GAMEPAD_REPORT`.
+- Real target smoke evidence for `GET_GENERIC_GAMEPAD_REPORT` is checked in for the RJ12 Flight Pack topology.
+- Target BLE HID demo firmware now starts the Generic Gamepad persona, reaches `ble=Advertising`, connects to a Mac host, and publishes both synthetic and live USB-derived Generic Gamepad reports over BLE.
+- Browser Gamepad API witness evidence is checked in for the BLE Generic Gamepad path, including synthetic self-test changes and one live USB-derived publish.
 
 ## What this project is building toward
 - ESP32-S3 USB HID to BLE bridge.
 - eventual powered USB-C hub support.
 - eventual multiple USB HID inputs.
-- eventual mapping to BLE Generic Gamepad.
+- mapping to BLE Generic Gamepad is now started with a pure auto-mapping and persona-encoding path.
 - eventual BLE Xbox Wireless-style output.
-- current milestone does not implement those yet.
+- the BLE transport is intentionally persona-driven so Xbox Wireless-style output can be added later as a separate persona/report encoder.
 
 ## Current milestone: M4
 - target scope is HID report decoding and normalized live-input diagnostics.
 - descriptor/report/summary/normalized-input control-plane fulfillment is proven for the THRUSTMASTER T.16000 FCS HOTAS through the HooToo powered hub.
 - expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, and simultaneous normalized input for the recommended two-USB topology: pedals connected to TWCS by RJ12, with TWCS USB plus stick USB through the HooToo hub.
 - button-press delta capture, detach cleanup evidence, exact RJ12 pedal axis labels, and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4 completion.
-- no BLE publishing yet.
+- BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses; final app/game compatibility and HOTAS mapping remain open.
 
 ## What works today
 - serial control plane.
@@ -31,6 +35,12 @@
 - `GET_LAST_USB_REPORT <device>:<interface>` returns the most recent raw input report after a report is received.
 - `GET_HID_SUMMARY <device>:<interface>` returns parsed axes/buttons/hats/report IDs for descriptors that parse successfully.
 - `GET_NORMALIZED_INPUT <device>:<interface>` returns a normalized control frame decoded from the latest input report for descriptors that parse successfully.
+- `GET_GENERIC_GAMEPAD_REPORT` returns an encoded Generic Gamepad report from the latest normalized input frames, ready for the future BLE publish layer.
+- `START_BLE_GENERIC_GAMEPAD` starts the target BLE HID Generic Gamepad persona.
+- `SEND_BLE_SELF_TEST_REPORT` publishes an explicit synthetic Generic Gamepad report when a BLE host is connected.
+- `PUBLISH_GENERIC_GAMEPAD_REPORT` publishes the latest encoded USB-derived Generic Gamepad report when a BLE host is connected.
+- `FORGET_BLE_BONDS` clears BLE bonds through the BLE transport.
+- `tools/gamepad_witness/server.py` serves a repo-local browser Gamepad API witness page and captures snapshots under `target/gamepad-witness/`.
 - ESP32-S3 target preflight build.
 - host simulation for app/control-plane testing only.
 
@@ -39,8 +49,7 @@
 - full target IR diagnostic dump.
 - button-press delta witness for normalized input.
 - normalized detach cleanup witness.
-- mapping.
-- BLE Generic Gamepad output.
+- game/application compatibility beyond the browser Gamepad API witness.
 - BLE Xbox output.
 - powered hub all-device Flight Pack simultaneous report merge for three separate USB Flight Pack devices.
 

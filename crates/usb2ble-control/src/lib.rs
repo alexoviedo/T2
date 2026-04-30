@@ -43,6 +43,21 @@ impl ControlPlane for SerialControlPlane {
         if s == "LIST_USB_DEVICES" {
             return Ok(ControlCommand::ListUsbDevices);
         }
+        if s == "GET_GENERIC_GAMEPAD_REPORT" {
+            return Ok(ControlCommand::GetGenericGamepadReport);
+        }
+        if s == "START_BLE_GENERIC_GAMEPAD" {
+            return Ok(ControlCommand::StartBleGenericGamepad);
+        }
+        if s == "PUBLISH_GENERIC_GAMEPAD_REPORT" {
+            return Ok(ControlCommand::PublishGenericGamepadReport);
+        }
+        if s == "SEND_BLE_SELF_TEST_REPORT" {
+            return Ok(ControlCommand::SendBleSelfTestReport);
+        }
+        if s == "FORGET_BLE_BONDS" {
+            return Ok(ControlCommand::ForgetBleBonds);
+        }
 
         if let Some(rest) = s.strip_prefix("GET_USB_DESCRIPTOR ") {
             let key = parse_descriptor_key(rest.trim()).ok_or(ControlError::Generic)?;
@@ -133,6 +148,26 @@ impl ControlPlane for SerialControlPlane {
             }
             ControlResponse::NormalizedInput(resp) => {
                 encode_normalized_input(&mut out, resp);
+            }
+            ControlResponse::EncodedReport(resp) => {
+                out.push_str("ENCODED_REPORT:");
+                let _ = write!(out, "persona={};", resp.report.persona_id.0);
+                let _ = write!(out, "report_id={};", resp.report.report_id.0);
+                out.push_str("bytes=");
+                out.push_str(&hex::encode(&resp.report.bytes));
+                out.push(';');
+            }
+            ControlResponse::BleAction(resp) => {
+                out.push_str("BLE_ACTION:");
+                let _ = write!(out, "action={};", resp.action);
+                let _ = write!(out, "state={:?};", resp.state);
+                if let Some(report) = &resp.report {
+                    let _ = write!(out, "persona={};", report.persona_id.0);
+                    let _ = write!(out, "report_id={};", report.report_id.0);
+                    out.push_str("bytes=");
+                    out.push_str(&hex::encode(&report.bytes));
+                    out.push(';');
+                }
             }
             ControlResponse::Error(err) => {
                 let _ = write!(out, "ERROR:{err:?}");
@@ -337,15 +372,38 @@ mod tests {
                 interface_id: Some(InterfaceId(1))
             })
         );
+        assert_eq!(
+            cp.decode_command(b"GET_GENERIC_GAMEPAD_REPORT").unwrap(),
+            ControlCommand::GetGenericGamepadReport
+        );
+        assert_eq!(
+            cp.decode_command(b"START_BLE_GENERIC_GAMEPAD").unwrap(),
+            ControlCommand::StartBleGenericGamepad
+        );
+        assert_eq!(
+            cp.decode_command(b"PUBLISH_GENERIC_GAMEPAD_REPORT")
+                .unwrap(),
+            ControlCommand::PublishGenericGamepadReport
+        );
+        assert_eq!(
+            cp.decode_command(b"SEND_BLE_SELF_TEST_REPORT").unwrap(),
+            ControlCommand::SendBleSelfTestReport
+        );
+        assert_eq!(
+            cp.decode_command(b"FORGET_BLE_BONDS").unwrap(),
+            ControlCommand::ForgetBleBonds
+        );
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_encode_m2_responses() {
         use usb2ble_contracts::{
-            ConnectionTopology, HidAxisCapability, HidCapabilitySummary, HidSummaryResponse,
-            NormalizedControlEvent, NormalizedControlValue, NormalizedInputFrame,
-            NormalizedInputResponse, ReportId, UsbDescriptorResponse, UsbDeviceRef,
-            UsbInterfaceRef, UsbReportResponse, UsbStatusResponse,
+            ConnectionTopology, EncodedBleReport, EncodedReportResponse, HidAxisCapability,
+            HidCapabilitySummary, HidSummaryResponse, NormalizedControlEvent,
+            NormalizedControlValue, NormalizedInputFrame, NormalizedInputResponse, PersonaId,
+            ReportId, UsbDescriptorResponse, UsbDeviceRef, UsbInterfaceRef, UsbReportResponse,
+            UsbStatusResponse,
         };
 
         let cp = SerialControlPlane::new();
@@ -440,6 +498,34 @@ mod tests {
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
             "NORMALIZED_INPUT:controls=1;button_1=button:1;\n"
+        );
+
+        let resp = ControlResponse::EncodedReport(EncodedReportResponse {
+            report: EncodedBleReport {
+                persona_id: PersonaId("generic_gamepad"),
+                report_id: ReportId(1),
+                bytes: vec![0x01, 0x00, 0x08],
+            },
+        });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "ENCODED_REPORT:persona=generic_gamepad;report_id=1;bytes=010008;\n"
+        );
+
+        let resp = ControlResponse::BleAction(usb2ble_contracts::BleActionResponse {
+            action: "self_test",
+            state: BleLinkState::Connected,
+            report: Some(EncodedBleReport {
+                persona_id: PersonaId("generic_gamepad"),
+                report_id: ReportId(1),
+                bytes: vec![0x01, 0x00, 0x08],
+            }),
+        });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "BLE_ACTION:action=self_test;state=Connected;persona=generic_gamepad;report_id=1;bytes=010008;\n"
         );
     }
 }

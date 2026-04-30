@@ -9,6 +9,7 @@ usb2ble-platform-esp32 = { path = "../usb2ble-platform-esp32" }
 usb2ble-app = { path = "../usb2ble-app" }
 usb2ble-control = { path = "../usb2ble-control" }
 usb2ble-contracts = { path = "../usb2ble-contracts" }
+usb2ble-personas = { path = "../usb2ble-personas" }
 usb2ble-storage = { path = "../usb2ble-storage" }
 
 [target.'cfg(target_os = "espidf")'.dependencies]

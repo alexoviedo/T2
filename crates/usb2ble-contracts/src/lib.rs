@@ -387,11 +387,20 @@ pub struct NormalizedInputFrame {
 }
 
 /// A normalized value within a composite frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NormalizedCompositeValue {
-    // Placeholder for M9
+    /// The USB source interface that contributed this value.
+    pub source: UsbInterfaceRef,
+    /// Stable source control identifier.
+    pub control_id: String,
+    /// Normalized value.
+    pub value: NormalizedControlValue,
+    /// Event timestamp in microseconds.
+    pub timestamp_micros: u64,
 }
 
 /// A composed frame representing state from multiple sources.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompositeInputFrame {
     /// All contributing USB sources.
     pub sources: Vec<UsbInterfaceRef>,
@@ -419,8 +428,10 @@ pub trait InputNormalizer {
 }
 
 /// Policy for merging multiple inputs.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CompositeProfile {
-    // Placeholder for M9
+    /// Optional profile identifier for diagnostics.
+    pub profile_id: Option<ProfileId>,
 }
 
 /// Errors occurring during input merging.
@@ -456,8 +467,18 @@ pub struct DeviceSignature {
 }
 
 /// A rule defining how a source input maps to a target.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceMappingRule {
-    // Placeholder for M6
+    /// Optional USB vendor ID selector.
+    pub source_vendor_id: Option<u16>,
+    /// Optional USB product ID selector.
+    pub source_product_id: Option<u16>,
+    /// Source normalized control identifier, such as `axis_01_30`.
+    pub source_control_id: String,
+    /// Target persona control identifier, such as `x` or `button_1`.
+    pub target_control_id: String,
+    /// Whether the source value should be inverted before mapping.
+    pub invert: bool,
 }
 
 /// A full profile defining mapping and target persona.
@@ -510,12 +531,41 @@ pub enum BleTransportFamily {
     Xbox,
 }
 
+/// Logical kind of a persona input control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PersonaControlKind {
+    /// Signed axis.
+    Axis,
+    /// Boolean button.
+    Button,
+    /// Hat switch.
+    Hat,
+    /// Trigger-like analog control.
+    Trigger,
+}
+
+/// Metadata for one logical input expected by a persona.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersonaControlDescriptor {
+    /// Stable persona control identifier.
+    pub control_id: String,
+    /// Control kind.
+    pub kind: PersonaControlKind,
+    /// Logical minimum value accepted by the persona encoder.
+    pub logical_min: i32,
+    /// Logical maximum value accepted by the persona encoder.
+    pub logical_max: i32,
+}
+
 /// Schema for a persona's expected logical input.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersonaInputSchema {
-    // Placeholder for M5
+    /// Logical controls accepted by this persona.
+    pub controls: Vec<PersonaControlDescriptor>,
 }
 
 /// Full definition of a BLE output persona.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersonaDescriptor {
     /// Unique persona identifier.
     pub persona_id: PersonaId,
@@ -530,11 +580,16 @@ pub struct PersonaDescriptor {
 }
 
 /// A logical control value for a persona.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersonaLogicalControlValue {
-    // Placeholder for M5
+    /// Stable persona control identifier.
+    pub control_id: String,
+    /// Logical value for this control.
+    pub value: NormalizedControlValue,
 }
 
 /// A frame of input ready for persona encoding.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersonaInputFrame {
     /// The target persona.
     pub persona_id: PersonaId,
@@ -543,6 +598,7 @@ pub struct PersonaInputFrame {
 }
 
 /// An encoded report ready for BLE transmission.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedBleReport {
     /// The persona that generated this report.
     pub persona_id: PersonaId,
@@ -714,6 +770,24 @@ pub struct NormalizedInputResponse {
     pub frame: NormalizedInputFrame,
 }
 
+/// Response payload for `GET_GENERIC_GAMEPAD_REPORT`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodedReportResponse {
+    /// Encoded report ready for BLE publication.
+    pub report: EncodedBleReport,
+}
+
+/// Response payload for BLE transport actions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BleActionResponse {
+    /// Action that was attempted.
+    pub action: &'static str,
+    /// BLE link state after the action.
+    pub state: BleLinkState,
+    /// Optional report involved in the action.
+    pub report: Option<EncodedBleReport>,
+}
+
 /// A command received over the serial control plane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlCommand {
@@ -735,6 +809,16 @@ pub enum ControlCommand {
     GetHidSummary(DescriptorKey),
     /// Request normalized controls decoded from the last raw input report.
     GetNormalizedInput(DescriptorKey),
+    /// Request a Generic Gamepad report encoded from all latest normalized inputs.
+    GetGenericGamepadReport,
+    /// Start the BLE Generic Gamepad persona.
+    StartBleGenericGamepad,
+    /// Publish the latest Generic Gamepad report over BLE.
+    PublishGenericGamepadReport,
+    /// Publish an explicit synthetic Generic Gamepad BLE self-test report.
+    SendBleSelfTestReport,
+    /// Clear BLE bond data.
+    ForgetBleBonds,
 }
 
 /// A response to be sent over the serial control plane.
@@ -758,6 +842,10 @@ pub enum ControlResponse {
     HidSummary(HidSummaryResponse),
     /// Response to `GET_NORMALIZED_INPUT`.
     NormalizedInput(NormalizedInputResponse),
+    /// Response to `GET_GENERIC_GAMEPAD_REPORT`.
+    EncodedReport(EncodedReportResponse),
+    /// Response to a BLE transport action.
+    BleAction(BleActionResponse),
     /// An error response.
     Error(ControlError),
 }

@@ -1,8 +1,9 @@
 //! Input normalization from decoded HID fields into project control frames.
 
 use usb2ble_contracts::{
-    DecodedHidFieldValue, DecodedInputReport, HidDescriptorIr, InputNormalizer, NormalizeError,
-    NormalizedControlEvent, NormalizedControlValue, NormalizedInputFrame,
+    CompositeInputFrame, CompositeMerger, CompositeProfile, DecodedHidFieldValue,
+    DecodedInputReport, HidDescriptorIr, InputNormalizer, MergeError, NormalizeError,
+    NormalizedCompositeValue, NormalizedControlEvent, NormalizedControlValue, NormalizedInputFrame,
 };
 
 const USAGE_PAGE_GENERIC_DESKTOP: u16 = 0x01;
@@ -20,6 +21,49 @@ impl InputNormalizer for StandardInputNormalizer {
         decoded: &DecodedInputReport,
     ) -> Result<NormalizedInputFrame, NormalizeError> {
         Ok(normalize_decoded_report(decoded))
+    }
+}
+
+/// Simple merger that flattens the latest source frames into one composite frame.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LatestInputMerger;
+
+impl CompositeMerger for LatestInputMerger {
+    fn merge(
+        &self,
+        inputs: &[NormalizedInputFrame],
+        _profile: &CompositeProfile,
+    ) -> Result<CompositeInputFrame, MergeError> {
+        Ok(merge_latest_inputs(inputs))
+    }
+}
+
+/// Flatten the latest normalized frames while retaining source identity.
+#[must_use]
+pub fn merge_latest_inputs(inputs: &[NormalizedInputFrame]) -> CompositeInputFrame {
+    let mut sources = Vec::new();
+    let mut controls = Vec::new();
+    let mut timestamp_micros = 0;
+
+    for frame in inputs {
+        if !sources.contains(&frame.source) {
+            sources.push(frame.source.clone());
+        }
+        for control in &frame.controls {
+            timestamp_micros = timestamp_micros.max(control.timestamp_micros);
+            controls.push(NormalizedCompositeValue {
+                source: control.source.clone(),
+                control_id: control.control_id.clone(),
+                value: control.value,
+                timestamp_micros: control.timestamp_micros,
+            });
+        }
+    }
+
+    CompositeInputFrame {
+        sources,
+        controls,
+        timestamp_micros,
     }
 }
 
@@ -94,10 +138,13 @@ fn normalize_axis(value: i32, logical_min: i32, logical_max: i32) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{StandardInputNormalizer, normalize_decoded_report};
+    use super::{
+        LatestInputMerger, StandardInputNormalizer, merge_latest_inputs, normalize_decoded_report,
+    };
     use usb2ble_contracts::{
-        ConnectionTopology, DecodedHidFieldValue, DecodedInputReport, DeviceId, HidDescriptorIr,
-        InputNormalizer, InterfaceId, ReportId, UsbDeviceRef, UsbInterfaceRef,
+        CompositeMerger, ConnectionTopology, DecodedHidFieldValue, DecodedInputReport, DeviceId,
+        HidDescriptorIr, InputNormalizer, InterfaceId, NormalizedControlEvent,
+        NormalizedControlValue, NormalizedInputFrame, ReportId, UsbDeviceRef, UsbInterfaceRef,
     };
 
     #[test]
@@ -159,6 +206,31 @@ mod tests {
         let frame = normalize_decoded_report(&decoded);
         assert_eq!(frame.controls[0].control_id, "usage_ff00_21_0");
         assert_eq!(frame.controls[1].control_id, "usage_ff00_21_1");
+    }
+
+    #[test]
+    fn latest_merger_flattens_frames_and_keeps_sources() {
+        let source = test_source();
+        let frame = NormalizedInputFrame {
+            source: source.clone(),
+            controls: vec![NormalizedControlEvent {
+                source,
+                control_id: "axis_01_30".to_string(),
+                value: NormalizedControlValue::Axis(12),
+                timestamp_micros: 456,
+            }],
+        };
+
+        let composite = merge_latest_inputs(std::slice::from_ref(&frame));
+        assert_eq!(composite.sources.len(), 1);
+        assert_eq!(composite.controls.len(), 1);
+        assert_eq!(composite.timestamp_micros, 456);
+        assert_eq!(composite.controls[0].control_id, "axis_01_30");
+
+        let via_trait = LatestInputMerger
+            .merge(&[frame], &usb2ble_contracts::CompositeProfile::default())
+            .unwrap();
+        assert_eq!(via_trait.controls.len(), 1);
     }
 
     fn field(

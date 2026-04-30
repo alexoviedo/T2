@@ -7,16 +7,21 @@ mod integration_tests;
 
 use usb2ble_app::App;
 use usb2ble_contracts::{
-    CONTRACT_VERSION, ControlPlane, ControlResponse, DescriptorKey, UsbIngress,
+    BleActionResponse, BleTransport, CONTRACT_VERSION, ControlCommand, ControlError, ControlPlane,
+    ControlResponse, DescriptorKey, NormalizedControlValue, PersonaEncoder, PersonaInputFrame,
+    PersonaLogicalControlValue, UsbIngress,
 };
 use usb2ble_control::SerialControlPlane;
-use usb2ble_platform_esp32::{self as platform, EspUsbIngress, Uart, UartReadResult};
+use usb2ble_personas::{GENERIC_GAMEPAD_PERSONA_ID, GenericGamepadEncoder};
+use usb2ble_platform_esp32::{
+    self as platform, EspUsbIngress, Uart, UartReadResult, ble_hid::BleHidTransport,
+};
 use usb2ble_storage::InMemoryStore;
 
 /// Firmware name.
 pub const FIRMWARE_NAME: &str = "usb2ble";
 /// Firmware version.
-pub const FIRMWARE_VERSION: &str = "0.4.0-m4";
+pub const FIRMWARE_VERSION: &str = "0.4.2-ble-hid-demo";
 
 /// Main firmware entrypoint.
 pub fn main() {
@@ -54,14 +59,17 @@ pub fn main() {
     platform::trace_printf(b"[TRACE] Initializing app\n\0");
     let mut app = App::new(storage);
     let control = SerialControlPlane::new();
+    let mut ble = BleHidTransport::new();
+    let encoder = GenericGamepadEncoder;
     let mut report_log_micros: Vec<(DescriptorKey, u64)> = Vec::new();
+    let mut ble_self_test_pressed = false;
 
     // 4. Print startup banner
     platform::trace_printf(b"--- USB2BLE FIRMWARE BOOT ---\n\0");
     uart.write_all(format!("Name: {}\n", FIRMWARE_NAME).as_bytes());
     uart.write_all(format!("Version: {}\n", FIRMWARE_VERSION).as_bytes());
     uart.write_all(format!("Contract Version: {}\n", CONTRACT_VERSION).as_bytes());
-    uart.write_all(b"Status: M4 Code-path (Normalized Input Witness)\n");
+    uart.write_all(b"Status: BLE HID Demo Path (Generic Gamepad Persona)\n");
     uart.write_all(b"Ready for commands.\n");
 
     platform::trace_printf(b"[TRACE] ENTERED MAIN LOOP\n\0");
@@ -165,7 +173,13 @@ pub fn main() {
             UartReadResult::Frame(n) => {
                 match control.decode_command(&buf[..n]) {
                     Ok(cmd) => {
-                        let resp = app.handle_control_command(&cmd);
+                        let resp = handle_control_command(
+                            &mut app,
+                            &mut ble,
+                            &encoder,
+                            &cmd,
+                            &mut ble_self_test_pressed,
+                        );
                         if let Ok(resp_bytes) = control.encode_response(&resp) {
                             uart.write_all(&resp_bytes);
                         }
@@ -196,4 +210,102 @@ pub fn main() {
             }
         }
     }
+}
+
+fn handle_control_command<S>(
+    app: &mut App<S>,
+    ble: &mut impl BleTransport,
+    encoder: &impl PersonaEncoder,
+    cmd: &ControlCommand,
+    ble_self_test_pressed: &mut bool,
+) -> ControlResponse
+where
+    S: usb2ble_contracts::ProfileStore + usb2ble_contracts::BondStore,
+{
+    app.set_ble_state(ble.current_state());
+
+    let resp = match cmd {
+        ControlCommand::StartBleGenericGamepad => {
+            match encoder.descriptor(GENERIC_GAMEPAD_PERSONA_ID) {
+                Ok(descriptor) => match ble.activate_persona(&descriptor) {
+                    Ok(()) => {
+                        app.set_active_persona(Some(GENERIC_GAMEPAD_PERSONA_ID));
+                        ControlResponse::BleAction(BleActionResponse {
+                            action: "start_generic_gamepad",
+                            state: ble.current_state(),
+                            report: None,
+                        })
+                    }
+                    Err(_) => ControlResponse::Error(ControlError::Generic),
+                },
+                Err(_) => ControlResponse::Error(ControlError::Generic),
+            }
+        }
+        ControlCommand::PublishGenericGamepadReport => match app.generic_gamepad_report() {
+            Ok(report) => match ble.publish_report(&report) {
+                Ok(()) => ControlResponse::BleAction(BleActionResponse {
+                    action: "publish_generic_gamepad",
+                    state: ble.current_state(),
+                    report: Some(report),
+                }),
+                Err(_) => ControlResponse::Error(ControlError::Generic),
+            },
+            Err(err) => ControlResponse::Error(err),
+        },
+        ControlCommand::SendBleSelfTestReport => {
+            match self_test_report(encoder, ble_self_test_pressed) {
+                Ok(report) => match ble.publish_report(&report) {
+                    Ok(()) => ControlResponse::BleAction(BleActionResponse {
+                        action: "send_self_test",
+                        state: ble.current_state(),
+                        report: Some(report),
+                    }),
+                    Err(_) => ControlResponse::Error(ControlError::Generic),
+                },
+                Err(_) => ControlResponse::Error(ControlError::Generic),
+            }
+        }
+        ControlCommand::ForgetBleBonds => match ble.forget_bonds() {
+            Ok(()) => ControlResponse::BleAction(BleActionResponse {
+                action: "forget_bonds",
+                state: ble.current_state(),
+                report: None,
+            }),
+            Err(_) => ControlResponse::Error(ControlError::Generic),
+        },
+        _ => app.handle_control_command(cmd),
+    };
+
+    app.set_ble_state(ble.current_state());
+    resp
+}
+
+fn self_test_report(
+    encoder: &impl PersonaEncoder,
+    ble_self_test_pressed: &mut bool,
+) -> Result<usb2ble_contracts::EncodedBleReport, usb2ble_contracts::PersonaError> {
+    *ble_self_test_pressed = !*ble_self_test_pressed;
+    let axis = if *ble_self_test_pressed {
+        i32::from(i16::MAX)
+    } else {
+        i32::from(i16::MIN)
+    };
+
+    encoder.encode(&PersonaInputFrame {
+        persona_id: GENERIC_GAMEPAD_PERSONA_ID,
+        logical_controls: vec![
+            PersonaLogicalControlValue {
+                control_id: "button_1".to_string(),
+                value: NormalizedControlValue::Button(*ble_self_test_pressed),
+            },
+            PersonaLogicalControlValue {
+                control_id: "hat".to_string(),
+                value: NormalizedControlValue::Hat(if *ble_self_test_pressed { 0 } else { 8 }),
+            },
+            PersonaLogicalControlValue {
+                control_id: "x".to_string(),
+                value: NormalizedControlValue::Axis(axis),
+            },
+        ],
+    })
 }

@@ -3,13 +3,17 @@
 //! Responsible for orchestration and application state.
 
 use usb2ble_contracts::{
-    AppState, BleLinkState, BondStore, CONTRACT_VERSION, ControlCommand, ControlError,
-    ControlResponse, DescriptorKey, HidDescriptorParser, HidReportDecoder, HidSummaryResponse,
-    InfoResponse, InputNormalizer, NormalizedInputResponse, ProfileResponse, ProfileStore,
-    StatusResponse, UsbDescriptorResponse, UsbIngressEvent, UsbReportResponse, UsbStatusResponse,
+    AppState, BleLinkState, BondStore, CONTRACT_VERSION, CompositeMerger, ControlCommand,
+    ControlError, ControlResponse, DescriptorKey, EncodedBleReport, EncodedReportResponse,
+    HidDescriptorParser, HidReportDecoder, HidSummaryResponse, InfoResponse, InputNormalizer,
+    Mapper, NormalizedInputFrame, NormalizedInputResponse, PersonaEncoder, PersonaId,
+    ProfileResponse, ProfileStore, StatusResponse, UsbDescriptorResponse, UsbIngressEvent,
+    UsbReportResponse, UsbStatusResponse,
 };
 use usb2ble_hid::{HidParser, summarize_capabilities};
-use usb2ble_input::StandardInputNormalizer;
+use usb2ble_input::{LatestInputMerger, StandardInputNormalizer};
+use usb2ble_mapping::{GenericAutoMapper, generic_auto_profile};
+use usb2ble_personas::GenericGamepadEncoder;
 
 /// The main application structure.
 pub struct App<S> {
@@ -96,28 +100,62 @@ where
                 }
             }
             ControlCommand::GetNormalizedInput(key) => {
-                let ir = self.state.descriptors.iter().find(|(k, _)| k == key);
-                let packet = self
-                    .state
-                    .last_report_packets
-                    .iter()
-                    .find(|(k, _)| k == key);
-                if let (Some((_, ir)), Some((_, packet))) = (ir, packet) {
-                    let decoded = HidParser.decode_report(ir, packet);
-                    let normalized = decoded.and_then(|decoded| {
-                        StandardInputNormalizer
-                            .normalize(ir, &decoded)
-                            .map_err(|_| usb2ble_contracts::HidDecodeError::Generic)
-                    });
-                    normalized.map_or_else(
-                        |_| ControlResponse::Error(ControlError::Generic),
-                        |frame| ControlResponse::NormalizedInput(NormalizedInputResponse { frame }),
-                    )
-                } else {
-                    ControlResponse::Error(ControlError::NotFound)
-                }
+                self.normalized_frame_for_key(key).map_or_else(
+                    || ControlResponse::Error(ControlError::NotFound),
+                    |frame| ControlResponse::NormalizedInput(NormalizedInputResponse { frame }),
+                )
             }
+            ControlCommand::GetGenericGamepadReport => self.generic_gamepad_report_response(),
+            ControlCommand::StartBleGenericGamepad
+            | ControlCommand::PublishGenericGamepadReport
+            | ControlCommand::SendBleSelfTestReport
+            | ControlCommand::ForgetBleBonds => ControlResponse::Error(ControlError::Generic),
         }
+    }
+
+    fn normalized_frame_for_key(&self, key: &DescriptorKey) -> Option<NormalizedInputFrame> {
+        let (_, ir) = self.state.descriptors.iter().find(|(k, _)| k == key)?;
+        let (_, packet) = self
+            .state
+            .last_report_packets
+            .iter()
+            .find(|(k, _)| k == key)?;
+        let decoded = HidParser.decode_report(ir, packet).ok()?;
+        StandardInputNormalizer.normalize(ir, &decoded).ok()
+    }
+
+    fn latest_normalized_frames(&self) -> Vec<NormalizedInputFrame> {
+        self.state
+            .last_report_packets
+            .iter()
+            .filter_map(|(key, _)| self.normalized_frame_for_key(key))
+            .collect()
+    }
+
+    fn generic_gamepad_report_response(&self) -> ControlResponse {
+        self.generic_gamepad_report()
+            .map_or_else(ControlResponse::Error, |report| {
+                ControlResponse::EncodedReport(EncodedReportResponse { report })
+            })
+    }
+
+    /// Build a Generic Gamepad report from all latest normalized inputs.
+    pub fn generic_gamepad_report(&self) -> Result<EncodedBleReport, ControlError> {
+        let frames = self.latest_normalized_frames();
+        if frames.is_empty() {
+            return Err(ControlError::NotFound);
+        }
+
+        let composite = LatestInputMerger
+            .merge(&frames, &usb2ble_contracts::CompositeProfile::default())
+            .map_err(|_| ControlError::Generic)?;
+        let profile = generic_auto_profile();
+        let persona_frame = GenericAutoMapper
+            .map_to_persona_frame(&profile, &composite)
+            .map_err(|_| ControlError::Generic)?;
+        GenericGamepadEncoder
+            .encode(&persona_frame)
+            .map_err(|_| ControlError::Generic)
     }
 
     /// Handle a USB ingress event.
@@ -205,6 +243,11 @@ where
         self.state.ble_state = state;
     }
 
+    /// Set the active BLE persona (e.g. from platform glue).
+    pub const fn set_active_persona(&mut self, persona: Option<PersonaId>) {
+        self.state.active_persona = persona;
+    }
+
     /// Get current app state (read-only).
     #[must_use]
     pub const fn state(&self) -> &AppState {
@@ -253,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
     fn test_handle_usb_events_and_commands() {
         use usb2ble_contracts::{
             ConnectionTopology, DeviceId, InputReportPacket, InterfaceId, ReportDescriptorBlob,
@@ -360,6 +403,15 @@ mod tests {
             );
         } else {
             panic!("Expected NormalizedInput");
+        }
+
+        let resp = app.handle_control_command(&ControlCommand::GetGenericGamepadReport);
+        if let ControlResponse::EncodedReport(report) = resp {
+            assert_eq!(report.report.persona_id.0, "generic_gamepad");
+            assert_eq!(report.report.report_id.0, 1);
+            assert_eq!(report.report.bytes.len(), 15);
+        } else {
+            panic!("Expected EncodedReport");
         }
 
         // Test missing key

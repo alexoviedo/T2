@@ -138,3 +138,20 @@ bash -n scripts/*.sh
 - **Normalized command:** `GET_NORMALIZED_INPUT 2:0`
 - **Normalized result:** `controls=21`, including 16 buttons, 1 hat, and 4 axes from a real 64-byte target input report
 - **Remaining scope:** Button-press delta evidence, normalized detach cleanup evidence, exact RJ12 pedal axis labels, BLE publishing, and all-device simultaneous Flight Pack streaming with three separate USB Flight Pack devices remain future work.
+
+## Demo Bridge — USB state to encoded Generic Gamepad report
+
+- [x] Generic Gamepad persona encoder implemented in a pure host-testable crate.
+- [x] Generic auto-mapper implemented in a pure host-testable crate.
+- [x] Composite normalized input merge keeps source identity.
+- [x] `GET_GENERIC_GAMEPAD_REPORT` returns encoded report bytes from latest app USB state.
+- [x] Real target witness captured for `GET_GENERIC_GAMEPAD_REPORT`.
+- [ ] BLE transport publishes this report to a connected host.
+
+## Demo Bridge Validation Commands
+
+```bash
+cargo test -p usb2ble-personas -p usb2ble-mapping -p usb2ble-input -p usb2ble-control -p usb2ble-app --locked
+```
+
+- **Target evidence:** `docs/milestone-evidence/DEMO_BRIDGE_GENERIC_GAMEPAD_REPORT_WITNESS_2026-04-29.md`

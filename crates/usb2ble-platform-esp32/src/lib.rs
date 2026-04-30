@@ -4,6 +4,7 @@
 //! - ESP-IDF bindings,
 //! - UART/NVS adapters.
 
+pub mod ble_hid;
 pub mod usb_host;
 
 use std::cell::RefCell;

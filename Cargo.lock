@@ -1033,6 +1033,7 @@ dependencies = [
  "usb2ble-app",
  "usb2ble-contracts",
  "usb2ble-control",
+ "usb2ble-personas",
  "usb2ble-platform-esp32",
  "usb2ble-storage",
 ]

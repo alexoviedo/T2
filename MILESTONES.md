@@ -271,6 +271,14 @@ This isolates BLE transport risk from USB/HID complexity.
 Deliver the first actually usable bridge path:
 one curated USB HID device -> normalization -> mapping -> Generic BLE Gamepad persona.
 
+### Current pre-work status
+- Pure Generic Gamepad persona encoding exists in `usb2ble-personas`.
+- Generic auto-mapping from composite normalized input exists in `usb2ble-mapping`.
+- `GET_GENERIC_GAMEPAD_REPORT` bridges current live USB state through normalization,
+  merge, mapping, and persona encoding, then returns BLE-ready report bytes over
+  serial.
+- This is not M6 completion because BLE transport publication is not yet proven.
+
 ### Scope
 - device signature selection
 - first mapping profile
