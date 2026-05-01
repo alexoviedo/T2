@@ -837,7 +837,7 @@ pub enum ControlCommand {
     GetNormalizedInput(DescriptorKey),
     /// Request a Generic Gamepad report encoded from all latest normalized inputs.
     GetGenericGamepadReport,
-    /// Request diagnostics explaining the Generic Gamepad auto-mapping result.
+    /// Request diagnostics explaining the selected Generic Gamepad mapping result.
     GetGenericGamepadMapping,
     /// Start the BLE Generic Gamepad persona.
     StartBleGenericGamepad,

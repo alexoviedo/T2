@@ -8,6 +8,10 @@
 - Host-tested mapping diagnostics now explain how normalized source controls map into the Generic Gamepad persona via `GET_GENERIC_GAMEPAD_MAPPING`.
 - Real target smoke evidence for `GET_GENERIC_GAMEPAD_REPORT` is checked in for the RJ12 Flight Pack topology.
 - Real target smoke evidence for `GET_GENERIC_GAMEPAD_MAPPING` is checked in for the TWCS plus T.16000M topology.
+- Real target operator movement evidence now shows T.16000M stick movement changing raw USB reports and mapped Generic Gamepad diagnostics after a USB host session reset.
+- Real target delta evidence now covers TWCS throttle movement, TFRP pedal movement through TWCS/RJ12, and a mapped T.16000M trigger press.
+- Real target detach cleanup evidence now shows a detached downstream HID device removed from USB status, descriptors, and cached reports while the hub remains attached.
+- A curated `flight_pack_demo` profile is implemented, host-tested, target-build verified, and target-witnessed for the T.16000M + TWCS/RJ12 demo path.
 - Target BLE HID demo firmware now starts the Generic Gamepad persona, reaches `ble=Advertising`, connects to a Mac host, and publishes both synthetic and live USB-derived Generic Gamepad reports over BLE.
 - Browser Gamepad API witness evidence is checked in for the BLE Generic Gamepad path, including synthetic self-test changes and one live USB-derived publish.
 
@@ -23,7 +27,7 @@
 - target scope is HID report decoding and normalized live-input diagnostics.
 - descriptor/report/summary/normalized-input control-plane fulfillment is proven for the THRUSTMASTER T.16000 FCS HOTAS through the HooToo powered hub.
 - expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, and simultaneous normalized input for the recommended two-USB topology: pedals connected to TWCS by RJ12, with TWCS USB plus stick USB through the HooToo hub.
-- button-press delta capture, detach cleanup evidence, exact RJ12 pedal axis labels, and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4 completion.
+- explicit calibrated TWCS/TFRP axis targets, exact RJ12 pedal axis labels, and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4 completion.
 - BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses; final app/game compatibility and HOTAS mapping remain open.
 
 ## What works today
@@ -38,13 +42,16 @@
 - `GET_HID_SUMMARY <device>:<interface>` returns parsed axes/buttons/hats/report IDs for descriptors that parse successfully.
 - `GET_NORMALIZED_INPUT <device>:<interface>` returns a normalized control frame decoded from the latest input report for descriptors that parse successfully.
 - `GET_GENERIC_GAMEPAD_REPORT` returns an encoded Generic Gamepad report from the latest normalized input frames, ready for the future BLE publish layer.
-- `GET_GENERIC_GAMEPAD_MAPPING` explains each Generic Gamepad auto-mapping decision, including source VID/PID/interface, source control, target control, value, and reason.
+- `GET_GENERIC_GAMEPAD_MAPPING` explains each selected Generic Gamepad mapping decision, including source VID/PID/interface, source control, target control, value, and reason.
+- `flight_pack_demo` selects an explicit T.16000M + TWCS/RJ12 profile when both known devices are present, while `generic_auto` remains the fallback for other HID combinations.
 - `START_BLE_GENERIC_GAMEPAD` starts the target BLE HID Generic Gamepad persona.
 - `SEND_BLE_SELF_TEST_REPORT` publishes an explicit synthetic Generic Gamepad report when a BLE host is connected.
 - `PUBLISH_GENERIC_GAMEPAD_REPORT` publishes the latest encoded USB-derived Generic Gamepad report when a BLE host is connected.
 - `FORGET_BLE_BONDS` clears BLE bonds through the BLE transport.
 - `tools/gamepad_witness/server.py` serves a repo-local browser Gamepad API witness page and captures snapshots under `target/gamepad-witness/`.
-- `tools/mapping_delta_witness.py` captures clean before/after `GET_GENERIC_GAMEPAD_MAPPING` deltas for one held physical control.
+- `tools/mapping_delta_witness.py` captures clean before/after or timed-watch `GET_GENERIC_GAMEPAD_MAPPING` deltas for one physical control.
+- `tools/usb_report_delta_witness.py` captures lower-level `GET_LAST_USB_REPORT` byte deltas so raw USB movement can be proven before debugging normalization or mapping.
+- `tools/detach_cleanup_witness.py` captures before/detach/after cleanup evidence for one downstream USB HID device.
 - CI packages a flashable ESP32-S3 merged firmware image with `scripts/package_firmware.sh` and uploads it as the `usb2ble-fw-esp32s3-flashable` GitHub Actions artifact.
 - ESP32-S3 target preflight build.
 - host simulation for app/control-plane testing only.
@@ -52,9 +59,9 @@
 ## What is not implemented yet
 - direct-attach hardware transcript remains blocked by available cabling/port geometry.
 - full target IR diagnostic dump.
-- button-press delta witness for normalized input.
-- normalized detach cleanup witness.
-- operator movement/delta witness for `GET_GENERIC_GAMEPAD_MAPPING`.
+- BLE host-visible witness for the `flight_pack_demo` report path.
+- calibrated TWCS/TFRP profile refinements beyond the current demo rules.
+- exact RJ12 pedal axis labels.
 - game/application compatibility beyond the browser Gamepad API witness.
 - BLE Xbox output.
 - powered hub all-device Flight Pack simultaneous report merge for three separate USB Flight Pack devices.

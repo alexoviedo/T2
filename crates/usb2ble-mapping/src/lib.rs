@@ -9,15 +9,22 @@ use usb2ble_contracts::{
     CompositeInputFrame, DeviceSignature, Mapper, MappingDiagnosticEntry,
     MappingDiagnosticsResponse, MappingError, MappingProfile, NormalizedCompositeValue,
     NormalizedControlValue, PersonaId, PersonaInputFrame, PersonaLogicalControlValue, ProfileId,
+    SourceMappingRule,
 };
 
 /// Generic auto-mapping profile ID for the first demo path.
 pub const GENERIC_AUTO_PROFILE_ID: ProfileId = ProfileId("generic_auto");
 
+/// Curated demo profile ID for the Thrustmaster Flight Pack topology.
+pub const FLIGHT_PACK_DEMO_PROFILE_ID: ProfileId = ProfileId("flight_pack_demo");
+
 /// Generic Gamepad persona ID targeted by the auto mapper.
 pub const GENERIC_GAMEPAD_PERSONA_ID: PersonaId = PersonaId("generic_gamepad");
 
 const AXIS_TARGETS: [&str; 6] = ["x", "y", "z", "rx", "ry", "rz"];
+const THRUSTMASTER_VENDOR_ID: u16 = 0x044f;
+const T16000_PRODUCT_ID: u16 = 0xb10a;
+const TWCS_PRODUCT_ID: u16 = 0xb687;
 
 /// Deterministic best-effort mapper for HID-like controller inputs.
 #[derive(Debug, Default, Clone, Copy)]
@@ -28,6 +35,9 @@ impl Mapper for GenericAutoMapper {
         &self,
         devices: &[DeviceSignature],
     ) -> Result<Option<ProfileId>, MappingError> {
+        if has_flight_pack_signatures(devices) {
+            return Ok(Some(FLIGHT_PACK_DEMO_PROFILE_ID));
+        }
         Ok((!devices.is_empty()).then_some(GENERIC_AUTO_PROFILE_ID))
     }
 
@@ -40,7 +50,9 @@ impl Mapper for GenericAutoMapper {
             return Err(MappingError::Generic);
         }
 
-        Ok(map_composite_to_generic_gamepad(composite))
+        Ok(map_composite_to_generic_gamepad_with_profile(
+            profile, composite,
+        ))
     }
 }
 
@@ -59,6 +71,51 @@ pub fn generic_auto_profile() -> MappingProfile {
     }
 }
 
+/// Return the curated Generic Gamepad demo profile for T.16000M + TWCS.
+#[must_use]
+pub fn flight_pack_demo_profile() -> MappingProfile {
+    MappingProfile {
+        profile_id: FLIGHT_PACK_DEMO_PROFILE_ID,
+        display_name: "Thrustmaster Flight Pack Demo".to_string(),
+        supported_signatures: vec![
+            DeviceSignature {
+                vendor_id: THRUSTMASTER_VENDOR_ID,
+                product_id: T16000_PRODUCT_ID,
+                interface_class: Some(3),
+                capability_fingerprint: None,
+            },
+            DeviceSignature {
+                vendor_id: THRUSTMASTER_VENDOR_ID,
+                product_id: TWCS_PRODUCT_ID,
+                interface_class: Some(3),
+                capability_fingerprint: None,
+            },
+        ],
+        target_persona: GENERIC_GAMEPAD_PERSONA_ID,
+        source_mappings: vec![
+            rule(T16000_PRODUCT_ID, "axis_01_30", "x"),
+            rule(T16000_PRODUCT_ID, "axis_01_31", "y"),
+            rule(TWCS_PRODUCT_ID, "axis_01_32", "z"),
+            rule(TWCS_PRODUCT_ID, "axis_01_36", "rx"),
+            rule(T16000_PRODUCT_ID, "axis_01_36", "ry"),
+            rule(T16000_PRODUCT_ID, "axis_01_35", "rz"),
+        ],
+        merge_policy: Some(usb2ble_contracts::CompositeProfile {
+            profile_id: Some(FLIGHT_PACK_DEMO_PROFILE_ID),
+        }),
+    }
+}
+
+/// Select the best built-in Generic Gamepad profile for current sources.
+#[must_use]
+pub fn select_generic_gamepad_profile(composite: &CompositeInputFrame) -> MappingProfile {
+    if has_flight_pack_sources(composite) {
+        flight_pack_demo_profile()
+    } else {
+        generic_auto_profile()
+    }
+}
+
 /// Best-effort mapping from arbitrary normalized controls to Generic Gamepad controls.
 #[must_use]
 pub fn map_composite_to_generic_gamepad(composite: &CompositeInputFrame) -> PersonaInputFrame {
@@ -70,7 +127,26 @@ pub fn map_composite_to_generic_gamepad(composite: &CompositeInputFrame) -> Pers
 pub fn diagnose_generic_gamepad_mapping(
     composite: &CompositeInputFrame,
 ) -> MappingDiagnosticsResponse {
-    map_composite_to_generic_gamepad_with_diagnostics(composite).diagnostics
+    let profile = select_generic_gamepad_profile(composite);
+    map_composite_to_generic_gamepad_with_profile_and_diagnostics(&profile, composite).diagnostics
+}
+
+/// Map using an explicit Generic Gamepad profile.
+#[must_use]
+pub fn map_composite_to_generic_gamepad_with_profile(
+    profile: &MappingProfile,
+    composite: &CompositeInputFrame,
+) -> PersonaInputFrame {
+    map_composite_to_generic_gamepad_with_profile_and_diagnostics(profile, composite).frame
+}
+
+/// Explain mapping decisions for an explicit Generic Gamepad profile.
+#[must_use]
+pub fn diagnose_generic_gamepad_mapping_with_profile(
+    profile: &MappingProfile,
+    composite: &CompositeInputFrame,
+) -> MappingDiagnosticsResponse {
+    map_composite_to_generic_gamepad_with_profile_and_diagnostics(profile, composite).diagnostics
 }
 
 struct GenericGamepadMappingResult {
@@ -88,6 +164,16 @@ struct ProcessedControl {
 fn map_composite_to_generic_gamepad_with_diagnostics(
     composite: &CompositeInputFrame,
 ) -> GenericGamepadMappingResult {
+    map_composite_to_generic_gamepad_with_profile_and_diagnostics(
+        &generic_auto_profile(),
+        composite,
+    )
+}
+
+fn map_composite_to_generic_gamepad_with_profile_and_diagnostics(
+    profile: &MappingProfile,
+    composite: &CompositeInputFrame,
+) -> GenericGamepadMappingResult {
     let ordered_controls = controls_in_source_priority(composite);
     let mut logical_controls = Vec::new();
     let mut diagnostics = Vec::new();
@@ -101,14 +187,36 @@ fn map_composite_to_generic_gamepad_with_diagnostics(
         &mut used_targets,
         &mut processed_controls,
     );
-    map_axes(
-        &ordered_controls,
-        &mut logical_controls,
-        &mut diagnostics,
-        &mut used_targets,
-        &mut processed_controls,
-    );
-    mark_unsupported_controls(&ordered_controls, &mut diagnostics, &processed_controls);
+    if profile.source_mappings.is_empty() {
+        map_axes(
+            &ordered_controls,
+            &mut logical_controls,
+            &mut diagnostics,
+            &mut used_targets,
+            &mut processed_controls,
+        );
+        mark_unprocessed_controls(
+            &ordered_controls,
+            &mut diagnostics,
+            &processed_controls,
+            "unsupported_control",
+        );
+    } else {
+        map_profile_rules(
+            profile,
+            &ordered_controls,
+            &mut logical_controls,
+            &mut diagnostics,
+            &mut used_targets,
+            &mut processed_controls,
+        );
+        mark_unprocessed_controls(
+            &ordered_controls,
+            &mut diagnostics,
+            &processed_controls,
+            "profile_unmapped",
+        );
+    }
 
     GenericGamepadMappingResult {
         frame: PersonaInputFrame {
@@ -116,7 +224,7 @@ fn map_composite_to_generic_gamepad_with_diagnostics(
             logical_controls,
         },
         diagnostics: MappingDiagnosticsResponse {
-            profile_id: GENERIC_AUTO_PROFILE_ID,
+            profile_id: profile.profile_id,
             target_persona: GENERIC_GAMEPAD_PERSONA_ID,
             entries: diagnostics,
         },
@@ -215,14 +323,54 @@ fn map_axes(
     }
 }
 
-fn mark_unsupported_controls(
+fn map_profile_rules(
+    profile: &MappingProfile,
+    controls: &[&NormalizedCompositeValue],
+    logical_controls: &mut Vec<PersonaLogicalControlValue>,
+    diagnostics: &mut Vec<MappingDiagnosticEntry>,
+    used_targets: &mut HashSet<String>,
+    processed_controls: &mut Vec<ProcessedControl>,
+) {
+    for rule in &profile.source_mappings {
+        let Some(control) = controls
+            .iter()
+            .copied()
+            .find(|control| profile_rule_matches(rule, control))
+        else {
+            continue;
+        };
+
+        processed_controls.push(processed_control(control));
+        if used_targets.insert(rule.target_control_id.clone()) {
+            logical_controls.push(PersonaLogicalControlValue {
+                control_id: rule.target_control_id.clone(),
+                value: maybe_invert(control.value, rule.invert),
+            });
+            let reason = if rule.invert {
+                "profile_rule_inverted"
+            } else {
+                "profile_rule"
+            };
+            diagnostics.push(mapping_diagnostic(
+                control,
+                Some(&rule.target_control_id),
+                reason,
+            ));
+        } else {
+            diagnostics.push(mapping_diagnostic(control, None, "target_already_used"));
+        }
+    }
+}
+
+fn mark_unprocessed_controls(
     controls: &[&NormalizedCompositeValue],
     diagnostics: &mut Vec<MappingDiagnosticEntry>,
     processed_controls: &[ProcessedControl],
+    reason: &str,
 ) {
     for control in controls {
         if !is_processed(control, processed_controls) {
-            diagnostics.push(mapping_diagnostic(control, None, "unsupported_control"));
+            diagnostics.push(mapping_diagnostic(control, None, reason));
         }
     }
 }
@@ -323,6 +471,60 @@ fn preferred_axis_target(control_id: &str) -> Option<&'static str> {
     }
 }
 
+fn rule(product_id: u16, source_control_id: &str, target_control_id: &str) -> SourceMappingRule {
+    SourceMappingRule {
+        source_vendor_id: Some(THRUSTMASTER_VENDOR_ID),
+        source_product_id: Some(product_id),
+        source_control_id: source_control_id.to_string(),
+        target_control_id: target_control_id.to_string(),
+        invert: false,
+    }
+}
+
+fn profile_rule_matches(rule: &SourceMappingRule, control: &NormalizedCompositeValue) -> bool {
+    rule.source_vendor_id
+        .is_none_or(|vendor_id| vendor_id == control.source.device.vendor_id)
+        && rule
+            .source_product_id
+            .is_none_or(|product_id| product_id == control.source.device.product_id)
+        && rule.source_control_id == control.control_id
+}
+
+const fn maybe_invert(value: NormalizedControlValue, invert: bool) -> NormalizedControlValue {
+    if !invert {
+        return value;
+    }
+
+    match value {
+        NormalizedControlValue::Axis(value) => NormalizedControlValue::Axis(-value),
+        NormalizedControlValue::Trigger(value) => NormalizedControlValue::Trigger(-value),
+        NormalizedControlValue::Unknown(value) => NormalizedControlValue::Unknown(-value),
+        unchanged => unchanged,
+    }
+}
+
+fn has_flight_pack_signatures(devices: &[DeviceSignature]) -> bool {
+    let has_stick = devices.iter().any(|device| {
+        device.vendor_id == THRUSTMASTER_VENDOR_ID && device.product_id == T16000_PRODUCT_ID
+    });
+    let has_twcs = devices.iter().any(|device| {
+        device.vendor_id == THRUSTMASTER_VENDOR_ID && device.product_id == TWCS_PRODUCT_ID
+    });
+    has_stick && has_twcs
+}
+
+fn has_flight_pack_sources(composite: &CompositeInputFrame) -> bool {
+    let has_stick = composite.sources.iter().any(|source| {
+        source.device.vendor_id == THRUSTMASTER_VENDOR_ID
+            && source.device.product_id == T16000_PRODUCT_ID
+    });
+    let has_twcs = composite.sources.iter().any(|source| {
+        source.device.vendor_id == THRUSTMASTER_VENDOR_ID
+            && source.device.product_id == TWCS_PRODUCT_ID
+    });
+    has_stick && has_twcs
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,6 +547,30 @@ mod tests {
                 }])
                 .unwrap(),
             Some(GENERIC_AUTO_PROFILE_ID)
+        );
+    }
+
+    #[test]
+    fn selects_flight_pack_demo_profile_for_known_thrustmaster_pair() {
+        let mapper = GenericAutoMapper;
+        assert_eq!(
+            mapper
+                .select_profile(&[
+                    DeviceSignature {
+                        vendor_id: 0x044f,
+                        product_id: 0xb10a,
+                        interface_class: Some(3),
+                        capability_fingerprint: None,
+                    },
+                    DeviceSignature {
+                        vendor_id: 0x044f,
+                        product_id: 0xb687,
+                        interface_class: Some(3),
+                        capability_fingerprint: None,
+                    },
+                ])
+                .unwrap(),
+            Some(FLIGHT_PACK_DEMO_PROFILE_ID)
         );
     }
 
@@ -433,8 +659,8 @@ mod tests {
 
     #[test]
     fn diagnoses_mapped_and_unmapped_controls() {
-        let throttle = source(2, 0x044f, 0xb687);
-        let stick = source(3, 0x044f, 0xb10a);
+        let throttle = source(2, 0xabcd, 0x0001);
+        let stick = source(3, 0xabcd, 0x0002);
         let composite = CompositeInputFrame {
             sources: vec![throttle.clone(), stick.clone()],
             controls: vec![
@@ -470,13 +696,13 @@ mod tests {
         assert_eq!(diagnostics.entries.len(), 5);
         assert!(diagnostics.entries.iter().any(|entry| {
             entry.source_control_id == "axis_01_30"
-                && entry.source.device.product_id == 0xb10a
+                && entry.source.device.product_id == 0x0002
                 && entry.target_control_id.as_deref() == Some("x")
                 && entry.reason == "preferred_axis"
         }));
         assert!(diagnostics.entries.iter().any(|entry| {
             entry.source_control_id == "axis_01_30"
-                && entry.source.device.product_id == 0xb687
+                && entry.source.device.product_id == 0x0001
                 && entry.target_control_id.as_deref() == Some("z")
                 && entry.reason == "next_free_axis"
         }));
@@ -484,6 +710,93 @@ mod tests {
             entry.source_control_id == "usage_ff00_21_23"
                 && entry.target_control_id.is_none()
                 && entry.reason == "unsupported_control"
+        }));
+    }
+
+    #[test]
+    fn flight_pack_demo_profile_maps_curated_axes_before_auto_fallback() {
+        let twcs = source(2, 0x044f, 0xb687);
+        let stick = source(3, 0x044f, 0xb10a);
+        let composite = CompositeInputFrame {
+            sources: vec![twcs.clone(), stick.clone()],
+            controls: vec![
+                value(
+                    twcs.clone(),
+                    "axis_01_32",
+                    NormalizedControlValue::Axis(-30_000),
+                ),
+                value(
+                    twcs.clone(),
+                    "axis_01_36",
+                    NormalizedControlValue::Axis(3_000),
+                ),
+                value(twcs, "axis_01_30", NormalizedControlValue::Axis(11_111)),
+                value(
+                    stick.clone(),
+                    "axis_01_30",
+                    NormalizedControlValue::Axis(100),
+                ),
+                value(
+                    stick.clone(),
+                    "axis_01_31",
+                    NormalizedControlValue::Axis(200),
+                ),
+                value(
+                    stick.clone(),
+                    "axis_01_35",
+                    NormalizedControlValue::Axis(300),
+                ),
+                value(
+                    stick.clone(),
+                    "axis_01_36",
+                    NormalizedControlValue::Axis(400),
+                ),
+                value(stick, "button_1", NormalizedControlValue::Button(true)),
+            ],
+            timestamp_micros: 11,
+        };
+
+        let profile = select_generic_gamepad_profile(&composite);
+        let frame = GenericAutoMapper
+            .map_to_persona_frame(&profile, &composite)
+            .unwrap();
+        let diagnostics = diagnose_generic_gamepad_mapping(&composite);
+
+        assert_eq!(profile.profile_id, FLIGHT_PACK_DEMO_PROFILE_ID);
+        assert_eq!(diagnostics.profile_id, FLIGHT_PACK_DEMO_PROFILE_ID);
+        assert_eq!(
+            control(&frame, "button_1"),
+            Some(NormalizedControlValue::Button(true))
+        );
+        assert_eq!(
+            control(&frame, "x"),
+            Some(NormalizedControlValue::Axis(100))
+        );
+        assert_eq!(
+            control(&frame, "y"),
+            Some(NormalizedControlValue::Axis(200))
+        );
+        assert_eq!(
+            control(&frame, "z"),
+            Some(NormalizedControlValue::Axis(-30_000))
+        );
+        assert_eq!(
+            control(&frame, "rx"),
+            Some(NormalizedControlValue::Axis(3_000))
+        );
+        assert_eq!(
+            control(&frame, "ry"),
+            Some(NormalizedControlValue::Axis(400))
+        );
+        assert_eq!(
+            control(&frame, "rz"),
+            Some(NormalizedControlValue::Axis(300))
+        );
+        assert!(diagnostics.entries.iter().any(|entry| {
+            entry.source_control_id == "axis_01_30"
+                && entry.source.device.product_id == 0xb687
+                && entry.target_control_id.is_none()
+                && entry.reason == "profile_unmapped"
         }));
     }
 

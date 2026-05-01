@@ -265,9 +265,17 @@ pub struct EspUsbHost {
 
     #[cfg(target_os = "espidf")]
     inner: Arc<Mutex<TargetUsbHostState>>,
+    #[cfg(target_os = "espidf")]
+    client_events: Arc<TargetClientEventState>,
 
     #[cfg(not(target_os = "espidf"))]
     simulated_once: bool,
+}
+
+#[cfg(target_os = "espidf")]
+struct TargetClientEventState {
+    event_tx: Arc<Mutex<VecDeque<UsbIngressEvent>>>,
+    inner: Arc<Mutex<TargetUsbHostState>>,
 }
 
 #[cfg(target_os = "espidf")]
@@ -300,10 +308,20 @@ impl TargetUsbHostState {
 
 impl EspUsbHost {
     pub fn new(event_tx: Arc<Mutex<VecDeque<UsbIngressEvent>>>) -> Self {
+        #[cfg(target_os = "espidf")]
+        let inner = Arc::new(Mutex::new(TargetUsbHostState::new()));
+        #[cfg(target_os = "espidf")]
+        let client_events = Arc::new(TargetClientEventState {
+            event_tx: event_tx.clone(),
+            inner: inner.clone(),
+        });
+
         Self {
             event_tx,
             #[cfg(target_os = "espidf")]
-            inner: Arc::new(Mutex::new(TargetUsbHostState::new())),
+            inner,
+            #[cfg(target_os = "espidf")]
+            client_events,
             #[cfg(not(target_os = "espidf"))]
             simulated_once: false,
         }
@@ -327,10 +345,47 @@ impl EspUsbHost {
             return Err("usb_host_install failed");
         }
 
-        unsafe extern "C" fn dummy_client_event_cb(
-            _event_msg: *const esp_idf_sys::usb_host_client_event_msg_t,
-            _arg: *mut core::ffi::c_void,
+        unsafe extern "C" fn client_event_cb(
+            event_msg: *const esp_idf_sys::usb_host_client_event_msg_t,
+            arg: *mut core::ffi::c_void,
         ) {
+            if event_msg.is_null() || arg.is_null() {
+                return;
+            }
+
+            let state = unsafe { &*(arg as *const TargetClientEventState) };
+            let event = unsafe { (*event_msg).event };
+            if event != usb_host_client_event_t_USB_HOST_CLIENT_EVENT_DEV_GONE {
+                return;
+            }
+
+            let dev_hdl = unsafe { (*event_msg).__bindgen_anon_1.dev_gone.dev_hdl };
+            let detached = {
+                let Ok(mut host_state) = state.inner.lock() else {
+                    return;
+                };
+
+                let Some(addr) = host_state.by_addr.iter().find_map(|(addr, session)| {
+                    (session.dev_hdl == dev_hdl && !session.detach_announced).then_some(*addr)
+                }) else {
+                    return;
+                };
+
+                let Some(session) = host_state.by_addr.get_mut(&addr) else {
+                    return;
+                };
+
+                session.detach_announced = true;
+                let dev_ref = session.dev_ref.clone();
+                host_state
+                    .announced_interfaces
+                    .retain(|(dev_id, _)| *dev_id != dev_ref.device_id);
+                dev_ref
+            };
+
+            if let Ok(mut q) = state.event_tx.lock() {
+                q.push_back(UsbIngressEvent::DeviceDetached { source: detached });
+            }
         }
 
         let mut client_cfg: usb_host_client_config_t = Default::default();
@@ -338,8 +393,8 @@ impl EspUsbHost {
         client_cfg.max_num_event_msg = 8;
         client_cfg.__bindgen_anon_1.async_ =
             esp_idf_sys::usb_host_client_config_t__bindgen_ty_1__bindgen_ty_1 {
-                client_event_callback: Some(dummy_client_event_cb),
-                callback_arg: core::ptr::null_mut(),
+                client_event_callback: Some(client_event_cb),
+                callback_arg: Arc::as_ptr(&self.client_events) as *mut core::ffi::c_void,
             };
 
         let mut client_hdl: usb_host_client_handle_t = core::ptr::null_mut();
@@ -729,9 +784,11 @@ impl EspUsbHost {
     #[cfg(target_os = "espidf")]
     fn poll_completed_interrupt_transfers(&self) -> Result<(), &'static str> {
         let mut reports = Vec::new();
+        let mut detached = Vec::new();
 
         {
             let mut state = self.inner.lock().map_err(|_| "usb host mutex poisoned")?;
+            let mut detached_dev_ids = Vec::new();
             for device_session in state.by_addr.values_mut() {
                 if device_session.detach_announced {
                     continue;
@@ -788,9 +845,15 @@ impl EspUsbHost {
                         if resubmit_interrupt_transfer(interface_session) {
                             interface_session.in_flight = true;
                         }
-                    } else if status != usb_transfer_status_t_USB_TRANSFER_STATUS_NO_DEVICE
-                        && status != usb_transfer_status_t_USB_TRANSFER_STATUS_CANCELED
+                    } else if status == usb_transfer_status_t_USB_TRANSFER_STATUS_NO_DEVICE
+                        || status == usb_transfer_status_t_USB_TRANSFER_STATUS_CANCELED
                     {
+                        if !device_session.detach_announced {
+                            device_session.detach_announced = true;
+                            detached_dev_ids.push(device_session.dev_ref.device_id);
+                            detached.push(device_session.dev_ref.clone());
+                        }
+                    } else {
                         unsafe {
                             printf(
                                 b"[USB_REPORT_WARN] Device: ID=%lu, IFACE=%u, STATUS=%u\n\0"
@@ -806,6 +869,12 @@ impl EspUsbHost {
                     }
                 }
             }
+
+            for dev_id in detached_dev_ids {
+                state
+                    .announced_interfaces
+                    .retain(|(announced_dev_id, _)| *announced_dev_id != dev_id);
+            }
         }
 
         if !reports.is_empty()
@@ -813,6 +882,13 @@ impl EspUsbHost {
         {
             for report in reports {
                 q.push_back(UsbIngressEvent::InputReportReceived(report));
+            }
+        }
+        if !detached.is_empty()
+            && let Ok(mut q) = self.event_tx.lock()
+        {
+            for source in detached {
+                q.push_back(UsbIngressEvent::DeviceDetached { source });
             }
         }
 

@@ -12,7 +12,9 @@ use usb2ble_contracts::{
 };
 use usb2ble_hid::{HidParser, summarize_capabilities};
 use usb2ble_input::{LatestInputMerger, StandardInputNormalizer};
-use usb2ble_mapping::{GenericAutoMapper, diagnose_generic_gamepad_mapping, generic_auto_profile};
+use usb2ble_mapping::{
+    GenericAutoMapper, diagnose_generic_gamepad_mapping, select_generic_gamepad_profile,
+};
 use usb2ble_personas::GenericGamepadEncoder;
 
 /// The main application structure.
@@ -165,7 +167,7 @@ where
         let composite = LatestInputMerger
             .merge(&frames, &usb2ble_contracts::CompositeProfile::default())
             .map_err(|_| ControlError::Generic)?;
-        let profile = generic_auto_profile();
+        let profile = select_generic_gamepad_profile(&composite);
         let persona_frame = GenericAutoMapper
             .map_to_persona_frame(&profile, &composite)
             .map_err(|_| ControlError::Generic)?;

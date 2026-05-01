@@ -74,7 +74,9 @@ class SerialPort:
         buffer = ""
         while time.monotonic() < deadline:
             buffer += self.read_text(0.2)
-            for line in buffer.splitlines():
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                line = line.rstrip("\r")
                 if line.startswith(prefix):
                     return line
         raise TimeoutError(f"no {prefix} response for {command!r}")
@@ -116,6 +118,35 @@ def changed_entries(
     return changes
 
 
+def changed_entries_by_sample(
+    baseline: dict[str, MappingEntry],
+    samples: list[dict[str, MappingEntry]],
+) -> list[dict[str, object]]:
+    changed: list[dict[str, object]] = []
+    for sample_index, sample in enumerate(samples, start=1):
+        for old, new in changed_entries(baseline, sample):
+            current = new or old
+            if current is None:
+                continue
+            changed.append(
+                {
+                    "sample": sample_index,
+                    "src": current.src,
+                    "before": None if old is None else old.__dict__,
+                    "after": None if new is None else new.__dict__,
+                }
+            )
+    return changed
+
+
+def collapse_changed_samples(changed: list[dict[str, object]]) -> list[dict[str, object]]:
+    by_src: dict[str, dict[str, object]] = {}
+    for change in changed:
+        src = str(change["src"])
+        by_src.setdefault(src, change)
+    return [by_src[src] for src in sorted(by_src)]
+
+
 def print_changes(changes: Iterable[tuple[MappingEntry | None, MappingEntry | None]]) -> None:
     mapped = []
     unmapped = []
@@ -150,6 +181,8 @@ def main() -> int:
     parser.add_argument("--port", required=True)
     parser.add_argument("--label", default="movement")
     parser.add_argument("--timeout", type=float, default=8.0)
+    parser.add_argument("--watch-seconds", type=float, default=0.0)
+    parser.add_argument("--sample-interval", type=float, default=0.25)
     parser.add_argument("--out-dir", default="target/mapping-delta-witness")
     args = parser.parse_args()
 
@@ -165,11 +198,44 @@ def main() -> int:
         before = parse_mapping(before_line)
         print(f"Baseline entries: {len(before)}")
         print()
-        print("Move and hold exactly one control now.")
-        input("Press Enter while holding that control...")
-        after_line = serial.command_response("GET_GENERIC_GAMEPAD_MAPPING", PREFIX, args.timeout)
-        after = parse_mapping(after_line)
-        changes = changed_entries(before, after)
+        if args.watch_seconds > 0:
+            print("Move exactly one control during the watch window.")
+            input("Press Enter to start the watch window...")
+            print(f"Watching for {args.watch_seconds:.1f}s...")
+            sample_lines = []
+            samples = []
+            deadline = time.monotonic() + args.watch_seconds
+            while time.monotonic() < deadline:
+                line = serial.command_response(
+                    "GET_GENERIC_GAMEPAD_MAPPING", PREFIX, args.timeout
+                )
+                sample_lines.append(line)
+                samples.append(parse_mapping(line))
+                time.sleep(args.sample_interval)
+            after_line = sample_lines[-1] if sample_lines else before_line
+            changes_by_sample = changed_entries_by_sample(before, samples)
+            collapsed_changes = collapse_changed_samples(changes_by_sample)
+            changes = [
+                (
+                    None
+                    if change["before"] is None
+                    else MappingEntry(**change["before"]),  # type: ignore[arg-type]
+                    None
+                    if change["after"] is None
+                    else MappingEntry(**change["after"]),  # type: ignore[arg-type]
+                )
+                for change in collapsed_changes
+            ]
+        else:
+            print("Move and hold exactly one control now.")
+            input("Press Enter while holding that control...")
+            after_line = serial.command_response(
+                "GET_GENERIC_GAMEPAD_MAPPING", PREFIX, args.timeout
+            )
+            after = parse_mapping(after_line)
+            changes_by_sample = []
+            sample_lines = []
+            changes = changed_entries(before, after)
     finally:
         serial.close()
 
@@ -179,6 +245,9 @@ def main() -> int:
         "port": args.port,
         "before_line": before_line,
         "after_line": after_line,
+        "watch_seconds": args.watch_seconds,
+        "sample_lines": sample_lines,
+        "changed_by_sample": changes_by_sample,
         "changed": [
             {
                 "src": (new or old).src,

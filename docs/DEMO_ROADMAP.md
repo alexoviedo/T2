@@ -131,13 +131,23 @@ What hardware evidence now exists:
 - Mac IOHID receives axis values from the live USB-derived BLE report
 - a browser Gamepad API witness receives a change snapshot after a live
   USB-derived BLE publish
+- `GET_GENERIC_GAMEPAD_MAPPING` has a target operator movement witness for
+  T.16000M stick movement after refreshing a stale USB host session
+- TWCS throttle movement, TFRP pedal movement through TWCS/RJ12, and T.16000M
+  trigger press now have target delta witnesses
+- downstream HID detach cleanup now removes stale device/interface/report state
+  while preserving the attached hub
+- a curated `flight_pack_demo` mapping profile is implemented, host-tested, and
+  target-witnessed for the known T.16000M + TWCS/RJ12 topology
 - GitHub Actions is expected to package a flashable merged ESP32-S3 firmware
   image for demo builds
 
 What still needs demo polish:
 
+- BLE host-visible witness for a live USB-derived `flight_pack_demo` report
 - game/application compatibility beyond the browser Gamepad API witness
-- explicit T.16000M/TWCS/TFRP mapping profile and calibration
+- calibration refinements for the explicit T.16000M/TWCS/TFRP mapping profile
+- exact TFRP pedal axis naming through the TWCS/RJ12 report
 - cleaner host naming after macOS has cached an older BLE product name
 
 ## Architecture Rules
@@ -170,5 +180,8 @@ Near-term improvements:
 - add calibration and inversion rules for axes
 - add source selectors based on VID/PID, interface, capability fingerprint, and
   eventually serial/topology where available
-- capture an operator movement/delta witness for `GET_GENERIC_GAMEPAD_MAPPING`
-  while moving one physical control at a time
+- publish the `flight_pack_demo` report over BLE and capture host-visible input
+- refine profile rules with calibration/deadzone metadata after the demo profile
+  has a target witness
+- when a mapping delta run shows no movement, first prove raw byte movement with
+  `tools/usb_report_delta_witness.py`, then rerun the mapping delta witness
