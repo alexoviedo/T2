@@ -114,7 +114,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
+          fail_on_unmatched_files: true
           files: |
-            firmware/usb2ble-fw-esp32s3-merged.bin
-            firmware/usb2ble-fw-esp32s3-manifest.txt
-            firmware/usb2ble-fw
+            firmware/firmware/usb2ble-fw-esp32s3-merged.bin
+            firmware/firmware/usb2ble-fw-esp32s3-manifest.txt
+            firmware/xtensa-esp32s3-espidf/debug/usb2ble-fw
