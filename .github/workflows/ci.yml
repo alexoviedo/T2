@@ -26,9 +26,6 @@ jobs:
     - name: Rust Cache
       uses: Swatinem/rust-cache@v2
 
-    - name: Install espflash
-      run: cargo install espflash --version 4.4.0 --locked
-
     - name: Shell syntax check
       run: bash -n scripts/*.sh
 
@@ -78,6 +75,9 @@ jobs:
     - name: Target build preflight
       run: ./scripts/check_target_build.sh
 
+    - name: Install espflash
+      run: cargo install espflash --version 4.4.0 --locked
+
     - name: Package flashable firmware image
       run: ./scripts/package_firmware.sh
 
@@ -91,3 +91,24 @@ jobs:
           target/xtensa-esp32s3-espidf/debug/usb2ble-fw
         if-no-files-found: error
         retention-days: 30
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: esp32s3_target_preflight
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: usb2ble-fw-esp32s3-flashable
+          path: firmware
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: |
+            firmware/usb2ble-fw-esp32s3-merged.bin
+            firmware/usb2ble-fw-esp32s3-manifest.txt
+            firmware/usb2ble-fw
