@@ -9,7 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  ESPFLASH_SKIP_UPDATE_CHECK: "1"
+  ESPFLASH_SKIP_UPDATE_CHECK: "true"
 
 jobs:
   host_checks:
