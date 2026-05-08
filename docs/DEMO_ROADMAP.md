@@ -141,8 +141,10 @@ What hardware evidence now exists:
   while preserving the attached hub
 - a curated `flight_pack_demo` mapping profile is implemented, host-tested, and
   target-witnessed for the known T.16000M + TWCS/RJ12 topology
-- GitHub Actions is expected to package a flashable merged ESP32-S3 firmware
-  image for demo builds
+- GitHub Actions packages a flashable merged ESP32-S3 firmware image and
+  publishes it to the `latest` GitHub Release for demo builds
+- the hosted `latest` release image has been downloaded, flashed to the
+  ESP32-S3, and smoke-verified through the serial control plane
 
 What still needs demo polish:
 

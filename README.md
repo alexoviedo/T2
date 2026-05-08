@@ -14,6 +14,7 @@
 - A curated `flight_pack_demo` profile is implemented, host-tested, target-build verified, and target-witnessed for the T.16000M + TWCS/RJ12 demo path.
 - Target BLE HID demo firmware now starts the Generic Gamepad persona, reaches `ble=Advertising`, connects to a Mac host, and publishes both synthetic and live USB-derived Generic Gamepad reports over BLE.
 - Browser Gamepad API witness evidence is checked in for the BLE Generic Gamepad path, including synthetic self-test changes, one live USB-derived publish, and one `flight_pack_demo` T.16000M stick movement.
+- The hosted `latest` GitHub Release firmware image has been downloaded, flashed to the ESP32-S3, and smoke-verified through the serial control plane.
 
 ## What this project is building toward
 - ESP32-S3 USB HID to BLE bridge.
@@ -52,7 +53,7 @@
 - `tools/mapping_delta_witness.py` captures clean before/after or timed-watch `GET_GENERIC_GAMEPAD_MAPPING` deltas for one physical control.
 - `tools/usb_report_delta_witness.py` captures lower-level `GET_LAST_USB_REPORT` byte deltas so raw USB movement can be proven before debugging normalization or mapping.
 - `tools/detach_cleanup_witness.py` captures before/detach/after cleanup evidence for one downstream USB HID device.
-- CI packages a flashable ESP32-S3 merged firmware image with `scripts/package_firmware.sh`, uploads it as the `usb2ble-fw-esp32s3-flashable` GitHub Actions artifact, and is wired to refresh a `latest` GitHub Release on `main` pushes after host and target jobs both pass.
+- CI packages a flashable ESP32-S3 merged firmware image with `scripts/package_firmware.sh`, uploads it as the `usb2ble-fw-esp32s3-flashable` GitHub Actions artifact, and refreshes a `latest` GitHub Release on `main` pushes after host and target jobs both pass.
 - ESP32-S3 target preflight build.
 - host simulation for app/control-plane testing only.
 
@@ -125,9 +126,9 @@ cargo +esp build -Z build-std=std,panic_abort --locked --package usb2ble-fw --ta
 espflash write-bin --chip esp32s3 --port <PORT> 0x0 target/firmware/usb2ble-fw-esp32s3-merged.bin
 ```
 GitHub Actions uploads the same merged image plus a manifest and ELF as the
-`usb2ble-fw-esp32s3-flashable` artifact. On `main` pushes, the release job is
-wired to publish those files to the `latest` GitHub Release after host checks
-and ESP32-S3 target packaging both pass.
+`usb2ble-fw-esp32s3-flashable` artifact. On `main` pushes, the release job
+publishes those files to the `latest` GitHub Release after host checks and
+ESP32-S3 target packaging both pass.
 
 ## Hardware verification
 See: `docs/HARDWARE_M2B1_VERIFICATION.md`
