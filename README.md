@@ -16,15 +16,18 @@
 - Browser Gamepad API witness evidence is checked in for the BLE Generic Gamepad path, including synthetic self-test changes, one live USB-derived publish, and one `flight_pack_demo` T.16000M stick movement.
 - The hosted `latest` GitHub Release firmware image has been downloaded, flashed to the ESP32-S3, and smoke-verified through the serial control plane.
 - The ASAP demo rehearsal helper has a successful target + browser witness run for T.16000M stick-right movement through the full Generic Gamepad BLE path.
-- Xbox BLE emulation research is captured, and host-tested `GET_XBOX_GAMEPAD_REPORT` / `GET_XBOX_GAMEPAD_MAPPING` code paths have been started without replacing the Generic Gamepad demo path.
+- Generic BLE Gamepad: known working hardware path.
+- Xbox mapping/report encoding: implemented and host-tested.
+- Xbox BLE identity/report publishing: implemented for compatibility testing once commands exist and target build passes.
+- Xbox host compatibility: not claimed complete until real pairing/input witness is captured.
 
 ## What this project is building toward
 - ESP32-S3 USB HID to BLE bridge.
 - eventual powered USB-C hub support.
 - eventual multiple USB HID inputs.
 - mapping to BLE Generic Gamepad is now started with a pure auto-mapping and persona-encoding path.
-- eventual BLE Xbox Wireless-style output.
-- the BLE transport is intentionally persona-driven so Xbox Wireless-style output can be added later as a separate persona/report encoder.
+- BLE Xbox Wireless Controller output as a separate persona, with real host compatibility proven only by captured pairing/input evidence.
+- the BLE transport is intentionally persona-driven so Generic Gamepad and Xbox Wireless Controller output stay explicit and diagnosable.
 
 ## Current milestone: M4
 - target scope is HID report decoding and normalized live-input diagnostics.
@@ -52,9 +55,13 @@
 - `START_BLE_GENERIC_GAMEPAD` starts the target BLE HID Generic Gamepad persona.
 - `SEND_BLE_SELF_TEST_REPORT` publishes an explicit synthetic Generic Gamepad report when a BLE host is connected.
 - `PUBLISH_GENERIC_GAMEPAD_REPORT` publishes the latest encoded USB-derived Generic Gamepad report when a BLE host is connected.
+- `START_BLE_XBOX_CONTROLLER` starts the Xbox Wireless Controller BLE persona using the model 1914 / Series X|S BLE compatibility identity.
+- `SEND_XBOX_SELF_TEST_REPORT` publishes an explicit synthetic Xbox report when a BLE host is connected.
+- `PUBLISH_XBOX_GAMEPAD_REPORT` publishes the latest encoded USB-derived Xbox Wireless Controller report when a BLE host is connected.
 - `FORGET_BLE_BONDS` clears BLE bonds through the BLE transport.
 - `tools/gamepad_witness/server.py` serves a repo-local browser Gamepad API witness page and captures snapshots under `target/gamepad-witness/`.
 - `tools/asap_demo_rehearsal.py` runs the operator-friendly Generic Gamepad demo rehearsal, auto-detects the T.16000M source by VID/PID, and saves a timestamped transcript.
+- `tools/xbox_demo_rehearsal.py` runs the Xbox BLE compatibility rehearsal and saves serial proof plus optional browser witness evidence.
 - `tools/mapping_delta_witness.py` captures clean before/after or timed-watch `GET_GENERIC_GAMEPAD_MAPPING` deltas for one physical control.
 - `tools/usb_report_delta_witness.py` captures lower-level `GET_LAST_USB_REPORT` byte deltas so raw USB movement can be proven before debugging normalization or mapping.
 - `tools/detach_cleanup_witness.py` captures before/detach/after cleanup evidence for one downstream USB HID device.
@@ -68,7 +75,7 @@
 - calibrated TWCS/TFRP profile refinements beyond the current demo rules.
 - exact RJ12 pedal axis labels.
 - game/application compatibility beyond the browser Gamepad API witness.
-- BLE Xbox output.
+- Xbox host compatibility and Gamepad API visibility until real pairing/input witness evidence is captured.
 - powered hub all-device Flight Pack simultaneous report merge for three separate USB Flight Pack devices.
 
 ## Repository layout
@@ -140,6 +147,9 @@ See: `docs/HARDWARE_M2B1_VERIFICATION.md`
 
 ## ASAP demo runbook
 See: `docs/ASAP_DEMO_RUNBOOK.md`
+
+## Xbox BLE demo runbook
+See: `docs/XBOX_BLE_DEMO_RUNBOOK.md`
 
 ## Integrity rules for agents
 * code and checked-in evidence are the source of truth.

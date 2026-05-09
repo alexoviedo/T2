@@ -7,12 +7,16 @@ mod integration_tests;
 
 use usb2ble_app::App;
 use usb2ble_contracts::{
-    BleActionResponse, BleTransport, CONTRACT_VERSION, ControlCommand, ControlError, ControlPlane,
-    ControlResponse, DescriptorKey, NormalizedControlValue, PersonaEncoder, PersonaInputFrame,
+    BleActionResponse, BleTransport, BleTransportError, CONTRACT_VERSION, ControlCommand,
+    ControlError, ControlPlane, ControlResponse, DescriptorKey, EncodedBleReport,
+    NormalizedControlValue, PersonaEncoder, PersonaId, PersonaInputFrame,
     PersonaLogicalControlValue, UsbIngress,
 };
 use usb2ble_control::SerialControlPlane;
-use usb2ble_personas::{GENERIC_GAMEPAD_PERSONA_ID, GenericGamepadEncoder};
+use usb2ble_personas::{
+    GENERIC_GAMEPAD_PERSONA_ID, GenericGamepadEncoder, XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+    XboxWirelessControllerEncoder,
+};
 use usb2ble_platform_esp32::{
     self as platform, EspUsbIngress, Uart, UartReadResult, ble_hid::BleHidTransport,
 };
@@ -60,9 +64,11 @@ pub fn main() {
     let mut app = App::new(storage);
     let control = SerialControlPlane::new();
     let mut ble = BleHidTransport::new();
-    let encoder = GenericGamepadEncoder;
+    let generic_encoder = GenericGamepadEncoder;
+    let xbox_encoder = XboxWirelessControllerEncoder;
     let mut report_log_micros: Vec<(DescriptorKey, u64)> = Vec::new();
-    let mut ble_self_test_pressed = false;
+    let mut generic_self_test_pressed = false;
+    let mut xbox_self_test_pressed = false;
 
     // 4. Print startup banner
     platform::trace_printf(b"--- USB2BLE FIRMWARE BOOT ---\n\0");
@@ -176,9 +182,11 @@ pub fn main() {
                         let resp = handle_control_command(
                             &mut app,
                             &mut ble,
-                            &encoder,
+                            &generic_encoder,
+                            &xbox_encoder,
                             &cmd,
-                            &mut ble_self_test_pressed,
+                            &mut generic_self_test_pressed,
+                            &mut xbox_self_test_pressed,
                         );
                         if let Ok(resp_bytes) = control.encode_response(&resp) {
                             uart.write_all(&resp_bytes);
@@ -215,9 +223,11 @@ pub fn main() {
 fn handle_control_command<S>(
     app: &mut App<S>,
     ble: &mut impl BleTransport,
-    encoder: &impl PersonaEncoder,
+    generic_encoder: &impl PersonaEncoder,
+    xbox_encoder: &impl PersonaEncoder,
     cmd: &ControlCommand,
-    ble_self_test_pressed: &mut bool,
+    generic_self_test_pressed: &mut bool,
+    xbox_self_test_pressed: &mut bool,
 ) -> ControlResponse
 where
     S: usb2ble_contracts::ProfileStore + usb2ble_contracts::BondStore,
@@ -225,43 +235,37 @@ where
     app.set_ble_state(ble.current_state());
 
     let resp = match cmd {
-        ControlCommand::StartBleGenericGamepad => {
-            match encoder.descriptor(GENERIC_GAMEPAD_PERSONA_ID) {
-                Ok(descriptor) => match ble.activate_persona(&descriptor) {
-                    Ok(()) => {
-                        app.set_active_persona(Some(GENERIC_GAMEPAD_PERSONA_ID));
-                        ControlResponse::BleAction(BleActionResponse {
-                            action: "start_generic_gamepad",
-                            state: ble.current_state(),
-                            report: None,
-                        })
-                    }
-                    Err(_) => ControlResponse::Error(ControlError::Generic),
-                },
-                Err(_) => ControlResponse::Error(ControlError::Generic),
-            }
-        }
+        ControlCommand::StartBleGenericGamepad => start_ble_persona(
+            app,
+            ble,
+            generic_encoder,
+            GENERIC_GAMEPAD_PERSONA_ID,
+            "start_generic_gamepad",
+        ),
+        ControlCommand::StartBleXboxController => start_ble_persona(
+            app,
+            ble,
+            xbox_encoder,
+            XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+            "start_xbox_controller",
+        ),
         ControlCommand::PublishGenericGamepadReport => match app.generic_gamepad_report() {
-            Ok(report) => match ble.publish_report(&report) {
-                Ok(()) => ControlResponse::BleAction(BleActionResponse {
-                    action: "publish_generic_gamepad",
-                    state: ble.current_state(),
-                    report: Some(report),
-                }),
-                Err(_) => ControlResponse::Error(ControlError::Generic),
-            },
+            Ok(report) => publish_ble_report(ble, report, "publish_generic_gamepad"),
+            Err(err) => ControlResponse::Error(err),
+        },
+        ControlCommand::PublishXboxGamepadReport => match app.xbox_gamepad_report() {
+            Ok(report) => publish_ble_report(ble, report, "publish_xbox_gamepad"),
             Err(err) => ControlResponse::Error(err),
         },
         ControlCommand::SendBleSelfTestReport => {
-            match self_test_report(encoder, ble_self_test_pressed) {
-                Ok(report) => match ble.publish_report(&report) {
-                    Ok(()) => ControlResponse::BleAction(BleActionResponse {
-                        action: "send_self_test",
-                        state: ble.current_state(),
-                        report: Some(report),
-                    }),
-                    Err(_) => ControlResponse::Error(ControlError::Generic),
-                },
+            match generic_self_test_report(generic_encoder, generic_self_test_pressed) {
+                Ok(report) => publish_ble_report(ble, report, "send_self_test"),
+                Err(_) => ControlResponse::Error(ControlError::Generic),
+            }
+        }
+        ControlCommand::SendXboxSelfTestReport => {
+            match xbox_self_test_report(xbox_encoder, xbox_self_test_pressed) {
+                Ok(report) => publish_ble_report(ble, report, "send_xbox_self_test"),
                 Err(_) => ControlResponse::Error(ControlError::Generic),
             }
         }
@@ -280,12 +284,62 @@ where
     resp
 }
 
-fn self_test_report(
+fn start_ble_persona<S>(
+    app: &mut App<S>,
+    ble: &mut impl BleTransport,
     encoder: &impl PersonaEncoder,
-    ble_self_test_pressed: &mut bool,
+    persona_id: PersonaId,
+    action: &'static str,
+) -> ControlResponse
+where
+    S: usb2ble_contracts::ProfileStore + usb2ble_contracts::BondStore,
+{
+    match encoder.descriptor(persona_id) {
+        Ok(descriptor) => match ble.activate_persona(&descriptor) {
+            Ok(()) => {
+                app.set_active_persona(Some(persona_id));
+                ControlResponse::BleAction(BleActionResponse {
+                    action,
+                    state: ble.current_state(),
+                    report: None,
+                })
+            }
+            Err(err) => ControlResponse::Error(control_error_from_ble(err)),
+        },
+        Err(_) => ControlResponse::Error(ControlError::Generic),
+    }
+}
+
+fn publish_ble_report(
+    ble: &mut impl BleTransport,
+    report: EncodedBleReport,
+    action: &'static str,
+) -> ControlResponse {
+    match ble.publish_report(&report) {
+        Ok(()) => ControlResponse::BleAction(BleActionResponse {
+            action,
+            state: ble.current_state(),
+            report: Some(report),
+        }),
+        Err(err) => ControlResponse::Error(control_error_from_ble(err)),
+    }
+}
+
+fn control_error_from_ble(err: BleTransportError) -> ControlError {
+    match err {
+        BleTransportError::Generic => ControlError::Generic,
+        BleTransportError::PersonaAlreadyActive => ControlError::PersonaAlreadyActive,
+        BleTransportError::PersonaMismatch => ControlError::PersonaMismatch,
+        BleTransportError::NotConnected => ControlError::BleNotConnected,
+    }
+}
+
+fn generic_self_test_report(
+    encoder: &impl PersonaEncoder,
+    generic_self_test_pressed: &mut bool,
 ) -> Result<usb2ble_contracts::EncodedBleReport, usb2ble_contracts::PersonaError> {
-    *ble_self_test_pressed = !*ble_self_test_pressed;
-    let axis = if *ble_self_test_pressed {
+    *generic_self_test_pressed = !*generic_self_test_pressed;
+    let axis = if *generic_self_test_pressed {
         i32::from(i16::MAX)
     } else {
         i32::from(i16::MIN)
@@ -296,11 +350,11 @@ fn self_test_report(
         logical_controls: vec![
             PersonaLogicalControlValue {
                 control_id: "button_1".to_string(),
-                value: NormalizedControlValue::Button(*ble_self_test_pressed),
+                value: NormalizedControlValue::Button(*generic_self_test_pressed),
             },
             PersonaLogicalControlValue {
                 control_id: "hat".to_string(),
-                value: NormalizedControlValue::Hat(if *ble_self_test_pressed { 0 } else { 8 }),
+                value: NormalizedControlValue::Hat(if *generic_self_test_pressed { 0 } else { 8 }),
             },
             PersonaLogicalControlValue {
                 control_id: "x".to_string(),
@@ -308,4 +362,311 @@ fn self_test_report(
             },
         ],
     })
+}
+
+fn xbox_self_test_report(
+    encoder: &impl PersonaEncoder,
+    xbox_self_test_pressed: &mut bool,
+) -> Result<usb2ble_contracts::EncodedBleReport, usb2ble_contracts::PersonaError> {
+    *xbox_self_test_pressed = !*xbox_self_test_pressed;
+    let axis = if *xbox_self_test_pressed {
+        i32::from(i16::MAX)
+    } else {
+        i32::from(i16::MIN)
+    };
+
+    encoder.encode(&PersonaInputFrame {
+        persona_id: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+        logical_controls: vec![
+            PersonaLogicalControlValue {
+                control_id: "a".to_string(),
+                value: NormalizedControlValue::Button(*xbox_self_test_pressed),
+            },
+            PersonaLogicalControlValue {
+                control_id: "left_x".to_string(),
+                value: NormalizedControlValue::Axis(axis),
+            },
+        ],
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use usb2ble_contracts::{
+        ConnectionTopology, DeviceId, InputReportPacket, InterfaceId, ReportDescriptorBlob,
+        ReportId, UsbDeviceRef, UsbIngressEvent, UsbInterfaceRef,
+    };
+    use usb2ble_storage::InMemoryStore;
+
+    struct Runtime {
+        app: App<InMemoryStore>,
+        ble: BleHidTransport,
+        generic_encoder: GenericGamepadEncoder,
+        xbox_encoder: XboxWirelessControllerEncoder,
+        generic_self_test_pressed: bool,
+        xbox_self_test_pressed: bool,
+    }
+
+    impl Runtime {
+        fn new() -> Self {
+            Self {
+                app: App::new(InMemoryStore::new()),
+                ble: BleHidTransport::new(),
+                generic_encoder: GenericGamepadEncoder,
+                xbox_encoder: XboxWirelessControllerEncoder,
+                generic_self_test_pressed: false,
+                xbox_self_test_pressed: false,
+            }
+        }
+
+        fn with_button_input() -> Self {
+            let mut runtime = Self::new();
+            inject_button_input(&mut runtime.app);
+            runtime
+        }
+
+        fn run(&mut self, cmd: ControlCommand) -> ControlResponse {
+            handle_control_command(
+                &mut self.app,
+                &mut self.ble,
+                &self.generic_encoder,
+                &self.xbox_encoder,
+                &cmd,
+                &mut self.generic_self_test_pressed,
+                &mut self.xbox_self_test_pressed,
+            )
+        }
+    }
+
+    #[test]
+    fn generic_start_is_idempotent() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepad),
+            "start_generic_gamepad",
+        );
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepad),
+            "start_generic_gamepad",
+        );
+        assert_eq!(
+            runtime.app.state().active_persona,
+            Some(GENERIC_GAMEPAD_PERSONA_ID)
+        );
+    }
+
+    #[test]
+    fn xbox_start_is_idempotent() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        assert_eq!(
+            runtime.app.state().active_persona,
+            Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID)
+        );
+        match runtime.run(ControlCommand::GetStatus) {
+            ControlResponse::Status(status) => {
+                assert_eq!(
+                    status.active_persona,
+                    Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID)
+                );
+            }
+            other => panic!("expected status response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn generic_then_xbox_returns_persona_already_active() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepad),
+            "start_generic_gamepad",
+        );
+        assert_eq!(
+            runtime.run(ControlCommand::StartBleXboxController),
+            ControlResponse::Error(ControlError::PersonaAlreadyActive)
+        );
+        assert_eq!(
+            runtime.app.state().active_persona,
+            Some(GENERIC_GAMEPAD_PERSONA_ID)
+        );
+    }
+
+    #[test]
+    fn xbox_then_generic_returns_persona_already_active() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        assert_eq!(
+            runtime.run(ControlCommand::StartBleGenericGamepad),
+            ControlResponse::Error(ControlError::PersonaAlreadyActive)
+        );
+        assert_eq!(
+            runtime.app.state().active_persona,
+            Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID)
+        );
+    }
+
+    #[test]
+    fn generic_publish_still_publishes_latest_usb_derived_report() {
+        let mut runtime = Runtime::with_button_input();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepad),
+            "start_generic_gamepad",
+        );
+        let report = assert_ble_report(
+            runtime.run(ControlCommand::PublishGenericGamepadReport),
+            "publish_generic_gamepad",
+        );
+
+        assert_eq!(report.persona_id, GENERIC_GAMEPAD_PERSONA_ID);
+        assert_eq!(report.report_id.0, 1);
+        assert_eq!(report.bytes.len(), 15);
+        assert_eq!(runtime.ble.published_reports().len(), 1);
+    }
+
+    #[test]
+    fn xbox_publish_publishes_latest_usb_derived_report() {
+        let mut runtime = Runtime::with_button_input();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        let report = assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxGamepadReport),
+            "publish_xbox_gamepad",
+        );
+
+        assert_eq!(report.persona_id, XBOX_WIRELESS_CONTROLLER_PERSONA_ID);
+        assert_eq!(report.report_id.0, 1);
+        assert_eq!(report.bytes.len(), 16);
+        assert_eq!(runtime.ble.published_reports().len(), 1);
+    }
+
+    #[test]
+    fn mismatched_publish_returns_persona_mismatch() {
+        let mut runtime = Runtime::with_button_input();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepad),
+            "start_generic_gamepad",
+        );
+        assert_eq!(
+            runtime.run(ControlCommand::PublishXboxGamepadReport),
+            ControlResponse::Error(ControlError::PersonaMismatch)
+        );
+        assert!(runtime.ble.published_reports().is_empty());
+    }
+
+    #[test]
+    fn xbox_self_test_toggles_a_button_and_left_x_with_sixteen_bytes() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        let pressed = assert_ble_report(
+            runtime.run(ControlCommand::SendXboxSelfTestReport),
+            "send_xbox_self_test",
+        );
+        let released = assert_ble_report(
+            runtime.run(ControlCommand::SendXboxSelfTestReport),
+            "send_xbox_self_test",
+        );
+
+        assert_eq!(pressed.persona_id, XBOX_WIRELESS_CONTROLLER_PERSONA_ID);
+        assert_eq!(pressed.report_id.0, 1);
+        assert_eq!(pressed.bytes.len(), 16);
+        assert_eq!(released.bytes.len(), 16);
+        assert_ne!(pressed.bytes, released.bytes);
+        assert_eq!(&pressed.bytes[0..2], &65_534_u16.to_le_bytes());
+        assert_eq!(&released.bytes[0..2], &0_u16.to_le_bytes());
+        assert_eq!(&pressed.bytes[13..15], &1_u16.to_le_bytes());
+        assert_eq!(&released.bytes[13..15], &0_u16.to_le_bytes());
+    }
+
+    fn inject_button_input(app: &mut App<InMemoryStore>) {
+        let dev = UsbDeviceRef {
+            device_id: DeviceId(1),
+            topology: ConnectionTopology::Direct,
+            vendor_id: 0x1234,
+            product_id: 0x5678,
+        };
+        let iface = UsbInterfaceRef {
+            device: dev.clone(),
+            interface_id: InterfaceId(0),
+        };
+        let report_descriptor = vec![
+            0x05, 0x09, // Usage Page (Button)
+            0x19, 0x01, // Usage Minimum (1)
+            0x29, 0x01, // Usage Maximum (1)
+            0x15, 0x00, // Logical Minimum (0)
+            0x25, 0x01, // Logical Maximum (1)
+            0x75, 0x01, // Report Size (1)
+            0x95, 0x01, // Report Count (1)
+            0x81, 0x02, // Input (Data, Variable, Absolute)
+        ];
+
+        app.handle_usb_event(UsbIngressEvent::DeviceAttached(dev));
+        app.handle_usb_event(UsbIngressEvent::InterfaceDiscovered {
+            source: iface.clone(),
+            class_code: 3,
+            subclass_code: 0,
+            protocol_code: 0,
+        });
+        app.handle_usb_event(UsbIngressEvent::ReportDescriptorReceived(
+            ReportDescriptorBlob {
+                source: iface.clone(),
+                bytes: report_descriptor,
+            },
+        ));
+        app.handle_usb_event(UsbIngressEvent::InputReportReceived(InputReportPacket {
+            source: iface,
+            report_id: ReportId(0),
+            payload: vec![0x01],
+            timestamp_micros: 100,
+        }));
+    }
+
+    fn assert_ble_action(resp: ControlResponse, action: &str) {
+        match resp {
+            ControlResponse::BleAction(resp) => {
+                assert_eq!(resp.action, action);
+                assert!(matches!(
+                    resp.state,
+                    usb2ble_contracts::BleLinkState::Advertising
+                        | usb2ble_contracts::BleLinkState::Connected
+                ));
+                assert!(resp.report.is_none());
+            }
+            other => panic!("expected BLE action {action}, got {other:?}"),
+        }
+    }
+
+    fn assert_ble_report(resp: ControlResponse, action: &str) -> EncodedBleReport {
+        match resp {
+            ControlResponse::BleAction(resp) => {
+                assert_eq!(resp.action, action);
+                assert_eq!(resp.state, usb2ble_contracts::BleLinkState::Connected);
+                resp.report.expect("BLE action should include report")
+            }
+            other => panic!("expected BLE report action {action}, got {other:?}"),
+        }
+    }
 }

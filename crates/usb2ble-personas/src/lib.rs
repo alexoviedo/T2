@@ -4,9 +4,9 @@
 #![warn(missing_docs)]
 
 use usb2ble_contracts::{
-    BleTransportFamily, EncodedBleReport, NormalizedControlValue, PersonaControlDescriptor,
-    PersonaControlKind, PersonaDescriptor, PersonaEncoder, PersonaError, PersonaId,
-    PersonaInputFrame, PersonaInputSchema, ReportId,
+    BlePersonaIdentity, BleTransportFamily, EncodedBleReport, NormalizedControlValue,
+    PersonaControlDescriptor, PersonaControlKind, PersonaDescriptor, PersonaEncoder, PersonaError,
+    PersonaId, PersonaInputFrame, PersonaInputSchema, ReportId,
 };
 
 /// Stable persona ID for the first Generic Gamepad demo persona.
@@ -23,6 +23,43 @@ pub const XBOX_INPUT_REPORT_ID: ReportId = ReportId(1);
 
 /// HID report ID used by the Xbox Wireless Controller rumble output report.
 pub const XBOX_RUMBLE_REPORT_ID: ReportId = ReportId(3);
+
+const BLE_HID_APPEARANCE_GAMEPAD: u16 = 0x03c4;
+
+static GENERIC_GAMEPAD_DEVICE_NAME: &[u8] = b"USB2BLE Gamepad\0";
+static GENERIC_GAMEPAD_MANUFACTURER_NAME: &[u8] = b"T2\0";
+static GENERIC_GAMEPAD_SERIAL_NUMBER: &[u8] = b"T2-DEMO-0001\0";
+
+static XBOX_MODEL_1914_DEVICE_NAME: &[u8] = b"Xbox Wireless Controller\0";
+static XBOX_MODEL_1914_MANUFACTURER_NAME: &[u8] = b"Microsoft\0";
+static XBOX_MODEL_1914_SERIAL_NUMBER: &[u8] = b"T2-XBOX-1914-0001\0";
+
+/// BLE identity for the existing Generic Gamepad demo persona.
+pub const GENERIC_GAMEPAD_BLE_IDENTITY: BlePersonaIdentity = BlePersonaIdentity {
+    device_name: GENERIC_GAMEPAD_DEVICE_NAME,
+    manufacturer_name: GENERIC_GAMEPAD_MANUFACTURER_NAME,
+    serial_number: GENERIC_GAMEPAD_SERIAL_NUMBER,
+    vendor_id: 0x303a,
+    product_id: 0x4001,
+    version: 0x0001,
+    appearance: BLE_HID_APPEARANCE_GAMEPAD,
+};
+
+/// BLE identity for Xbox Wireless Controller model 1914 / Series X|S compatibility.
+///
+/// VID 0x045e and PID 0x0b13 are the BLE compatibility identity for this target,
+/// not the USB identity. Elite Series 2 BLE compatibility appears to use PID
+/// 0x0b22 and is intentionally left for a future persona. Real host
+/// compatibility still requires captured pairing/input witness evidence.
+pub const XBOX_MODEL_1914_SERIES_XS_BLE_IDENTITY: BlePersonaIdentity = BlePersonaIdentity {
+    device_name: XBOX_MODEL_1914_DEVICE_NAME,
+    manufacturer_name: XBOX_MODEL_1914_MANUFACTURER_NAME,
+    serial_number: XBOX_MODEL_1914_SERIAL_NUMBER,
+    vendor_id: 0x045e,
+    product_id: 0x0b13,
+    version: 0x0515,
+    appearance: BLE_HID_APPEARANCE_GAMEPAD,
+};
 
 const GENERIC_GAMEPAD_REPORT_MAP: &[u8] = &[
     0x05, 0x01, // Usage Page (Generic Desktop)
@@ -120,6 +157,7 @@ impl PersonaEncoder for GenericGamepadEncoder {
         Ok(PersonaDescriptor {
             persona_id,
             display_name: "USB2BLE Generic Gamepad".to_string(),
+            identity: GENERIC_GAMEPAD_BLE_IDENTITY,
             transport_family: BleTransportFamily::Generic,
             report_map: GENERIC_GAMEPAD_REPORT_MAP.to_vec(),
             input_schema: generic_gamepad_schema(),
@@ -186,6 +224,7 @@ impl PersonaEncoder for XboxWirelessControllerEncoder {
         Ok(PersonaDescriptor {
             persona_id,
             display_name: "Xbox Wireless Controller".to_string(),
+            identity: XBOX_MODEL_1914_SERIES_XS_BLE_IDENTITY,
             transport_family: BleTransportFamily::Xbox,
             report_map: XBOX_WIRELESS_CONTROLLER_REPORT_MAP.to_vec(),
             input_schema: xbox_wireless_controller_schema(),
@@ -425,6 +464,8 @@ mod tests {
 
         assert_eq!(descriptor.persona_id, GENERIC_GAMEPAD_PERSONA_ID);
         assert_eq!(descriptor.transport_family, BleTransportFamily::Generic);
+        assert_eq!(descriptor.identity, GENERIC_GAMEPAD_BLE_IDENTITY);
+        assert_nul_terminated_static_identity(descriptor.identity);
         assert!(!descriptor.report_map.is_empty());
         assert_eq!(descriptor.input_schema.controls.len(), 23);
     }
@@ -488,6 +529,16 @@ mod tests {
 
         assert_eq!(descriptor.persona_id, XBOX_WIRELESS_CONTROLLER_PERSONA_ID);
         assert_eq!(descriptor.transport_family, BleTransportFamily::Xbox);
+        assert_eq!(descriptor.identity, XBOX_MODEL_1914_SERIES_XS_BLE_IDENTITY);
+        assert_eq!(
+            descriptor.identity.device_name,
+            b"Xbox Wireless Controller\0"
+        );
+        assert_eq!(descriptor.identity.manufacturer_name, b"Microsoft\0");
+        assert_eq!(descriptor.identity.vendor_id, 0x045e);
+        assert_eq!(descriptor.identity.product_id, 0x0b13);
+        assert_eq!(descriptor.identity.version, 0x0515);
+        assert_nul_terminated_static_identity(descriptor.identity);
         assert_eq!(descriptor.report_map.len(), 283);
         assert!(
             descriptor
@@ -569,5 +620,11 @@ mod tests {
         assert_eq!(report.bytes[12], 1);
         assert_eq!(&report.bytes[13..15], &(0b100_0000_0001_u16).to_le_bytes());
         assert_eq!(report.bytes[15], 1);
+    }
+
+    fn assert_nul_terminated_static_identity(identity: BlePersonaIdentity) {
+        assert_eq!(identity.device_name.last(), Some(&0));
+        assert_eq!(identity.manufacturer_name.last(), Some(&0));
+        assert_eq!(identity.serial_number.last(), Some(&0));
     }
 }

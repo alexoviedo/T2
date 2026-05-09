@@ -64,6 +64,15 @@ impl ControlPlane for SerialControlPlane {
         if s == "SEND_BLE_SELF_TEST_REPORT" {
             return Ok(ControlCommand::SendBleSelfTestReport);
         }
+        if s == "START_BLE_XBOX_CONTROLLER" {
+            return Ok(ControlCommand::StartBleXboxController);
+        }
+        if s == "PUBLISH_XBOX_GAMEPAD_REPORT" {
+            return Ok(ControlCommand::PublishXboxGamepadReport);
+        }
+        if s == "SEND_XBOX_SELF_TEST_REPORT" {
+            return Ok(ControlCommand::SendXboxSelfTestReport);
+        }
         if s == "FORGET_BLE_BONDS" {
             return Ok(ControlCommand::ForgetBleBonds);
         }
@@ -112,6 +121,11 @@ impl ControlPlane for SerialControlPlane {
                     let _ = write!(out, "profile={};", profile.0);
                 } else {
                     out.push_str("profile=none;");
+                }
+                if let Some(persona) = status.active_persona {
+                    let _ = write!(out, "persona={};", persona.0);
+                } else {
+                    out.push_str("persona=none;");
                 }
                 let _ = write!(out, "bonds={};", status.bonds_present);
             }
@@ -367,12 +381,13 @@ mod tests {
         let resp = ControlResponse::Status(StatusResponse {
             ble_state: BleLinkState::Advertising,
             active_profile: Some(ProfileId("test-profile")),
+            active_persona: Some(PersonaId("generic_gamepad")),
             bonds_present: true,
         });
         let bytes = cp.encode_response(&resp).unwrap();
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
-            "STATUS:ble=Advertising;profile=test-profile;bonds=true;\n"
+            "STATUS:ble=Advertising;profile=test-profile;persona=generic_gamepad;bonds=true;\n"
         );
     }
 
@@ -451,6 +466,18 @@ mod tests {
         assert_eq!(
             cp.decode_command(b"SEND_BLE_SELF_TEST_REPORT").unwrap(),
             ControlCommand::SendBleSelfTestReport
+        );
+        assert_eq!(
+            cp.decode_command(b"START_BLE_XBOX_CONTROLLER").unwrap(),
+            ControlCommand::StartBleXboxController
+        );
+        assert_eq!(
+            cp.decode_command(b"PUBLISH_XBOX_GAMEPAD_REPORT").unwrap(),
+            ControlCommand::PublishXboxGamepadReport
+        );
+        assert_eq!(
+            cp.decode_command(b"SEND_XBOX_SELF_TEST_REPORT").unwrap(),
+            ControlCommand::SendXboxSelfTestReport
         );
         assert_eq!(
             cp.decode_command(b"FORGET_BLE_BONDS").unwrap(),
@@ -627,6 +654,27 @@ mod tests {
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
             "XBOX_GAMEPAD_MAPPING:profile=xbox_flight_pack_demo;persona=xbox_wireless_controller;entries=0;mappings=;\n"
+        );
+
+        let resp = ControlResponse::Error(ControlError::PersonaAlreadyActive);
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "ERROR:PersonaAlreadyActive\n"
+        );
+
+        let resp = ControlResponse::Error(ControlError::PersonaMismatch);
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "ERROR:PersonaMismatch\n"
+        );
+
+        let resp = ControlResponse::Error(ControlError::BleNotConnected);
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "ERROR:BleNotConnected\n"
         );
     }
 }

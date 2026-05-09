@@ -61,6 +61,7 @@ where
                 ControlResponse::Status(StatusResponse {
                     ble_state: self.state.ble_state,
                     active_profile: self.state.active_profile,
+                    active_persona: self.state.active_persona,
                     bonds_present,
                 })
             }
@@ -115,6 +116,9 @@ where
             ControlCommand::StartBleGenericGamepad
             | ControlCommand::PublishGenericGamepadReport
             | ControlCommand::SendBleSelfTestReport
+            | ControlCommand::StartBleXboxController
+            | ControlCommand::PublishXboxGamepadReport
+            | ControlCommand::SendXboxSelfTestReport
             | ControlCommand::ForgetBleBonds => ControlResponse::Error(ControlError::Generic),
         }
     }

@@ -531,6 +531,25 @@ pub enum BleTransportFamily {
     Xbox,
 }
 
+/// BLE identity metadata for a HID persona.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlePersonaIdentity {
+    /// NUL-terminated GAP/HID device name bytes with static lifetime.
+    pub device_name: &'static [u8],
+    /// NUL-terminated HID manufacturer name bytes with static lifetime.
+    pub manufacturer_name: &'static [u8],
+    /// NUL-terminated HID serial number bytes with static lifetime.
+    pub serial_number: &'static [u8],
+    /// HID vendor ID exposed over BLE.
+    pub vendor_id: u16,
+    /// HID product ID exposed over BLE.
+    pub product_id: u16,
+    /// HID version / bcdDevice exposed over BLE.
+    pub version: u16,
+    /// BLE advertising appearance value.
+    pub appearance: u16,
+}
+
 /// Logical kind of a persona input control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PersonaControlKind {
@@ -571,6 +590,8 @@ pub struct PersonaDescriptor {
     pub persona_id: PersonaId,
     /// Human-readable name.
     pub display_name: String,
+    /// BLE identity advertised by this persona.
+    pub identity: BlePersonaIdentity,
     /// Transport family.
     pub transport_family: BleTransportFamily,
     /// Raw HID report map for BLE.
@@ -645,6 +666,12 @@ pub enum BleLinkState {
 pub enum BleTransportError {
     /// Generic transport failure.
     Generic,
+    /// A different BLE persona has already been activated this session.
+    PersonaAlreadyActive,
+    /// The report/persona does not match the active BLE persona.
+    PersonaMismatch,
+    /// The BLE HID host is not currently connected.
+    NotConnected,
 }
 
 /// Trait for abstracting the underlying BLE stack.
@@ -722,6 +749,8 @@ pub struct StatusResponse {
     pub ble_state: BleLinkState,
     /// Active profile ID.
     pub active_profile: Option<ProfileId>,
+    /// Active BLE persona, if one has been started.
+    pub active_persona: Option<PersonaId>,
     /// Whether any bonds are present.
     pub bonds_present: bool,
 }
@@ -849,6 +878,12 @@ pub enum ControlCommand {
     PublishGenericGamepadReport,
     /// Publish an explicit synthetic Generic Gamepad BLE self-test report.
     SendBleSelfTestReport,
+    /// Start the BLE Xbox Wireless Controller persona.
+    StartBleXboxController,
+    /// Publish the latest Xbox Wireless Controller report over BLE.
+    PublishXboxGamepadReport,
+    /// Publish an explicit synthetic Xbox Wireless Controller BLE self-test report.
+    SendXboxSelfTestReport,
     /// Clear BLE bond data.
     ForgetBleBonds,
 }
@@ -891,6 +926,12 @@ pub enum ControlError {
     Generic,
     /// Requested resource was not found.
     NotFound,
+    /// A different BLE persona has already been activated this session.
+    PersonaAlreadyActive,
+    /// The report/persona does not match the active BLE persona.
+    PersonaMismatch,
+    /// The BLE HID host is not currently connected.
+    BleNotConnected,
 }
 
 /// Trait for serial control plane framing and schema.

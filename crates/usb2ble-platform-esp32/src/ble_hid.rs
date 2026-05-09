@@ -49,6 +49,13 @@ impl BleTransport for BleHidTransport {
         &mut self,
         descriptor: &PersonaDescriptor,
     ) -> Result<(), BleTransportError> {
+        if let Some(active) = self.active_persona {
+            if active == descriptor.persona_id {
+                return Ok(());
+            }
+            return Err(BleTransportError::PersonaAlreadyActive);
+        }
+
         self.active_persona = Some(descriptor.persona_id);
         self.state = BleLinkState::Advertising;
         Ok(())
@@ -56,7 +63,7 @@ impl BleTransport for BleHidTransport {
 
     fn publish_report(&mut self, report: &EncodedBleReport) -> Result<(), BleTransportError> {
         if self.active_persona != Some(report.persona_id) {
-            return Err(BleTransportError::Generic);
+            return Err(BleTransportError::PersonaMismatch);
         }
         self.published_reports.push(report.clone());
         self.state = BleLinkState::Connected;
@@ -117,6 +124,7 @@ mod target {
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SEC_REQ_EVT, esp_gatt_if_t, esp_gatts_cb_event_t,
         nvs_flash_erase, nvs_flash_init,
     };
+    use usb2ble_contracts::BlePersonaIdentity;
 
     const STATE_IDLE: u8 = 0;
     const STATE_INITIALIZING: u8 = 1;
@@ -125,7 +133,6 @@ mod target {
     const STATE_ERROR: u8 = 4;
 
     const ESP_HID_TRANSPORT_BLE: u32 = 1;
-    const ESP_HID_APPEARANCE_GAMEPAD: i32 = 0x03c4;
     const ESP_HIDD_START_EVENT: i32 = 0;
     const ESP_HIDD_CONNECT_EVENT: i32 = 1;
     const ESP_HIDD_DISCONNECT_EVENT: i32 = 6;
@@ -139,13 +146,10 @@ mod target {
     static HID_DEV: AtomicPtr<EspHiddDev> = AtomicPtr::new(ptr::null_mut());
     static LINK_STATE: AtomicU8 = AtomicU8::new(STATE_IDLE);
 
-    static DEVICE_NAME: &[u8] = b"USB2BLE Gamepad\0";
     static HID_SERVICE_UUID_128: [u8; 16] = [
         0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0x12, 0x18, 0x00,
         0x00,
     ];
-    static MANUFACTURER_NAME: &[u8] = b"T2\0";
-    static SERIAL_NUMBER: &[u8] = b"T2-DEMO-0001\0";
     #[repr(C)]
     struct EspHiddDev {
         _private: [u8; 0],
@@ -236,27 +240,25 @@ mod target {
             unsafe { start_stack()? };
             if let Some(active) = self.active_persona {
                 if active != descriptor.persona_id {
-                    set_error();
-                    return Err(BleTransportError::Generic);
+                    return Err(BleTransportError::PersonaAlreadyActive);
                 }
                 return Ok(());
             }
 
             self.report_map.clone_from(&descriptor.report_map);
-            unsafe { init_hid_device(&self.report_map)? };
+            unsafe { init_hid_device(&self.report_map, descriptor.identity)? };
             self.active_persona = Some(descriptor.persona_id);
             Ok(())
         }
 
         fn publish_report(&mut self, report: &EncodedBleReport) -> Result<(), BleTransportError> {
             if self.active_persona != Some(report.persona_id) {
-                set_error();
-                return Err(BleTransportError::Generic);
+                return Err(BleTransportError::PersonaMismatch);
             }
 
             let dev = HID_DEV.load(Ordering::SeqCst);
             if dev.is_null() || !unsafe { esp_hidd_dev_connected(dev) } {
-                return Err(BleTransportError::Generic);
+                return Err(BleTransportError::NotConnected);
             }
 
             let mut bytes = report.bytes.clone();
@@ -290,9 +292,12 @@ mod target {
         }
     }
 
-    unsafe fn init_hid_device(report_map: &[u8]) -> Result<(), BleTransportError> {
+    unsafe fn init_hid_device(
+        report_map: &[u8],
+        identity: BlePersonaIdentity,
+    ) -> Result<(), BleTransportError> {
         LINK_STATE.store(STATE_INITIALIZING, Ordering::SeqCst);
-        configure_security_and_advertising()?;
+        configure_security_and_advertising(identity)?;
         esp_result_with_context(
             esp_ble_gatts_register_callback(Some(esp_hidd_gatts_event_handler)),
             b"gatts_register_callback\0",
@@ -303,13 +308,16 @@ mod target {
             data: report_map.as_ptr(),
             len,
         }];
+        // The identity byte slices come from persona-owned static NUL-terminated
+        // constants. ESP-IDF may retain these pointers after init, so never pass
+        // temporary String/CString storage here.
         let config = EspHidDeviceConfig {
-            vendor_id: 0x303a,
-            product_id: 0x4001,
-            version: 0x0001,
-            device_name: DEVICE_NAME.as_ptr().cast(),
-            manufacturer_name: MANUFACTURER_NAME.as_ptr().cast(),
-            serial_number: SERIAL_NUMBER.as_ptr().cast(),
+            vendor_id: identity.vendor_id,
+            product_id: identity.product_id,
+            version: identity.version,
+            device_name: identity.device_name.as_ptr().cast(),
+            manufacturer_name: identity.manufacturer_name.as_ptr().cast(),
+            serial_number: identity.serial_number.as_ptr().cast(),
             report_maps: report_maps.as_mut_ptr(),
             report_maps_len: 1,
         };
@@ -362,7 +370,9 @@ mod target {
         Ok(())
     }
 
-    unsafe fn configure_security_and_advertising() -> Result<(), BleTransportError> {
+    unsafe fn configure_security_and_advertising(
+        identity: BlePersonaIdentity,
+    ) -> Result<(), BleTransportError> {
         let mut auth_req: esp_ble_auth_req_t = ESP_LE_AUTH_BOND as esp_ble_auth_req_t;
         set_security_param(
             esp_ble_sm_param_t_ESP_BLE_SM_AUTHEN_REQ_MODE,
@@ -384,7 +394,9 @@ mod target {
         let mut key_size = 16_u8;
         set_security_param(esp_ble_sm_param_t_ESP_BLE_SM_MAX_KEY_SIZE, &mut key_size, 1)?;
 
-        esp_result(esp_ble_gap_set_device_name(DEVICE_NAME.as_ptr().cast()))?;
+        esp_result(esp_ble_gap_set_device_name(
+            identity.device_name.as_ptr().cast(),
+        ))?;
 
         let mut adv_data = esp_ble_adv_data_t {
             set_scan_rsp: false,
@@ -392,7 +404,7 @@ mod target {
             include_txpower: false,
             min_interval: 0,
             max_interval: 0,
-            appearance: ESP_HID_APPEARANCE_GAMEPAD,
+            appearance: i32::from(identity.appearance),
             manufacturer_len: 0,
             p_manufacturer_data: ptr::null_mut(),
             service_data_len: 0,

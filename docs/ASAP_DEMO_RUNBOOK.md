@@ -9,8 +9,9 @@ T.16000M stick -> ESP32-S3 USB host -> flight_pack_demo mapping
 -> Generic Gamepad BLE HID -> Mac -> browser Gamepad API
 ```
 
-It does not claim Xbox BLE emulation, universal HOTAS support, final
-calibration, or final TWCS/TFRP semantics.
+It does not claim Xbox host compatibility, universal HOTAS support, final
+calibration, or final TWCS/TFRP semantics. For the Xbox compatibility path, see
+`docs/XBOX_BLE_DEMO_RUNBOOK.md`.
 
 ## Hardware Setup
 
@@ -90,11 +91,11 @@ python3 tools/serial_command.py \
 Expected shape:
 
 ```text
-STATUS:ble=Idle;profile=none;bonds=false;
+STATUS:ble=Idle;profile=none;persona=none;bonds=false;
 USB_STATUS:devices=3;interfaces=2;
 USB_DEVICES:id=1,vid=2109,pid=2813|id=2,vid=044f,pid=b687|id=3,vid=044f,pid=b10a
 BLE_ACTION:action=start_generic_gamepad;state=Advertising;
-STATUS:ble=Connected;profile=none;bonds=false;
+STATUS:ble=Connected;profile=none;persona=generic_gamepad;bonds=false;
 ```
 
 If BLE is already connected, `START_BLE_GENERIC_GAMEPAD` may be unnecessary.
@@ -214,7 +215,8 @@ BLE HID, and shows the movement on the Mac through the browser Gamepad API.
 
 The honest gaps are:
 
-- Xbox Wireless-style BLE output is future work.
+- Xbox Wireless Controller BLE output is implemented for compatibility testing,
+  but real host compatibility still needs pairing/input witness evidence.
 - TWCS/TFRP semantic mapping and calibration still need refinement.
 - Browser Gamepad API evidence is not the same as broad game compatibility.
 - BLE bond persistence is not complete; current target status reports

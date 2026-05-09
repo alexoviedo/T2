@@ -139,18 +139,18 @@ have a Share button even when the physical controller does not.
    changing the existing `flight_pack_demo` Generic Gamepad profile.
    **Started:** `xbox_auto` and `xbox_flight_pack_demo` host-tested mapping
    paths now exist.
-4. Add control-plane commands after host tests. **Started:**
-   `GET_XBOX_GAMEPAD_REPORT` and `GET_XBOX_GAMEPAD_MAPPING` are decoded and
-   handled through the app/control path.
-5. Add target BLE commands after the descriptor/report path is stable:
-   - `START_BLE_XBOX_GAMEPAD`
-   - `PUBLISH_XBOX_GAMEPAD_REPORT`
-   - `SEND_BLE_XBOX_SELF_TEST_REPORT`
-6. Make the ESP32 BLE transport choose display name, PnP ID, and report map from
-   `PersonaDescriptor` rather than hard-coding `USB2BLE Gamepad`.
-7. Add output report plumbing for report ID `3` as an observed/logged event,
+4. Add control-plane commands after host tests. **Implemented:**
+   `GET_XBOX_GAMEPAD_REPORT`, `GET_XBOX_GAMEPAD_MAPPING`,
+   `START_BLE_XBOX_CONTROLLER`, `PUBLISH_XBOX_GAMEPAD_REPORT`, and
+   `SEND_XBOX_SELF_TEST_REPORT` are decoded and handled through the
+   app/firmware path.
+5. Make the ESP32 BLE transport choose display name, PnP ID, appearance, and
+   report map from `PersonaDescriptor` rather than hard-coding
+   `USB2BLE Gamepad`. **Implemented:** Generic and Xbox identities are
+   persona-specific static NUL-terminated constants.
+6. Add output report plumbing for report ID `3` as an observed/logged event,
    then decide later whether to map it to physical rumble/haptics.
-8. Capture evidence in this order:
+7. Capture evidence in this order:
    - host unit tests for encoder and mapping
    - target boot/advertise as Xbox persona
    - Mac/Windows host sees `Xbox Wireless Controller`

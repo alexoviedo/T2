@@ -158,12 +158,13 @@ What still needs demo polish:
 
 ### Slice 3: Xbox BLE Persona
 
-Research complete; host-side report and mapping path started.
+Research complete; host-side report/mapping and BLE identity/report publishing
+paths are implemented for compatibility testing.
 
 The Xbox path should be added as a separate BLE HID persona, not by replacing
 the Generic Gamepad demo path. See `docs/XBOX_BLE_EMULATION_RESEARCH.md`.
 
-The first implementation milestone is host-tested persona work:
+The implemented persona work now includes:
 
 - `xbox_wireless_controller` persona descriptor and encoder
 - unsigned Xbox stick ranges, 10-bit triggers, Xbox hat/null handling, 15
@@ -171,6 +172,10 @@ The first implementation milestone is host-tested persona work:
 - explicit mapping profile targeting the Xbox persona
 - serial diagnostics for `GET_XBOX_GAMEPAD_REPORT` and
   `GET_XBOX_GAMEPAD_MAPPING`
+- serial BLE commands for `START_BLE_XBOX_CONTROLLER`,
+  `SEND_XBOX_SELF_TEST_REPORT`, and `PUBLISH_XBOX_GAMEPAD_REPORT`
+- model 1914 / Series X|S BLE compatibility identity for
+  `Xbox Wireless Controller`
 - no target milestone claim until a real host discovers, connects, and observes
   input from the Xbox persona over BLE
 
@@ -180,9 +185,9 @@ The first implementation milestone is host-tested persona work:
 - Keep source identity attached to every normalized value.
 - Keep device-specific assumptions in mapping/profile data, not in USB,
   normalizer, persona, or BLE transport code.
-- Keep BLE transport persona-agnostic: future Xbox Wireless-style output should
-  be added as an Xbox persona/report encoder, not by rewriting USB decode or BLE
-  publication plumbing.
+- Keep BLE transport persona-agnostic: Xbox Wireless-style output remains an
+  Xbox persona/report encoder, not a rewrite of USB decode or BLE publication
+  plumbing.
 - Prefer auto-mapping for fast demos and explicit profiles for supported paths.
 - Treat manufacturer presets as accelerators, not as the core architecture.
 - Do not claim universal HID support; claim curated and best-effort behavior
