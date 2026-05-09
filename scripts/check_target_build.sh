@@ -11,11 +11,13 @@ TARGET="xtensa-esp32s3-espidf"
 # Use the Espressif Rust toolchain explicitly when available (CI via xtensa-toolchain action).
 if rustup toolchain list | grep -q '^esp'; then
     CARGO_BIN=(cargo +esp)
+    BUILD_FLAGS=("-Z" "build-std=std,panic_abort")
 else
     CARGO_BIN=(cargo)
+    BUILD_FLAGS=()
     echo "Warning: esp toolchain not found in rustup; using default cargo toolchain."
 fi
 
-"${CARGO_BIN[@]}" build -Z build-std=std,panic_abort --locked --package usb2ble-fw --target "$TARGET"
+"${CARGO_BIN[@]}" build "${BUILD_FLAGS[@]}" --locked --package usb2ble-fw --target "$TARGET"
 
 echo "Target build preflight passed for $TARGET."

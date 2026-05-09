@@ -87,14 +87,18 @@ jobs:
     - name: Package flashable firmware image
       run: ./scripts/package_firmware.sh
 
+    - name: Stage artifacts for upload
+      run: |
+        mkdir -p target/dist
+        cp target/firmware/usb2ble-fw-esp32s3-merged.bin target/dist/
+        cp target/firmware/usb2ble-fw-esp32s3-manifest.txt target/dist/
+        cp target/xtensa-esp32s3-espidf/debug/usb2ble-fw target/dist/
+
     - name: Upload flashable firmware artifact
       uses: actions/upload-artifact@v4
       with:
         name: usb2ble-fw-esp32s3-flashable
-        path: |
-          target/firmware/usb2ble-fw-esp32s3-merged.bin
-          target/firmware/usb2ble-fw-esp32s3-manifest.txt
-          target/xtensa-esp32s3-espidf/debug/usb2ble-fw
+        path: target/dist/
         if-no-files-found: error
         retention-days: 30
 
@@ -123,4 +127,4 @@ jobs:
           files: |
             firmware/usb2ble-fw-esp32s3-merged.bin
             firmware/usb2ble-fw-esp32s3-manifest.txt
-            firmware/xtensa-esp32s3-espidf/debug/usb2ble-fw
+            firmware/usb2ble-fw
