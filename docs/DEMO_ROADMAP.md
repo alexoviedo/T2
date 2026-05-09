@@ -159,7 +159,7 @@ What still needs demo polish:
 ### Slice 3: Xbox BLE Persona
 
 Research complete; host-side report/mapping and BLE identity/report publishing
-paths are implemented for compatibility testing.
+paths are implemented, and macOS pairing/input witness evidence is captured.
 
 The Xbox path should be added as a separate BLE HID persona, not by replacing
 the Generic Gamepad demo path. See `docs/XBOX_BLE_EMULATION_RESEARCH.md`.
@@ -176,8 +176,9 @@ The implemented persona work now includes:
   `SEND_XBOX_SELF_TEST_REPORT`, and `PUBLISH_XBOX_GAMEPAD_REPORT`
 - model 1914 / Series X|S BLE compatibility identity for
   `Xbox Wireless Controller`
-- no target milestone claim until a real host discovers, connects, and observes
-  input from the Xbox persona over BLE
+- real macOS 12.7.5 witness where Bluetooth sees `Xbox Wireless Controller`,
+  browser Gamepad API sees Xbox VID/PID, and input changes are captured
+- no broad host/game compatibility claim without additional checked-in evidence
 
 ## Architecture Rules
 

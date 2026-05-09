@@ -18,8 +18,8 @@
 - The ASAP demo rehearsal helper has a successful target + browser witness run for T.16000M stick-right movement through the full Generic Gamepad BLE path.
 - Generic BLE Gamepad: known working hardware path.
 - Xbox mapping/report encoding: implemented and host-tested.
-- Xbox BLE identity/report publishing: implemented for compatibility testing once commands exist and target build passes.
-- Xbox host compatibility: not claimed complete until real pairing/input witness is captured.
+- Xbox BLE identity/report publishing: implemented and target-witnessed on ESP32-S3.
+- Xbox macOS pairing/input compatibility: real witness captured for macOS 12.7.5; broader game/app compatibility is not claimed.
 
 ## What this project is building toward
 - ESP32-S3 USB HID to BLE bridge.
@@ -75,7 +75,8 @@
 - calibrated TWCS/TFRP profile refinements beyond the current demo rules.
 - exact RJ12 pedal axis labels.
 - game/application compatibility beyond the browser Gamepad API witness.
-- Xbox host compatibility and Gamepad API visibility until real pairing/input witness evidence is captured.
+- broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
+- stable browser Gamepad API display name; macOS Bluetooth reports `Xbox Wireless Controller`, while the browser witness reported `USB2BLE Gamepad` with Xbox VID/PID.
 - powered hub all-device Flight Pack simultaneous report merge for three separate USB Flight Pack devices.
 
 ## Repository layout

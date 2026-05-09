@@ -4,8 +4,9 @@
 
 - Generic BLE Gamepad: known working hardware path.
 - Xbox mapping/report encoding: implemented and host-tested.
-- Xbox BLE identity/report publishing: implemented for compatibility testing once commands exist and target build passes.
-- Xbox host compatibility: not claimed complete until real pairing/input witness is captured.
+- Xbox BLE identity/report publishing: implemented and target-witnessed on ESP32-S3.
+- Xbox macOS pairing/input compatibility: real witness captured for macOS 12.7.5.
+- Broader game/app compatibility is not claimed.
 
 This runbook tests the Generic HID transport boundary with an Xbox Wireless
 Controller compatibility persona. It targets Xbox Wireless Controller model
@@ -144,8 +145,10 @@ The helper saves:
 - `summary.json`
 - optional browser Gamepad witness JSONL capture
 
-Browser/Gamepad API visibility is useful evidence if it appears, but it is not
-a required pass criterion for Xbox until real host compatibility is proven.
+Browser/Gamepad API visibility is useful evidence. The 2026-05-09 witness saw a
+standard gamepad with Xbox VID/PID, but the browser display name was
+`USB2BLE Gamepad`; use VID `045e` and PID `0b13` as the reliable browser-side
+identity signal for this pass.
 
 ## Recovery
 
@@ -200,5 +203,6 @@ ERROR:BleNotConnected
 - Exact `GET_XBOX_GAMEPAD_REPORT` and `PUBLISH_XBOX_GAMEPAD_REPORT` output.
 - Browser/Gamepad API result if visible.
 
-Do not mark Xbox host compatibility complete until the real transcript and host
-input evidence are checked into the repo.
+See `docs/milestone-evidence/XBOX_BLE_WITNESS_2026-05-09.md` for the first
+real macOS pairing/input witness. Do not extend that claim to other hosts or
+games without new checked-in evidence.

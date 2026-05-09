@@ -1,13 +1,12 @@
 # Xbox BLE Emulation Research
 
-Status: **research-backed implementation plan with the first host-tested Xbox
-persona report and mapping step started.**
+Status: **research-backed Xbox BLE persona implementation with host tests and
+macOS pairing/input witness evidence.**
 
 ## Decision
 
-Continue mapping work immediately, and implement Xbox Wireless Controller
-emulation as a new BLE HID persona while preserving the current Generic Gamepad
-demo path.
+Keep Xbox Wireless Controller emulation as a separate BLE HID persona while
+preserving the current Generic Gamepad demo path.
 
 The Xbox path should be:
 
@@ -150,19 +149,19 @@ have a Share button even when the physical controller does not.
    persona-specific static NUL-terminated constants.
 6. Add output report plumbing for report ID `3` as an observed/logged event,
    then decide later whether to map it to physical rumble/haptics.
-7. Capture evidence in this order:
+7. Capture evidence in this order. **macOS 12.7.5 evidence captured on
+   2026-05-09; broader host/game compatibility remains future evidence work.**
    - host unit tests for encoder and mapping
    - target boot/advertise as Xbox persona
-   - Mac/Windows host sees `Xbox Wireless Controller`
+   - macOS host sees `Xbox Wireless Controller`
    - synthetic Xbox self-test changes host-visible input
    - live T.16000M/TWCS input publishes as Xbox BLE input
 
 ## Recommended Next Work
 
-For the fastest honest demo, keep refining mapping/calibration on the Generic
-Gamepad path while advancing Xbox behind pure encoders, mapping tests, and then
-target BLE evidence. Do not make target BLE claims unless the host actually
-discovers, pairs, and sees input from the Xbox persona.
+For the fastest honest demo, keep preserving the Generic Gamepad path while
+using the captured Xbox macOS witness as the first compatibility proof. Do not
+extend that claim to other hosts or games without checked-in evidence.
 
 ## References
 

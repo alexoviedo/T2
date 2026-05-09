@@ -75,7 +75,7 @@ pub fn main() {
     uart.write_all(format!("Name: {}\n", FIRMWARE_NAME).as_bytes());
     uart.write_all(format!("Version: {}\n", FIRMWARE_VERSION).as_bytes());
     uart.write_all(format!("Contract Version: {}\n", CONTRACT_VERSION).as_bytes());
-    uart.write_all(b"Status: BLE HID Demo Path (Generic Gamepad Persona)\n");
+    uart.write_all(b"Status: BLE HID Demo Path (Selectable Generic/Xbox Personas)\n");
     uart.write_all(b"Ready for commands.\n");
 
     platform::trace_printf(b"[TRACE] ENTERED MAIN LOOP\n\0");

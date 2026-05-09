@@ -65,7 +65,11 @@ def wait_for_xbox_connected(
         if assume_ready:
             time.sleep(2.0)
         else:
-            input(f"Press Enter to recheck BLE connection ({attempt}/{attempts})...")
+            try:
+                input(f"Press Enter to recheck BLE connection ({attempt}/{attempts})...")
+            except EOFError:
+                print("No interactive stdin available; rechecking after a short pause.")
+                time.sleep(2.0)
         record = CommandRecord("GET_STATUS", serial.command_response("GET_STATUS", timeout))
         print_record(record)
         records.append(record)
@@ -103,7 +107,11 @@ def capture_shows_xbox(capture_tail: list[str]) -> bool:
             continue
         if not isinstance(capture, dict):
             continue
-        if capture.get("connected") is True and "Xbox" in str(capture.get("id", "")):
+        gamepad_id = str(capture.get("id", ""))
+        normalized_id = gamepad_id.lower()
+        has_xbox_name = "xbox" in normalized_id
+        has_xbox_ble_identity = "vendor: 045e" in normalized_id and "product: 0b13" in normalized_id
+        if capture.get("connected") is True and (has_xbox_name or has_xbox_ble_identity):
             return True
     return False
 
@@ -210,7 +218,10 @@ def maybe_prompt(message: str, assume_ready: bool) -> None:
     print()
     print(message)
     if not assume_ready:
-        input("Press Enter when ready...")
+        try:
+            input("Press Enter when ready...")
+        except EOFError:
+            print("No interactive stdin available; continuing.")
 
 
 def main() -> int:
