@@ -121,6 +121,6 @@ jobs:
           overwrite_files: true
           make_latest: true
           files: |
-            firmware/firmware/usb2ble-fw-esp32s3-merged.bin
-            firmware/firmware/usb2ble-fw-esp32s3-manifest.txt
+            firmware/usb2ble-fw-esp32s3-merged.bin
+            firmware/usb2ble-fw-esp32s3-manifest.txt
             firmware/xtensa-esp32s3-espidf/debug/usb2ble-fw
