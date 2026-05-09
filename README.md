@@ -15,6 +15,8 @@
 - Target BLE HID demo firmware now starts the Generic Gamepad persona, reaches `ble=Advertising`, connects to a Mac host, and publishes both synthetic and live USB-derived Generic Gamepad reports over BLE.
 - Browser Gamepad API witness evidence is checked in for the BLE Generic Gamepad path, including synthetic self-test changes, one live USB-derived publish, and one `flight_pack_demo` T.16000M stick movement.
 - The hosted `latest` GitHub Release firmware image has been downloaded, flashed to the ESP32-S3, and smoke-verified through the serial control plane.
+- The ASAP demo rehearsal helper has a successful target + browser witness run for T.16000M stick-right movement through the full Generic Gamepad BLE path.
+- Xbox BLE emulation research is captured, and host-tested `GET_XBOX_GAMEPAD_REPORT` / `GET_XBOX_GAMEPAD_MAPPING` code paths have been started without replacing the Generic Gamepad demo path.
 
 ## What this project is building toward
 - ESP32-S3 USB HID to BLE bridge.
@@ -44,12 +46,15 @@
 - `GET_NORMALIZED_INPUT <device>:<interface>` returns a normalized control frame decoded from the latest input report for descriptors that parse successfully.
 - `GET_GENERIC_GAMEPAD_REPORT` returns an encoded Generic Gamepad report from the latest normalized input frames, ready for the future BLE publish layer.
 - `GET_GENERIC_GAMEPAD_MAPPING` explains each selected Generic Gamepad mapping decision, including source VID/PID/interface, source control, target control, value, and reason.
+- `GET_XBOX_GAMEPAD_REPORT` returns an encoded Xbox Wireless Controller BLE input report from the latest normalized input frames.
+- `GET_XBOX_GAMEPAD_MAPPING` explains the selected Xbox Wireless Controller mapping decision path.
 - `flight_pack_demo` selects an explicit T.16000M + TWCS/RJ12 profile when both known devices are present, while `generic_auto` remains the fallback for other HID combinations.
 - `START_BLE_GENERIC_GAMEPAD` starts the target BLE HID Generic Gamepad persona.
 - `SEND_BLE_SELF_TEST_REPORT` publishes an explicit synthetic Generic Gamepad report when a BLE host is connected.
 - `PUBLISH_GENERIC_GAMEPAD_REPORT` publishes the latest encoded USB-derived Generic Gamepad report when a BLE host is connected.
 - `FORGET_BLE_BONDS` clears BLE bonds through the BLE transport.
 - `tools/gamepad_witness/server.py` serves a repo-local browser Gamepad API witness page and captures snapshots under `target/gamepad-witness/`.
+- `tools/asap_demo_rehearsal.py` runs the operator-friendly Generic Gamepad demo rehearsal, auto-detects the T.16000M source by VID/PID, and saves a timestamped transcript.
 - `tools/mapping_delta_witness.py` captures clean before/after or timed-watch `GET_GENERIC_GAMEPAD_MAPPING` deltas for one physical control.
 - `tools/usb_report_delta_witness.py` captures lower-level `GET_LAST_USB_REPORT` byte deltas so raw USB movement can be proven before debugging normalization or mapping.
 - `tools/detach_cleanup_witness.py` captures before/detach/after cleanup evidence for one downstream USB HID device.

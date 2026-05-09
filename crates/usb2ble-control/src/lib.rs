@@ -49,6 +49,12 @@ impl ControlPlane for SerialControlPlane {
         if s == "GET_GENERIC_GAMEPAD_MAPPING" {
             return Ok(ControlCommand::GetGenericGamepadMapping);
         }
+        if s == "GET_XBOX_GAMEPAD_REPORT" {
+            return Ok(ControlCommand::GetXboxGamepadReport);
+        }
+        if s == "GET_XBOX_GAMEPAD_MAPPING" {
+            return Ok(ControlCommand::GetXboxGamepadMapping);
+        }
         if s == "START_BLE_GENERIC_GAMEPAD" {
             return Ok(ControlCommand::StartBleGenericGamepad);
         }
@@ -189,7 +195,11 @@ fn encode_mapping_diagnostics(
     out: &mut String,
     resp: &usb2ble_contracts::MappingDiagnosticsResponse,
 ) {
-    out.push_str("GENERIC_GAMEPAD_MAPPING:");
+    if resp.target_persona.0 == "xbox_wireless_controller" {
+        out.push_str("XBOX_GAMEPAD_MAPPING:");
+    } else {
+        out.push_str("GENERIC_GAMEPAD_MAPPING:");
+    }
     let _ = write!(out, "profile={};", resp.profile_id.0);
     let _ = write!(out, "persona={};", resp.target_persona.0);
     let _ = write!(out, "entries={};", resp.entries.len());
@@ -422,6 +432,14 @@ mod tests {
             ControlCommand::GetGenericGamepadMapping
         );
         assert_eq!(
+            cp.decode_command(b"GET_XBOX_GAMEPAD_REPORT").unwrap(),
+            ControlCommand::GetXboxGamepadReport
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_XBOX_GAMEPAD_MAPPING").unwrap(),
+            ControlCommand::GetXboxGamepadMapping
+        );
+        assert_eq!(
             cp.decode_command(b"START_BLE_GENERIC_GAMEPAD").unwrap(),
             ControlCommand::StartBleGenericGamepad
         );
@@ -597,6 +615,18 @@ mod tests {
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
             "GENERIC_GAMEPAD_MAPPING:profile=generic_auto;persona=generic_gamepad;entries=1;mappings=src=1:0:044f:b10a:axis_01_30,target=x,value=axis:123,reason=preferred_axis;\n"
+        );
+
+        let resp =
+            ControlResponse::MappingDiagnostics(usb2ble_contracts::MappingDiagnosticsResponse {
+                profile_id: ProfileId("xbox_flight_pack_demo"),
+                target_persona: PersonaId("xbox_wireless_controller"),
+                entries: Vec::new(),
+            });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "XBOX_GAMEPAD_MAPPING:profile=xbox_flight_pack_demo;persona=xbox_wireless_controller;entries=0;mappings=;\n"
         );
     }
 }

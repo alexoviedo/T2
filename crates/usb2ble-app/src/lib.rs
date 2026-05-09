@@ -13,9 +13,10 @@ use usb2ble_contracts::{
 use usb2ble_hid::{HidParser, summarize_capabilities};
 use usb2ble_input::{LatestInputMerger, StandardInputNormalizer};
 use usb2ble_mapping::{
-    GenericAutoMapper, diagnose_generic_gamepad_mapping, select_generic_gamepad_profile,
+    GenericAutoMapper, diagnose_generic_gamepad_mapping, diagnose_xbox_wireless_controller_mapping,
+    map_composite_to_xbox_wireless_controller, select_generic_gamepad_profile,
 };
-use usb2ble_personas::GenericGamepadEncoder;
+use usb2ble_personas::{GenericGamepadEncoder, XboxWirelessControllerEncoder};
 
 /// The main application structure.
 pub struct App<S> {
@@ -109,6 +110,8 @@ where
             }
             ControlCommand::GetGenericGamepadReport => self.generic_gamepad_report_response(),
             ControlCommand::GetGenericGamepadMapping => self.generic_gamepad_mapping_response(),
+            ControlCommand::GetXboxGamepadReport => self.xbox_gamepad_report_response(),
+            ControlCommand::GetXboxGamepadMapping => self.xbox_gamepad_mapping_response(),
             ControlCommand::StartBleGenericGamepad
             | ControlCommand::PublishGenericGamepadReport
             | ControlCommand::SendBleSelfTestReport
@@ -135,6 +138,17 @@ where
             .collect()
     }
 
+    fn latest_composite(&self) -> Result<usb2ble_contracts::CompositeInputFrame, ControlError> {
+        let frames = self.latest_normalized_frames();
+        if frames.is_empty() {
+            return Err(ControlError::NotFound);
+        }
+
+        LatestInputMerger
+            .merge(&frames, &usb2ble_contracts::CompositeProfile::default())
+            .map_err(|_| ControlError::Generic)
+    }
+
     fn generic_gamepad_report_response(&self) -> ControlResponse {
         self.generic_gamepad_report()
             .map_or_else(ControlResponse::Error, |report| {
@@ -143,35 +157,47 @@ where
     }
 
     fn generic_gamepad_mapping_response(&self) -> ControlResponse {
-        let frames = self.latest_normalized_frames();
-        if frames.is_empty() {
-            return ControlResponse::Error(ControlError::NotFound);
-        }
-
-        let Ok(composite) =
-            LatestInputMerger.merge(&frames, &usb2ble_contracts::CompositeProfile::default())
-        else {
-            return ControlResponse::Error(ControlError::Generic);
+        let composite = match self.latest_composite() {
+            Ok(composite) => composite,
+            Err(err) => return ControlResponse::Error(err),
         };
 
         ControlResponse::MappingDiagnostics(diagnose_generic_gamepad_mapping(&composite))
     }
 
+    fn xbox_gamepad_report_response(&self) -> ControlResponse {
+        self.xbox_gamepad_report()
+            .map_or_else(ControlResponse::Error, |report| {
+                ControlResponse::EncodedReport(EncodedReportResponse { report })
+            })
+    }
+
+    fn xbox_gamepad_mapping_response(&self) -> ControlResponse {
+        let composite = match self.latest_composite() {
+            Ok(composite) => composite,
+            Err(err) => return ControlResponse::Error(err),
+        };
+
+        ControlResponse::MappingDiagnostics(diagnose_xbox_wireless_controller_mapping(&composite))
+    }
+
     /// Build a Generic Gamepad report from all latest normalized inputs.
     pub fn generic_gamepad_report(&self) -> Result<EncodedBleReport, ControlError> {
-        let frames = self.latest_normalized_frames();
-        if frames.is_empty() {
-            return Err(ControlError::NotFound);
-        }
-
-        let composite = LatestInputMerger
-            .merge(&frames, &usb2ble_contracts::CompositeProfile::default())
-            .map_err(|_| ControlError::Generic)?;
+        let composite = self.latest_composite()?;
         let profile = select_generic_gamepad_profile(&composite);
         let persona_frame = GenericAutoMapper
             .map_to_persona_frame(&profile, &composite)
             .map_err(|_| ControlError::Generic)?;
         GenericGamepadEncoder
+            .encode(&persona_frame)
+            .map_err(|_| ControlError::Generic)
+    }
+
+    /// Build an Xbox Wireless Controller report from all latest normalized inputs.
+    pub fn xbox_gamepad_report(&self) -> Result<EncodedBleReport, ControlError> {
+        let composite = self.latest_composite()?;
+        let persona_frame = map_composite_to_xbox_wireless_controller(&composite);
+        XboxWirelessControllerEncoder
             .encode(&persona_frame)
             .map_err(|_| ControlError::Generic)
     }
@@ -441,6 +467,30 @@ mod tests {
             assert_eq!(
                 diagnostics.entries[0].target_control_id.as_deref(),
                 Some("button_1")
+            );
+            assert_eq!(diagnostics.entries[0].reason, "button");
+        } else {
+            panic!("Expected MappingDiagnostics");
+        }
+
+        let resp = app.handle_control_command(&ControlCommand::GetXboxGamepadReport);
+        if let ControlResponse::EncodedReport(report) = resp {
+            assert_eq!(report.report.persona_id.0, "xbox_wireless_controller");
+            assert_eq!(report.report.report_id.0, 1);
+            assert_eq!(report.report.bytes.len(), 16);
+        } else {
+            panic!("Expected EncodedReport");
+        }
+
+        let resp = app.handle_control_command(&ControlCommand::GetXboxGamepadMapping);
+        if let ControlResponse::MappingDiagnostics(diagnostics) = resp {
+            assert_eq!(diagnostics.profile_id.0, "xbox_auto");
+            assert_eq!(diagnostics.target_persona.0, "xbox_wireless_controller");
+            assert_eq!(diagnostics.entries.len(), 1);
+            assert_eq!(diagnostics.entries[0].source_control_id, "button_1");
+            assert_eq!(
+                diagnostics.entries[0].target_control_id.as_deref(),
+                Some("a")
             );
             assert_eq!(diagnostics.entries[0].reason, "button");
         } else {

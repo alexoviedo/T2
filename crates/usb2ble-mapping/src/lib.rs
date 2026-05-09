@@ -18,8 +18,17 @@ pub const GENERIC_AUTO_PROFILE_ID: ProfileId = ProfileId("generic_auto");
 /// Curated demo profile ID for the Thrustmaster Flight Pack topology.
 pub const FLIGHT_PACK_DEMO_PROFILE_ID: ProfileId = ProfileId("flight_pack_demo");
 
+/// Generic Xbox auto-mapping profile ID.
+pub const XBOX_AUTO_PROFILE_ID: ProfileId = ProfileId("xbox_auto");
+
 /// Generic Gamepad persona ID targeted by the auto mapper.
 pub const GENERIC_GAMEPAD_PERSONA_ID: PersonaId = PersonaId("generic_gamepad");
+
+/// Xbox Flight Pack demo profile ID.
+pub const XBOX_FLIGHT_PACK_DEMO_PROFILE_ID: ProfileId = ProfileId("xbox_flight_pack_demo");
+
+/// Xbox Wireless Controller persona ID targeted by Xbox mappings.
+pub const XBOX_WIRELESS_CONTROLLER_PERSONA_ID: PersonaId = PersonaId("xbox_wireless_controller");
 
 const AXIS_TARGETS: [&str; 6] = ["x", "y", "z", "rx", "ry", "rz"];
 const THRUSTMASTER_VENDOR_ID: u16 = 0x044f;
@@ -53,6 +62,54 @@ impl Mapper for GenericAutoMapper {
         Ok(map_composite_to_generic_gamepad_with_profile(
             profile, composite,
         ))
+    }
+}
+
+/// Return the curated Xbox demo profile for T.16000M + TWCS.
+#[must_use]
+pub fn xbox_flight_pack_demo_profile() -> MappingProfile {
+    MappingProfile {
+        profile_id: XBOX_FLIGHT_PACK_DEMO_PROFILE_ID,
+        display_name: "Thrustmaster Flight Pack Xbox Demo".to_string(),
+        supported_signatures: vec![
+            DeviceSignature {
+                vendor_id: THRUSTMASTER_VENDOR_ID,
+                product_id: T16000_PRODUCT_ID,
+                interface_class: Some(3),
+                capability_fingerprint: None,
+            },
+            DeviceSignature {
+                vendor_id: THRUSTMASTER_VENDOR_ID,
+                product_id: TWCS_PRODUCT_ID,
+                interface_class: Some(3),
+                capability_fingerprint: None,
+            },
+        ],
+        target_persona: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+        source_mappings: vec![
+            rule(T16000_PRODUCT_ID, "axis_01_30", "left_x"),
+            rule(T16000_PRODUCT_ID, "axis_01_31", "left_y"),
+            rule(T16000_PRODUCT_ID, "axis_01_36", "right_x"),
+            rule(T16000_PRODUCT_ID, "axis_01_35", "right_y"),
+            rule(TWCS_PRODUCT_ID, "axis_01_36", "left_trigger"),
+            rule(TWCS_PRODUCT_ID, "axis_01_32", "right_trigger"),
+            rule(T16000_PRODUCT_ID, "hat_01_39", "hat"),
+            rule(T16000_PRODUCT_ID, "button_1", "a"),
+            rule(T16000_PRODUCT_ID, "button_2", "b"),
+            rule(T16000_PRODUCT_ID, "button_3", "x"),
+            rule(T16000_PRODUCT_ID, "button_4", "y"),
+            rule(T16000_PRODUCT_ID, "button_5", "lb"),
+            rule(T16000_PRODUCT_ID, "button_6", "rb"),
+            rule(T16000_PRODUCT_ID, "button_7", "view"),
+            rule(T16000_PRODUCT_ID, "button_8", "menu"),
+            rule(T16000_PRODUCT_ID, "button_9", "nexus"),
+            rule(T16000_PRODUCT_ID, "button_10", "left_stick_press"),
+            rule(T16000_PRODUCT_ID, "button_11", "right_stick_press"),
+            rule(T16000_PRODUCT_ID, "button_12", "share"),
+        ],
+        merge_policy: Some(usb2ble_contracts::CompositeProfile {
+            profile_id: Some(XBOX_FLIGHT_PACK_DEMO_PROFILE_ID),
+        }),
     }
 }
 
@@ -104,6 +161,49 @@ pub fn flight_pack_demo_profile() -> MappingProfile {
             profile_id: Some(FLIGHT_PACK_DEMO_PROFILE_ID),
         }),
     }
+}
+
+/// Select the best built-in Xbox profile for current sources.
+#[must_use]
+pub fn select_xbox_wireless_controller_profile(composite: &CompositeInputFrame) -> MappingProfile {
+    if has_flight_pack_sources(composite) {
+        xbox_flight_pack_demo_profile()
+    } else {
+        MappingProfile {
+            profile_id: XBOX_AUTO_PROFILE_ID,
+            display_name: "Xbox Auto Gamepad".to_string(),
+            target_persona: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+            ..generic_auto_profile()
+        }
+    }
+}
+
+/// Map arbitrary normalized controls to an Xbox Wireless Controller frame.
+#[must_use]
+pub fn map_composite_to_xbox_wireless_controller(
+    composite: &CompositeInputFrame,
+) -> PersonaInputFrame {
+    let profile = select_xbox_wireless_controller_profile(composite);
+    map_composite_to_xbox_wireless_controller_with_profile(&profile, composite)
+}
+
+/// Map using an explicit Xbox Wireless Controller profile.
+#[must_use]
+pub fn map_composite_to_xbox_wireless_controller_with_profile(
+    profile: &MappingProfile,
+    composite: &CompositeInputFrame,
+) -> PersonaInputFrame {
+    map_composite_to_xbox_wireless_controller_with_profile_and_diagnostics(profile, composite).frame
+}
+
+/// Explain how the Xbox Wireless Controller mapper handles each source control.
+#[must_use]
+pub fn diagnose_xbox_wireless_controller_mapping(
+    composite: &CompositeInputFrame,
+) -> MappingDiagnosticsResponse {
+    let profile = select_xbox_wireless_controller_profile(composite);
+    map_composite_to_xbox_wireless_controller_with_profile_and_diagnostics(&profile, composite)
+        .diagnostics
 }
 
 /// Select the best built-in Generic Gamepad profile for current sources.
@@ -161,6 +261,11 @@ struct ProcessedControl {
     control: String,
 }
 
+struct XboxWirelessControllerMappingResult {
+    frame: PersonaInputFrame,
+    diagnostics: MappingDiagnosticsResponse,
+}
+
 fn map_composite_to_generic_gamepad_with_diagnostics(
     composite: &CompositeInputFrame,
 ) -> GenericGamepadMappingResult {
@@ -168,6 +273,60 @@ fn map_composite_to_generic_gamepad_with_diagnostics(
         &generic_auto_profile(),
         composite,
     )
+}
+
+fn map_composite_to_xbox_wireless_controller_with_profile_and_diagnostics(
+    profile: &MappingProfile,
+    composite: &CompositeInputFrame,
+) -> XboxWirelessControllerMappingResult {
+    let ordered_controls = controls_in_source_priority(composite);
+    let mut logical_controls = Vec::new();
+    let mut diagnostics = Vec::new();
+    let mut used_targets = HashSet::new();
+    let mut processed_controls = Vec::new();
+
+    if profile.source_mappings.is_empty() {
+        map_xbox_auto_controls(
+            &ordered_controls,
+            &mut logical_controls,
+            &mut diagnostics,
+            &mut used_targets,
+            &mut processed_controls,
+        );
+        mark_unprocessed_controls(
+            &ordered_controls,
+            &mut diagnostics,
+            &processed_controls,
+            "unsupported_control",
+        );
+    } else {
+        map_profile_rules(
+            profile,
+            &ordered_controls,
+            &mut logical_controls,
+            &mut diagnostics,
+            &mut used_targets,
+            &mut processed_controls,
+        );
+        mark_unprocessed_controls(
+            &ordered_controls,
+            &mut diagnostics,
+            &processed_controls,
+            "profile_unmapped",
+        );
+    }
+
+    XboxWirelessControllerMappingResult {
+        frame: PersonaInputFrame {
+            persona_id: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+            logical_controls,
+        },
+        diagnostics: MappingDiagnosticsResponse {
+            profile_id: profile.profile_id,
+            target_persona: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+            entries: diagnostics,
+        },
+    }
 }
 
 fn map_composite_to_generic_gamepad_with_profile_and_diagnostics(
@@ -228,6 +387,107 @@ fn map_composite_to_generic_gamepad_with_profile_and_diagnostics(
             target_persona: GENERIC_GAMEPAD_PERSONA_ID,
             entries: diagnostics,
         },
+    }
+}
+
+fn map_xbox_auto_controls(
+    controls: &[&NormalizedCompositeValue],
+    logical_controls: &mut Vec<PersonaLogicalControlValue>,
+    diagnostics: &mut Vec<MappingDiagnosticEntry>,
+    used_targets: &mut HashSet<String>,
+    processed_controls: &mut Vec<ProcessedControl>,
+) {
+    const BUTTON_TARGETS: [&str; 15] = [
+        "a",
+        "b",
+        "x",
+        "y",
+        "lb",
+        "rb",
+        "view",
+        "menu",
+        "nexus",
+        "left_stick_press",
+        "right_stick_press",
+        "paddle_1",
+        "paddle_2",
+        "paddle_3",
+        "paddle_4",
+    ];
+    const AXIS_TARGETS: [&str; 4] = ["left_x", "left_y", "right_x", "right_y"];
+    const TRIGGER_TARGETS: [&str; 2] = ["left_trigger", "right_trigger"];
+
+    for control in controls {
+        if let Some(button) = parse_button(&control.control_id) {
+            processed_controls.push(processed_control(control));
+            let Some(target) = button
+                .checked_sub(1)
+                .and_then(|index| BUTTON_TARGETS.get(usize::try_from(index).ok()?))
+                .copied()
+            else {
+                diagnostics.push(mapping_diagnostic(control, None, "button_out_of_range"));
+                continue;
+            };
+            if used_targets.insert(target.to_string()) {
+                logical_controls.push(PersonaLogicalControlValue {
+                    control_id: target.to_string(),
+                    value: control.value,
+                });
+                diagnostics.push(mapping_diagnostic(control, Some(target), "button"));
+            } else {
+                diagnostics.push(mapping_diagnostic(control, None, "target_already_used"));
+            }
+            continue;
+        }
+
+        if control.control_id.starts_with("hat_") {
+            processed_controls.push(processed_control(control));
+            if used_targets.insert("hat".to_string()) {
+                logical_controls.push(PersonaLogicalControlValue {
+                    control_id: "hat".to_string(),
+                    value: control.value,
+                });
+                diagnostics.push(mapping_diagnostic(control, Some("hat"), "first_hat"));
+            } else {
+                diagnostics.push(mapping_diagnostic(control, None, "target_already_used"));
+            }
+            continue;
+        }
+
+        if !matches!(
+            control.value,
+            NormalizedControlValue::Axis(_)
+                | NormalizedControlValue::Trigger(_)
+                | NormalizedControlValue::Unknown(_)
+        ) || !control.control_id.starts_with("axis_")
+        {
+            continue;
+        }
+
+        processed_controls.push(processed_control(control));
+        let targets = if matches!(control.value, NormalizedControlValue::Trigger(_)) {
+            &TRIGGER_TARGETS[..]
+        } else {
+            &AXIS_TARGETS[..]
+        };
+        if let Some(target) = targets
+            .iter()
+            .copied()
+            .find(|target| !used_targets.contains(*target))
+        {
+            used_targets.insert(target.to_string());
+            logical_controls.push(PersonaLogicalControlValue {
+                control_id: target.to_string(),
+                value: control.value,
+            });
+            diagnostics.push(mapping_diagnostic(
+                control,
+                Some(target),
+                "next_free_control",
+            ));
+        } else {
+            diagnostics.push(mapping_diagnostic(control, None, "target_slots_full"));
+        }
     }
 }
 
@@ -797,6 +1057,129 @@ mod tests {
                 && entry.source.device.product_id == 0xb687
                 && entry.target_control_id.is_none()
                 && entry.reason == "profile_unmapped"
+        }));
+    }
+
+    #[test]
+    fn xbox_auto_profile_maps_controls_to_named_xbox_targets() {
+        let source = source(1, 0xabcd, 0x0001);
+        let composite = CompositeInputFrame {
+            sources: vec![source.clone()],
+            controls: vec![
+                value(
+                    source.clone(),
+                    "axis_01_30",
+                    NormalizedControlValue::Axis(-123),
+                ),
+                value(source.clone(), "hat_01_39", NormalizedControlValue::Hat(8)),
+                value(source, "button_1", NormalizedControlValue::Button(true)),
+            ],
+            timestamp_micros: 13,
+        };
+
+        let profile = select_xbox_wireless_controller_profile(&composite);
+        let frame = map_composite_to_xbox_wireless_controller(&composite);
+        let diagnostics = diagnose_xbox_wireless_controller_mapping(&composite);
+
+        assert_eq!(profile.profile_id, XBOX_AUTO_PROFILE_ID);
+        assert_eq!(profile.target_persona, XBOX_WIRELESS_CONTROLLER_PERSONA_ID);
+        assert_eq!(frame.persona_id, XBOX_WIRELESS_CONTROLLER_PERSONA_ID);
+        assert_eq!(
+            control(&frame, "left_x"),
+            Some(NormalizedControlValue::Axis(-123))
+        );
+        assert_eq!(control(&frame, "hat"), Some(NormalizedControlValue::Hat(8)));
+        assert_eq!(
+            control(&frame, "a"),
+            Some(NormalizedControlValue::Button(true))
+        );
+        assert_eq!(diagnostics.profile_id, XBOX_AUTO_PROFILE_ID);
+        assert_eq!(
+            diagnostics.target_persona,
+            XBOX_WIRELESS_CONTROLLER_PERSONA_ID
+        );
+    }
+
+    #[test]
+    fn xbox_flight_pack_demo_profile_maps_curated_controls() {
+        let twcs = source(2, 0x044f, 0xb687);
+        let stick = source(3, 0x044f, 0xb10a);
+        let composite = CompositeInputFrame {
+            sources: vec![twcs.clone(), stick.clone()],
+            controls: vec![
+                value(
+                    twcs.clone(),
+                    "axis_01_32",
+                    NormalizedControlValue::Axis(12_000),
+                ),
+                value(twcs, "axis_01_36", NormalizedControlValue::Axis(-12_000)),
+                value(
+                    stick.clone(),
+                    "axis_01_30",
+                    NormalizedControlValue::Axis(100),
+                ),
+                value(
+                    stick.clone(),
+                    "axis_01_31",
+                    NormalizedControlValue::Axis(200),
+                ),
+                value(
+                    stick.clone(),
+                    "axis_01_35",
+                    NormalizedControlValue::Axis(300),
+                ),
+                value(
+                    stick.clone(),
+                    "axis_01_36",
+                    NormalizedControlValue::Axis(400),
+                ),
+                value(stick.clone(), "hat_01_39", NormalizedControlValue::Hat(0)),
+                value(stick, "button_1", NormalizedControlValue::Button(true)),
+            ],
+            timestamp_micros: 17,
+        };
+
+        let profile = select_xbox_wireless_controller_profile(&composite);
+        let frame = map_composite_to_xbox_wireless_controller(&composite);
+        let diagnostics = diagnose_xbox_wireless_controller_mapping(&composite);
+
+        assert_eq!(profile.profile_id, XBOX_FLIGHT_PACK_DEMO_PROFILE_ID);
+        assert_eq!(profile.target_persona, XBOX_WIRELESS_CONTROLLER_PERSONA_ID);
+        assert_eq!(
+            control(&frame, "left_x"),
+            Some(NormalizedControlValue::Axis(100))
+        );
+        assert_eq!(
+            control(&frame, "left_y"),
+            Some(NormalizedControlValue::Axis(200))
+        );
+        assert_eq!(
+            control(&frame, "right_x"),
+            Some(NormalizedControlValue::Axis(400))
+        );
+        assert_eq!(
+            control(&frame, "right_y"),
+            Some(NormalizedControlValue::Axis(300))
+        );
+        assert_eq!(
+            control(&frame, "left_trigger"),
+            Some(NormalizedControlValue::Axis(-12_000))
+        );
+        assert_eq!(
+            control(&frame, "right_trigger"),
+            Some(NormalizedControlValue::Axis(12_000))
+        );
+        assert_eq!(control(&frame, "hat"), Some(NormalizedControlValue::Hat(0)));
+        assert_eq!(
+            control(&frame, "a"),
+            Some(NormalizedControlValue::Button(true))
+        );
+        assert_eq!(diagnostics.profile_id, XBOX_FLIGHT_PACK_DEMO_PROFILE_ID);
+        assert!(diagnostics.entries.iter().any(|entry| {
+            entry.source_control_id == "axis_01_30"
+                && entry.source.device.product_id == 0xb10a
+                && entry.target_control_id.as_deref() == Some("left_x")
+                && entry.reason == "profile_rule"
         }));
     }
 

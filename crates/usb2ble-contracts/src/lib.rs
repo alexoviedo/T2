@@ -839,6 +839,10 @@ pub enum ControlCommand {
     GetGenericGamepadReport,
     /// Request diagnostics explaining the selected Generic Gamepad mapping result.
     GetGenericGamepadMapping,
+    /// Request an Xbox Wireless Controller report encoded from all latest normalized inputs.
+    GetXboxGamepadReport,
+    /// Request diagnostics explaining the selected Xbox Wireless Controller mapping result.
+    GetXboxGamepadMapping,
     /// Start the BLE Generic Gamepad persona.
     StartBleGenericGamepad,
     /// Publish the latest Generic Gamepad report over BLE.

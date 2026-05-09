@@ -34,6 +34,30 @@ ls /dev/cu.* | rg 'usb(modem|serial)'
 
 ## Start The Browser Witness
 
+The fastest path is the rehearsal helper:
+
+```bash
+python3 tools/asap_demo_rehearsal.py --port /dev/cu.usbmodem5B5E0200881
+```
+
+It starts the browser witness server, opens the page, walks the operator through
+arming the browser, waits for `USB2BLE Gamepad` to connect over Bluetooth,
+auto-detects the T.16000M source by VID/PID, captures the stick fully right,
+publishes the BLE reports, and writes a timestamped transcript under
+`target/asap-demo-rehearsal/`. If the browser page already shows the gamepad
+connected and does not offer **Arm**, keep the tab focused and continue.
+
+If source auto-detection ever chooses poorly during debugging, pin the source
+explicitly:
+
+```bash
+python3 tools/asap_demo_rehearsal.py \
+  --port /dev/cu.usbmodem5B5E0200881 \
+  --source 3:0
+```
+
+The manual flow remains useful when debugging one layer at a time.
+
 In one terminal:
 
 ```bash

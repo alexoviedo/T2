@@ -145,6 +145,9 @@ What hardware evidence now exists:
   publishes it to the `latest` GitHub Release for demo builds
 - the hosted `latest` release image has been downloaded, flashed to the
   ESP32-S3, and smoke-verified through the serial control plane
+- the operator-friendly ASAP rehearsal helper captured a full target + browser
+  witness run for T.16000M stick-right movement through the Generic Gamepad BLE
+  path
 
 What still needs demo polish:
 
@@ -152,6 +155,24 @@ What still needs demo polish:
 - calibration refinements for the explicit T.16000M/TWCS/TFRP mapping profile
 - exact TFRP pedal axis naming through the TWCS/RJ12 report
 - cleaner host naming after macOS has cached an older BLE product name
+
+### Slice 3: Xbox BLE Persona
+
+Research complete; host-side report and mapping path started.
+
+The Xbox path should be added as a separate BLE HID persona, not by replacing
+the Generic Gamepad demo path. See `docs/XBOX_BLE_EMULATION_RESEARCH.md`.
+
+The first implementation milestone is host-tested persona work:
+
+- `xbox_wireless_controller` persona descriptor and encoder
+- unsigned Xbox stick ranges, 10-bit triggers, Xbox hat/null handling, 15
+  gamepad buttons, and Consumer `Record`/capture bit
+- explicit mapping profile targeting the Xbox persona
+- serial diagnostics for `GET_XBOX_GAMEPAD_REPORT` and
+  `GET_XBOX_GAMEPAD_MAPPING`
+- no target milestone claim until a real host discovers, connects, and observes
+  input from the Xbox persona over BLE
 
 ## Architecture Rules
 
