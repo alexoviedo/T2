@@ -71,12 +71,22 @@
 - `GET_BRIDGE_STATUS` reports live bridge state, counters, publish rate, and last error.
 - `STOP_BRIDGE` disables live bridge mode and is safe to run repeatedly.
 - `SET_BRIDGE_RATE_HZ <hz>` changes the live bridge max publish rate within the supported range.
+- `GET_CONFIG_STATUS`, `GET_CONFIG_SCHEMA`, `GET_PERSONA_SCHEMA <generic|xbox>`,
+  `GET_INPUT_CATALOG`, and `GET_CONFIG_JSON` expose the first
+  Web-Serial-ready runtime configuration API.
+- `BEGIN_CONFIG_JSON <chunks> <sha256|none>`, `CONFIG_JSON_CHUNK <index>
+  <base64url>`, and `COMMIT_CONFIG_JSON` import validated runtime config JSON
+  without depending on long serial lines.
+- `RESET_CONFIG`, `SAVE_CONFIG`, `LOAD_CONFIG`, and `START_CONFIGURED` manage
+  the active runtime config and start the configured persona/bridge behavior.
 - `FORGET_BLE_BONDS` clears BLE bonds through the BLE transport.
 - `tools/gamepad_witness/server.py` serves a repo-local browser Gamepad API witness page and captures snapshots under `target/gamepad-witness/`.
 - `tools/asap_demo_rehearsal.py` runs the operator-friendly Generic Gamepad demo rehearsal, auto-detects the T.16000M source by VID/PID, supports `--live-bridge`, and saves a timestamped transcript.
 - `tools/xbox_demo_rehearsal.py` runs the Xbox BLE compatibility rehearsal, supports `--live-bridge`, and saves serial proof plus optional browser witness evidence.
 - `tools/live_bridge_soak.py` runs a timed Generic or Xbox live bridge soak and saves bridge status samples.
 - `tools/flight_pack_calibration_witness.py` guides named Flight Pack movements and drafts calibration/axis-label evidence.
+- `tools/configure_board.py` exercises the runtime configuration protocol over
+  USB serial for Web Serial/webapp smoke testing.
 - `tools/mapping_delta_witness.py` captures clean before/after or timed-watch `GET_GENERIC_GAMEPAD_MAPPING` deltas for one physical control.
 - `tools/usb_report_delta_witness.py` captures lower-level `GET_LAST_USB_REPORT` byte deltas so raw USB movement can be proven before debugging normalization or mapping.
 - `tools/detach_cleanup_witness.py` captures before/detach/after cleanup evidence for one downstream USB HID device.

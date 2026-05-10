@@ -11,6 +11,7 @@ usb2ble-mapping = { path = "../usb2ble-mapping" }
 usb2ble-input = { path = "../usb2ble-input" }
 usb2ble-hid = { path = "../usb2ble-hid" }
 usb2ble-contracts = { path = "../usb2ble-contracts" }
+serde_json = "1"
 
 
 [lints]

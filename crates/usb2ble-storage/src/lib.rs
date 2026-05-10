@@ -80,7 +80,7 @@ mod tests {
         let mut store = InMemoryStore::new();
         assert!(store.load_config().unwrap().is_none());
 
-        let config = RuntimeConfig {};
+        let config = RuntimeConfig::default();
         store.save_config(&config).unwrap();
         assert!(store.load_config().unwrap().is_some());
     }

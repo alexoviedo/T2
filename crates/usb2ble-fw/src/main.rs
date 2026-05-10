@@ -5,12 +5,15 @@
 #[cfg(test)]
 mod integration_tests;
 
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use sha2::{Digest, Sha256};
 use usb2ble_app::App;
 use usb2ble_contracts::{
     BleActionResponse, BleTransport, BleTransportError, BridgeStatusResponse, CONTRACT_VERSION,
-    ControlCommand, ControlError, ControlPlane, ControlResponse, DescriptorKey, EncodedBleReport,
+    ConfigActionResponse, ConfigImportResponse, ControlCommand, ControlError, ControlPlane,
+    ControlResponse, DescriptorKey, EncodedBleReport, MAX_RUNTIME_CONFIG_JSON_BYTES,
     NormalizedControlValue, PersonaEncoder, PersonaId, PersonaInputFrame,
-    PersonaLogicalControlValue, UsbIngress,
+    PersonaLogicalControlValue, RuntimeConfig, UsbIngress,
 };
 use usb2ble_control::SerialControlPlane;
 use usb2ble_personas::{
@@ -18,9 +21,8 @@ use usb2ble_personas::{
     XboxWirelessControllerEncoder,
 };
 use usb2ble_platform_esp32::{
-    self as platform, EspUsbIngress, Uart, UartReadResult, ble_hid::BleHidTransport,
+    self as platform, EspUsbIngress, PlatformStore, Uart, UartReadResult, ble_hid::BleHidTransport,
 };
-use usb2ble_storage::InMemoryStore;
 
 /// Firmware name.
 pub const FIRMWARE_NAME: &str = "usb2ble";
@@ -61,6 +63,94 @@ struct BridgeRuntime {
     skipped_not_connected: u64,
     skipped_not_ready: u64,
     last_error: Option<&'static str>,
+}
+
+#[derive(Debug, Default)]
+struct ConfigImportRuntime {
+    total_chunks: usize,
+    checksum: Option<String>,
+    received_chunks: usize,
+    bytes: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct PendingConfigJson {
+    bytes: Vec<u8>,
+    checksum: Option<String>,
+}
+
+impl ConfigImportRuntime {
+    fn active(&self) -> bool {
+        self.total_chunks > 0
+    }
+
+    fn begin(
+        &mut self,
+        total_chunks: usize,
+        checksum: Option<String>,
+    ) -> Result<ConfigImportResponse, ControlError> {
+        if total_chunks == 0 {
+            return Err(ControlError::ConfigChunkMissing);
+        }
+        self.total_chunks = total_chunks;
+        self.checksum = checksum;
+        self.received_chunks = 0;
+        self.bytes.clear();
+        Ok(self.response("started"))
+    }
+
+    fn push_chunk(
+        &mut self,
+        index: usize,
+        data: &str,
+    ) -> Result<ConfigImportResponse, ControlError> {
+        if !self.active() {
+            return Err(ControlError::NoConfigImportActive);
+        }
+        if index != self.received_chunks {
+            return Err(ControlError::ConfigChunkOutOfOrder);
+        }
+        let chunk = URL_SAFE_NO_PAD
+            .decode(data.as_bytes())
+            .map_err(|_| ControlError::InvalidBase64)?;
+        if self.bytes.len().saturating_add(chunk.len()) > MAX_RUNTIME_CONFIG_JSON_BYTES {
+            return Err(ControlError::ConfigTooLarge);
+        }
+        self.bytes.extend_from_slice(&chunk);
+        self.received_chunks += 1;
+        Ok(self.response("chunk"))
+    }
+
+    fn commit(&mut self) -> Result<PendingConfigJson, ControlError> {
+        if !self.active() {
+            return Err(ControlError::NoConfigImportActive);
+        }
+        if self.received_chunks != self.total_chunks {
+            return Err(ControlError::ConfigChunkMissing);
+        }
+        let pending = PendingConfigJson {
+            bytes: self.bytes.clone(),
+            checksum: self.checksum.clone(),
+        };
+        self.clear();
+        Ok(pending)
+    }
+
+    fn clear(&mut self) {
+        self.total_chunks = 0;
+        self.checksum = None;
+        self.received_chunks = 0;
+        self.bytes.clear();
+    }
+
+    fn response(&self, state: &'static str) -> ConfigImportResponse {
+        ConfigImportResponse {
+            state,
+            total_chunks: self.total_chunks,
+            received_chunks: self.received_chunks,
+            bytes: self.bytes.len(),
+        }
+    }
 }
 
 impl BridgeRuntime {
@@ -140,7 +230,9 @@ impl BridgeRuntime {
         now_ms: u64,
     ) -> BridgePollOutcome
     where
-        S: usb2ble_contracts::ProfileStore + usb2ble_contracts::BondStore,
+        S: usb2ble_contracts::ProfileStore
+            + usb2ble_contracts::BondStore
+            + usb2ble_contracts::ConfigStore,
     {
         if !self.enabled {
             return BridgePollOutcome::Noop;
@@ -252,7 +344,7 @@ pub fn main() {
 
     // 2. Initialize storage (In-memory for M1/M2)
     platform::trace_printf(b"[TRACE] Initializing storage\n\0");
-    let storage = InMemoryStore::new();
+    let storage = PlatformStore::new();
 
     // 3. Initialize app
     platform::trace_printf(b"[TRACE] Initializing app\n\0");
@@ -264,6 +356,7 @@ pub fn main() {
     let mut report_log_micros: Vec<(DescriptorKey, u64)> = Vec::new();
     let mut self_test = SelfTestState::default();
     let mut bridge = BridgeRuntime::new();
+    let mut config_import = ConfigImportRuntime::default();
     let bridge_clock = std::time::Instant::now();
 
     // 4. Print startup banner
@@ -400,6 +493,7 @@ pub fn main() {
                             &cmd,
                             &mut self_test,
                             &mut bridge,
+                            &mut config_import,
                         );
                         if let Ok(resp_bytes) = control.encode_response(&resp) {
                             uart.write_all(&resp_bytes);
@@ -462,6 +556,7 @@ fn write_bridge_command_outcome(uart: &Uart, cmd: &ControlCommand, resp: &Contro
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_control_command<S>(
     app: &mut App<S>,
     ble: &mut impl BleTransport,
@@ -470,9 +565,12 @@ fn handle_control_command<S>(
     cmd: &ControlCommand,
     self_test: &mut SelfTestState,
     bridge: &mut BridgeRuntime,
+    config_import: &mut ConfigImportRuntime,
 ) -> ControlResponse
 where
-    S: usb2ble_contracts::ProfileStore + usb2ble_contracts::BondStore,
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
 {
     app.set_ble_state(ble.current_state());
 
@@ -534,6 +632,43 @@ where
             Ok(()) => ControlResponse::BridgeStatus(bridge.status(app.state().active_persona)),
             Err(err) => ControlResponse::Error(err),
         },
+        ControlCommand::GetConfigStatus => {
+            ControlResponse::ConfigStatus(app.config_status(config_import.active()))
+        }
+        ControlCommand::BeginConfigJson {
+            total_chunks,
+            checksum,
+        } => match config_import.begin(*total_chunks, checksum.clone()) {
+            Ok(resp) => ControlResponse::ConfigImport(resp),
+            Err(err) => ControlResponse::Error(err),
+        },
+        ControlCommand::ConfigJsonChunk { index, data } => {
+            match config_import.push_chunk(*index, data) {
+                Ok(resp) => ControlResponse::ConfigImport(resp),
+                Err(err) => ControlResponse::Error(err),
+            }
+        }
+        ControlCommand::CommitConfigJson => match config_import.commit() {
+            Ok(pending) => {
+                let json_len = pending.bytes.len();
+                match parse_runtime_config_json(pending) {
+                    Ok(config) => match app.set_runtime_config(config) {
+                        Ok(()) => ControlResponse::ConfigImport(ConfigImportResponse {
+                            state: "committed",
+                            total_chunks: 0,
+                            received_chunks: 0,
+                            bytes: json_len,
+                        }),
+                        Err(err) => ControlResponse::Error(err),
+                    },
+                    Err(err) => ControlResponse::Error(err),
+                }
+            }
+            Err(err) => ControlResponse::Error(err),
+        },
+        ControlCommand::StartConfigured => {
+            start_configured(app, ble, generic_encoder, xbox_encoder, bridge)
+        }
         _ => app.handle_control_command(cmd),
     };
 
@@ -541,15 +676,50 @@ where
     resp
 }
 
+fn parse_runtime_config_json(pending: PendingConfigJson) -> Result<RuntimeConfig, ControlError> {
+    #[cfg(target_os = "espidf")]
+    {
+        let handle = std::thread::Builder::new()
+            .name("config-json".to_string())
+            .stack_size(32 * 1024)
+            .spawn(move || parse_runtime_config_json_inner(pending))
+            .map_err(|_| ControlError::Generic)?;
+        handle.join().map_err(|_| ControlError::Generic)?
+    }
+    #[cfg(not(target_os = "espidf"))]
+    {
+        parse_runtime_config_json_inner(pending)
+    }
+}
+
+fn parse_runtime_config_json_inner(
+    pending: PendingConfigJson,
+) -> Result<RuntimeConfig, ControlError> {
+    if let Some(expected) = &pending.checksum {
+        let digest = Sha256::digest(&pending.bytes);
+        let actual = digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        if expected != &actual {
+            return Err(ControlError::ConfigChecksumMismatch);
+        }
+    }
+    let json = String::from_utf8(pending.bytes).map_err(|_| ControlError::InvalidJson)?;
+    serde_json::from_str::<RuntimeConfig>(&json).map_err(|_| ControlError::InvalidJson)
+}
+
 fn start_ble_persona<S>(
     app: &mut App<S>,
     ble: &mut impl BleTransport,
-    encoder: &impl PersonaEncoder,
+    encoder: &(impl PersonaEncoder + ?Sized),
     persona_id: PersonaId,
     action: &'static str,
 ) -> ControlResponse
 where
-    S: usb2ble_contracts::ProfileStore + usb2ble_contracts::BondStore,
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
 {
     match encoder.descriptor(persona_id) {
         Ok(descriptor) => match ble.activate_persona(&descriptor) {
@@ -565,6 +735,57 @@ where
         },
         Err(_) => ControlResponse::Error(ControlError::Generic),
     }
+}
+
+fn start_configured<S>(
+    app: &mut App<S>,
+    ble: &mut impl BleTransport,
+    generic_encoder: &impl PersonaEncoder,
+    xbox_encoder: &impl PersonaEncoder,
+    bridge: &mut BridgeRuntime,
+) -> ControlResponse
+where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    let config = app.runtime_config().clone();
+    let persona_id = match persona_id_from_config(&config.selected_persona) {
+        Ok(persona_id) => persona_id,
+        Err(err) => return ControlResponse::Error(err),
+    };
+
+    if config.bridge.auto_start_persona {
+        let encoder: &dyn PersonaEncoder = if persona_id == GENERIC_GAMEPAD_PERSONA_ID {
+            generic_encoder
+        } else if persona_id == XBOX_WIRELESS_CONTROLLER_PERSONA_ID {
+            xbox_encoder
+        } else {
+            return ControlResponse::Error(ControlError::UnknownPersona);
+        };
+        let response = start_ble_persona(app, ble, encoder, persona_id, "start_configured");
+        if matches!(response, ControlResponse::Error(_)) {
+            return response;
+        }
+    }
+
+    if let Err(err) = bridge.set_rate_hz(config.bridge.rate_hz) {
+        return ControlResponse::Error(err);
+    }
+    if config.bridge.auto_start_bridge
+        && let Err(err) = bridge.start(app.state().active_persona)
+    {
+        return ControlResponse::Error(err);
+    }
+
+    ControlResponse::ConfigAction(ConfigActionResponse {
+        action: "start_configured",
+        state: "ok",
+        detail: Some(format!(
+            "persona={};bridge={};",
+            persona_id.0, config.bridge.auto_start_bridge
+        )),
+    })
 }
 
 fn publish_ble_report(
@@ -587,7 +808,9 @@ fn bridge_report_for_persona<S>(
     persona_id: PersonaId,
 ) -> Result<EncodedBleReport, ControlError>
 where
-    S: usb2ble_contracts::ProfileStore + usb2ble_contracts::BondStore,
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
 {
     if persona_id == GENERIC_GAMEPAD_PERSONA_ID {
         app.generic_gamepad_report()
@@ -595,6 +818,14 @@ where
         app.xbox_gamepad_report()
     } else {
         Err(ControlError::PersonaMismatch)
+    }
+}
+
+fn persona_id_from_config(persona: &str) -> Result<PersonaId, ControlError> {
+    match persona {
+        "generic" | "generic_gamepad" => Ok(GENERIC_GAMEPAD_PERSONA_ID),
+        "xbox" | "xbox_wireless_controller" => Ok(XBOX_WIRELESS_CONTROLLER_PERSONA_ID),
+        _ => Err(ControlError::UnknownPersona),
     }
 }
 
@@ -680,6 +911,7 @@ mod tests {
         xbox_encoder: XboxWirelessControllerEncoder,
         self_test: SelfTestState,
         bridge: BridgeRuntime,
+        config_import: ConfigImportRuntime,
     }
 
     impl Runtime {
@@ -691,6 +923,7 @@ mod tests {
                 xbox_encoder: XboxWirelessControllerEncoder,
                 self_test: SelfTestState::default(),
                 bridge: BridgeRuntime::new(),
+                config_import: ConfigImportRuntime::default(),
             }
         }
 
@@ -709,6 +942,7 @@ mod tests {
                 &cmd,
                 &mut self.self_test,
                 &mut self.bridge,
+                &mut self.config_import,
             )
         }
 
@@ -1105,6 +1339,159 @@ mod tests {
         assert_eq!(&released.bytes[0..2], &0_u16.to_le_bytes());
         assert_eq!(&pressed.bytes[13..15], &1_u16.to_le_bytes());
         assert_eq!(&released.bytes[13..15], &0_u16.to_le_bytes());
+    }
+
+    #[test]
+    fn chunked_config_import_commits_valid_json() {
+        let mut runtime = Runtime::new();
+        let json = serde_json::to_string(&RuntimeConfig::flight_pack_xbox_preset()).unwrap();
+        let chunk = URL_SAFE_NO_PAD.encode(json.as_bytes());
+
+        assert_eq!(
+            runtime.run(ControlCommand::BeginConfigJson {
+                total_chunks: 1,
+                checksum: None,
+            }),
+            ControlResponse::ConfigImport(ConfigImportResponse {
+                state: "started",
+                total_chunks: 1,
+                received_chunks: 0,
+                bytes: 0,
+            })
+        );
+        assert_eq!(
+            runtime.run(ControlCommand::ConfigJsonChunk {
+                index: 0,
+                data: chunk,
+            }),
+            ControlResponse::ConfigImport(ConfigImportResponse {
+                state: "chunk",
+                total_chunks: 1,
+                received_chunks: 1,
+                bytes: json.len(),
+            })
+        );
+        assert!(matches!(
+            runtime.run(ControlCommand::CommitConfigJson),
+            ControlResponse::ConfigImport(ConfigImportResponse {
+                state: "committed",
+                ..
+            })
+        ));
+        assert_eq!(
+            runtime.app.runtime_config().selected_persona,
+            "xbox_wireless_controller"
+        );
+    }
+
+    #[test]
+    fn chunked_config_import_rejects_missing_out_of_order_invalid_base64_and_json() {
+        let mut runtime = Runtime::new();
+        assert_eq!(
+            runtime.run(ControlCommand::BeginConfigJson {
+                total_chunks: 2,
+                checksum: None,
+            }),
+            ControlResponse::ConfigImport(ConfigImportResponse {
+                state: "started",
+                total_chunks: 2,
+                received_chunks: 0,
+                bytes: 0,
+            })
+        );
+        assert_eq!(
+            runtime.run(ControlCommand::ConfigJsonChunk {
+                index: 1,
+                data: "e30".to_string(),
+            }),
+            ControlResponse::Error(ControlError::ConfigChunkOutOfOrder)
+        );
+        assert_eq!(
+            runtime.run(ControlCommand::ConfigJsonChunk {
+                index: 0,
+                data: "@@@".to_string(),
+            }),
+            ControlResponse::Error(ControlError::InvalidBase64)
+        );
+        assert_eq!(
+            runtime.run(ControlCommand::CommitConfigJson),
+            ControlResponse::Error(ControlError::ConfigChunkMissing)
+        );
+
+        let mut runtime = Runtime::new();
+        assert!(matches!(
+            runtime.run(ControlCommand::BeginConfigJson {
+                total_chunks: 1,
+                checksum: None,
+            }),
+            ControlResponse::ConfigImport(_)
+        ));
+        assert!(matches!(
+            runtime.run(ControlCommand::ConfigJsonChunk {
+                index: 0,
+                data: URL_SAFE_NO_PAD.encode(b"{not-json"),
+            }),
+            ControlResponse::ConfigImport(_)
+        ));
+        assert_eq!(
+            runtime.run(ControlCommand::CommitConfigJson),
+            ControlResponse::Error(ControlError::InvalidJson)
+        );
+    }
+
+    #[test]
+    fn start_configured_starts_selected_xbox_persona_and_bridge() {
+        let mut runtime = Runtime::with_button_input();
+        let mut config = RuntimeConfig::flight_pack_xbox_preset();
+        config.bridge.auto_start_bridge = true;
+        config.bridge.rate_hz = 25;
+        runtime.app.set_runtime_config(config).unwrap();
+
+        match runtime.run(ControlCommand::StartConfigured) {
+            ControlResponse::ConfigAction(action) => {
+                assert_eq!(action.action, "start_configured");
+                assert_eq!(action.state, "ok");
+            }
+            other => panic!("expected config action, got {other:?}"),
+        }
+
+        assert_eq!(
+            runtime.app.state().active_persona,
+            Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID)
+        );
+        let status = runtime.bridge.status(runtime.app.state().active_persona);
+        assert!(status.enabled);
+        assert_eq!(status.rate_hz, 25);
+    }
+
+    #[test]
+    fn bridge_uses_configured_mapping() {
+        let mut runtime = Runtime::with_button_input();
+        let config = RuntimeConfig {
+            selected_profile: "custom_runtime".to_string(),
+            mappings: vec![usb2ble_contracts::SourceMappingRule {
+                source_vendor_id: Some(0x1234),
+                source_product_id: Some(0x5678),
+                source_interface_id: Some(0),
+                source_control_id: "button_1".to_string(),
+                target_control_id: "button_2".to_string(),
+                invert: false,
+                deadzone: None,
+                transform: None,
+            }],
+            ..RuntimeConfig::default()
+        };
+        runtime.app.set_runtime_config(config).unwrap();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepad),
+            "start_generic_gamepad",
+        );
+        assert_bridge_status(runtime.run(ControlCommand::StartBridge));
+        assert_eq!(runtime.poll_bridge(0), BridgePollOutcome::FirstPublish);
+
+        let report = runtime.ble.published_reports().last().unwrap();
+        assert_eq!(report.bytes[0], 0b0000_0010);
     }
 
     fn inject_button_input(app: &mut App<InMemoryStore>) {

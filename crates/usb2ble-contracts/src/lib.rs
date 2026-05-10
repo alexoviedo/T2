@@ -6,11 +6,40 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+use serde::{Deserialize, Serialize};
+
 /// The current version of the project contracts.
 pub const CONTRACT_VERSION: u32 = 1;
 
 /// A note on contract compatibility.
 pub const CONTRACT_COMPATIBILITY_NOTE: &str = "Initial M0 baseline contracts.";
+
+/// Current JSON runtime configuration schema version.
+pub const RUNTIME_CONFIG_SCHEMA_VERSION: u32 = 1;
+
+/// Maximum accepted runtime configuration JSON size.
+pub const MAX_RUNTIME_CONFIG_JSON_BYTES: usize = 8 * 1024;
+
+/// Stable Generic Gamepad persona string used by runtime configuration JSON.
+pub const GENERIC_GAMEPAD_PERSONA_ID_STR: &str = "generic_gamepad";
+
+/// Stable Xbox Wireless Controller persona string used by runtime configuration JSON.
+pub const XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR: &str = "xbox_wireless_controller";
+
+/// Built-in Generic auto profile string used by runtime configuration JSON.
+pub const GENERIC_AUTO_PROFILE_ID_STR: &str = "generic_auto";
+
+/// Built-in Generic Flight Pack profile string used by runtime configuration JSON.
+pub const FLIGHT_PACK_DEMO_PROFILE_ID_STR: &str = "flight_pack_demo";
+
+/// Built-in Xbox auto profile string used by runtime configuration JSON.
+pub const XBOX_AUTO_PROFILE_ID_STR: &str = "xbox_auto";
+
+/// Built-in Xbox Flight Pack profile string used by runtime configuration JSON.
+pub const XBOX_FLIGHT_PACK_DEMO_PROFILE_ID_STR: &str = "xbox_flight_pack_demo";
+
+/// Runtime custom profile sentinel used by configuration JSON.
+pub const CUSTOM_RUNTIME_PROFILE_ID_STR: &str = "custom_runtime";
 
 /// Shared identity types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -466,19 +495,40 @@ pub struct DeviceSignature {
     pub capability_fingerprint: Option<String>,
 }
 
+/// A transform applied while mapping a source value into a target control.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RuntimeTransform {
+    /// Convert a signed axis-like source into a 0..1023 trigger value.
+    AxisToTrigger {
+        /// Raw source value that should map to the target minimum.
+        source_min: i32,
+        /// Raw source value that should map to the target maximum.
+        source_max: i32,
+        /// Whether to invert the trigger after scaling.
+        invert: bool,
+    },
+}
+
 /// A rule defining how a source input maps to a target.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceMappingRule {
     /// Optional USB vendor ID selector.
     pub source_vendor_id: Option<u16>,
     /// Optional USB product ID selector.
     pub source_product_id: Option<u16>,
+    /// Optional USB interface ID selector.
+    pub source_interface_id: Option<u32>,
     /// Source normalized control identifier, such as `axis_01_30`.
     pub source_control_id: String,
     /// Target persona control identifier, such as `x` or `button_1`.
     pub target_control_id: String,
     /// Whether the source value should be inverted before mapping.
     pub invert: bool,
+    /// Optional deadzone applied to centered axis-like values before mapping.
+    pub deadzone: Option<i32>,
+    /// Optional value transform applied after deadzone/inversion.
+    pub transform: Option<RuntimeTransform>,
 }
 
 /// A full profile defining mapping and target persona.
@@ -551,7 +601,8 @@ pub struct BlePersonaIdentity {
 }
 
 /// Logical kind of a persona input control.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PersonaControlKind {
     /// Signed axis.
     Axis,
@@ -564,7 +615,7 @@ pub enum PersonaControlKind {
 }
 
 /// Metadata for one logical input expected by a persona.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PersonaControlDescriptor {
     /// Stable persona control identifier.
     pub control_id: String,
@@ -577,7 +628,7 @@ pub struct PersonaControlDescriptor {
 }
 
 /// Schema for a persona's expected logical input.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PersonaInputSchema {
     /// Logical controls accepted by this persona.
     pub controls: Vec<PersonaControlDescriptor>,
@@ -697,12 +748,134 @@ pub trait BleTransport {
 pub enum StoreError {
     /// Generic storage failure.
     Generic,
+    /// Persisted configuration could not be decoded or validated.
+    InvalidConfig,
+}
+
+/// Live bridge behavior stored in runtime configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BridgeRuntimeConfig {
+    /// Whether `START_CONFIGURED` should start the selected BLE persona.
+    pub auto_start_persona: bool,
+    /// Whether `START_CONFIGURED` should also start live bridge mode.
+    pub auto_start_bridge: bool,
+    /// Maximum automatic live bridge publish rate.
+    pub rate_hz: u16,
+}
+
+impl Default for BridgeRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            auto_start_persona: true,
+            auto_start_bridge: false,
+            rate_hz: 50,
+        }
+    }
 }
 
 /// Runtime configuration of the project.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeConfig {
-    // Placeholder for M7
+    /// JSON schema version for migration and validation.
+    pub schema_version: u32,
+    /// Small user/profile metadata version for future UI migrations.
+    pub metadata_version: u32,
+    /// User-visible configuration/profile name.
+    pub display_name: String,
+    /// Selected output persona ID.
+    pub selected_persona: String,
+    /// Selected profile ID, or `custom_runtime` when `mappings` should drive output.
+    pub selected_profile: String,
+    /// Live bridge behavior.
+    pub bridge: BridgeRuntimeConfig,
+    /// Custom mapping rules used when `selected_profile` is `custom_runtime`.
+    pub mappings: Vec<SourceMappingRule>,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            schema_version: RUNTIME_CONFIG_SCHEMA_VERSION,
+            metadata_version: 1,
+            display_name: "USB2BLE Default".to_string(),
+            selected_persona: GENERIC_GAMEPAD_PERSONA_ID_STR.to_string(),
+            selected_profile: GENERIC_AUTO_PROFILE_ID_STR.to_string(),
+            bridge: BridgeRuntimeConfig::default(),
+            mappings: Vec::new(),
+        }
+    }
+}
+
+impl RuntimeConfig {
+    /// Returns true when the config uses custom runtime mapping rules.
+    #[must_use]
+    pub fn uses_custom_mappings(&self) -> bool {
+        self.selected_profile == CUSTOM_RUNTIME_PROFILE_ID_STR
+    }
+
+    /// Built-in JSON-exportable Flight Pack preset for Generic Gamepad output.
+    #[must_use]
+    pub fn flight_pack_generic_preset() -> Self {
+        Self {
+            display_name: "Flight Pack Generic".to_string(),
+            selected_persona: GENERIC_GAMEPAD_PERSONA_ID_STR.to_string(),
+            selected_profile: CUSTOM_RUNTIME_PROFILE_ID_STR.to_string(),
+            mappings: vec![
+                thrustmaster_rule(0xb10a, Some(0), "axis_01_30", "x"),
+                thrustmaster_rule(0xb10a, Some(0), "axis_01_31", "y"),
+                thrustmaster_rule(0xb687, Some(0), "axis_01_32", "z"),
+                thrustmaster_rule(0xb687, Some(0), "axis_01_36", "rx"),
+            ],
+            ..Self::default()
+        }
+    }
+
+    /// Built-in JSON-exportable Flight Pack preset for Xbox Wireless Controller output.
+    #[must_use]
+    pub fn flight_pack_xbox_preset() -> Self {
+        let mut throttle = thrustmaster_rule(0xb687, Some(0), "axis_01_32", "right_trigger");
+        throttle.transform = Some(RuntimeTransform::AxisToTrigger {
+            source_min: i32::from(i16::MIN),
+            source_max: i32::from(i16::MAX),
+            invert: false,
+        });
+
+        Self {
+            display_name: "Flight Pack Xbox".to_string(),
+            selected_persona: XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR.to_string(),
+            selected_profile: CUSTOM_RUNTIME_PROFILE_ID_STR.to_string(),
+            mappings: vec![
+                thrustmaster_rule(0xb10a, Some(0), "axis_01_30", "left_x"),
+                thrustmaster_rule(0xb10a, Some(0), "axis_01_31", "left_y"),
+                thrustmaster_rule(0xb687, Some(0), "axis_01_36", "right_x"),
+                throttle,
+                thrustmaster_rule(0xb10a, Some(0), "hat_01_39", "hat"),
+                thrustmaster_rule(0xb10a, Some(0), "button_1", "a"),
+                thrustmaster_rule(0xb10a, Some(0), "button_2", "b"),
+                thrustmaster_rule(0xb10a, Some(0), "button_3", "x"),
+                thrustmaster_rule(0xb10a, Some(0), "button_4", "y"),
+            ],
+            ..Self::default()
+        }
+    }
+}
+
+fn thrustmaster_rule(
+    product_id: u16,
+    interface_id: Option<u32>,
+    source_control_id: &str,
+    target_control_id: &str,
+) -> SourceMappingRule {
+    SourceMappingRule {
+        source_vendor_id: Some(0x044f),
+        source_product_id: Some(product_id),
+        source_interface_id: interface_id,
+        source_control_id: source_control_id.to_string(),
+        target_control_id: target_control_id.to_string(),
+        invert: false,
+        deadzone: None,
+        transform: None,
+    }
 }
 
 /// Trait for persisting the active profile.
@@ -868,6 +1041,88 @@ pub struct BridgeStatusResponse {
     pub last_error: Option<&'static str>,
 }
 
+/// Response payload for runtime configuration status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigStatusResponse {
+    /// Whether the current in-memory configuration validates.
+    pub valid: bool,
+    /// Stable source label, such as `default`, `loaded`, or `runtime`.
+    pub source: &'static str,
+    /// Selected persona from the runtime configuration.
+    pub selected_persona: String,
+    /// Selected profile from the runtime configuration.
+    pub selected_profile: String,
+    /// Number of custom mapping rules.
+    pub mappings: usize,
+    /// Whether an import buffer is currently active.
+    pub import_active: bool,
+    /// Last config error as a stable string, when present.
+    pub last_error: Option<&'static str>,
+}
+
+/// A JSON response line for the webapp-ready configuration protocol.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JsonResponse {
+    /// Stable response prefix without the trailing colon.
+    pub prefix: &'static str,
+    /// JSON payload.
+    pub json: String,
+}
+
+/// Response payload for config import chunking.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigImportResponse {
+    /// Import state, such as `started`, `chunk`, or `committed`.
+    pub state: &'static str,
+    /// Expected total number of chunks.
+    pub total_chunks: usize,
+    /// Received chunk count.
+    pub received_chunks: usize,
+    /// Current decoded byte count.
+    pub bytes: usize,
+}
+
+/// Response payload for config persistence/action commands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigActionResponse {
+    /// Action that was attempted.
+    pub action: &'static str,
+    /// Result state, usually `ok`.
+    pub state: &'static str,
+    /// Optional detail string.
+    pub detail: Option<String>,
+}
+
+/// One observed USB input exposed to a future configuration UI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputCatalogEntry {
+    /// Source USB device session ID.
+    pub device_id: u32,
+    /// Source USB interface ID.
+    pub interface_id: u32,
+    /// Source USB vendor ID.
+    pub vendor_id: u16,
+    /// Source USB product ID.
+    pub product_id: u16,
+    /// Source normalized control identifier.
+    pub source_control_id: String,
+    /// Current normalized value as a compact machine string.
+    pub value: String,
+    /// Coarse control kind.
+    pub kind: String,
+    /// Current mapped target control, when known.
+    pub mapped_target: Option<String>,
+    /// Human display hint for known devices.
+    pub source_display_hint: Option<String>,
+}
+
+/// Input catalog response payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputCatalog {
+    /// Catalog entries.
+    pub entries: Vec<InputCatalogEntry>,
+}
+
 /// A command received over the serial control plane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlCommand {
@@ -919,6 +1174,40 @@ pub enum ControlCommand {
     GetBridgeStatus,
     /// Set the automatic bridge maximum publish rate in hertz.
     SetBridgeRateHz(u16),
+    /// Request runtime configuration status.
+    GetConfigStatus,
+    /// Request the runtime configuration JSON schema.
+    GetConfigSchema,
+    /// Request the logical target schema for a persona.
+    GetPersonaSchema(String),
+    /// Request currently observed USB input controls.
+    GetInputCatalog,
+    /// Export current runtime configuration as JSON.
+    GetConfigJson,
+    /// Begin chunked JSON configuration import.
+    BeginConfigJson {
+        /// Expected total chunk count.
+        total_chunks: usize,
+        /// Optional SHA-256 checksum in lowercase hex.
+        checksum: Option<String>,
+    },
+    /// Add one base64url JSON configuration chunk.
+    ConfigJsonChunk {
+        /// Zero-based chunk index.
+        index: usize,
+        /// Base64url encoded chunk data.
+        data: String,
+    },
+    /// Validate and commit the chunked JSON configuration import.
+    CommitConfigJson,
+    /// Reset current runtime configuration to defaults.
+    ResetConfig,
+    /// Persist current runtime configuration.
+    SaveConfig,
+    /// Reload persisted runtime configuration.
+    LoadConfig,
+    /// Start the selected persona and optional bridge from runtime configuration.
+    StartConfigured,
 }
 
 /// A response to be sent over the serial control plane.
@@ -950,6 +1239,14 @@ pub enum ControlResponse {
     BleAction(BleActionResponse),
     /// Response to live bridge mode commands.
     BridgeStatus(BridgeStatusResponse),
+    /// Response to runtime configuration status.
+    ConfigStatus(ConfigStatusResponse),
+    /// Response containing JSON for configuration/webapp endpoints.
+    Json(JsonResponse),
+    /// Response to chunked configuration import.
+    ConfigImport(ConfigImportResponse),
+    /// Response to configuration persistence/action commands.
+    ConfigAction(ConfigActionResponse),
     /// An error response.
     Error(ControlError),
 }
@@ -971,6 +1268,34 @@ pub enum ControlError {
     BridgeNoActivePersona,
     /// The requested live bridge rate is outside the supported range.
     InvalidBridgeRate,
+    /// Configuration JSON could not be parsed.
+    InvalidJson,
+    /// Configuration schema version is unsupported.
+    InvalidConfigVersion,
+    /// Configuration selected an unknown persona.
+    UnknownPersona,
+    /// Configuration selected an unknown built-in profile.
+    UnknownProfile,
+    /// Configuration references an unknown target control.
+    UnknownTargetControl,
+    /// Configuration maps more than one source to the same target.
+    DuplicateTargetMapping,
+    /// Configuration transform is invalid.
+    InvalidTransform,
+    /// Configuration payload is too large.
+    ConfigTooLarge,
+    /// Chunked configuration import is missing one or more chunks.
+    ConfigChunkMissing,
+    /// Chunked configuration import chunk arrived out of order.
+    ConfigChunkOutOfOrder,
+    /// Chunked configuration import chunk could not be decoded.
+    InvalidBase64,
+    /// No configuration import is active.
+    NoConfigImportActive,
+    /// Configuration checksum did not match.
+    ConfigChecksumMismatch,
+    /// Configuration persistence failed.
+    StorageFailure,
 }
 
 /// Trait for serial control plane framing and schema.
@@ -1047,6 +1372,41 @@ pub enum DiagnosticEvent {
     Store(StoreDiagnosticEvent),
     /// Control plane event.
     Control(ControlDiagnosticEvent),
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn runtime_config_default_is_versioned_and_serializable() {
+        let config = RuntimeConfig::default();
+        assert_eq!(config.schema_version, RUNTIME_CONFIG_SCHEMA_VERSION);
+        assert_eq!(config.selected_persona, GENERIC_GAMEPAD_PERSONA_ID_STR);
+
+        let json = serde_json::to_string(&config).unwrap();
+        let decoded: RuntimeConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, config);
+    }
+
+    #[test]
+    fn flight_pack_presets_are_json_configs() {
+        let generic = RuntimeConfig::flight_pack_generic_preset();
+        assert_eq!(generic.selected_persona, GENERIC_GAMEPAD_PERSONA_ID_STR);
+        assert_eq!(generic.selected_profile, CUSTOM_RUNTIME_PROFILE_ID_STR);
+        assert!(!generic.mappings.is_empty());
+
+        let xbox = RuntimeConfig::flight_pack_xbox_preset();
+        assert_eq!(
+            xbox.selected_persona,
+            XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR
+        );
+        assert!(
+            xbox.mappings
+                .iter()
+                .any(|rule| rule.target_control_id == "right_trigger" && rule.transform.is_some())
+        );
+    }
 }
 
 #[cfg(test)]

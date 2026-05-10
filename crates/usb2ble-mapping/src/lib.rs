@@ -9,7 +9,7 @@ use usb2ble_contracts::{
     CompositeInputFrame, DeviceSignature, Mapper, MappingDiagnosticEntry,
     MappingDiagnosticsResponse, MappingError, MappingProfile, NormalizedCompositeValue,
     NormalizedControlValue, PersonaId, PersonaInputFrame, PersonaLogicalControlValue, ProfileId,
-    SourceMappingRule,
+    RuntimeTransform, SourceMappingRule,
 };
 
 /// Generic auto-mapping profile ID for the first demo path.
@@ -206,6 +206,16 @@ pub fn diagnose_xbox_wireless_controller_mapping(
         .diagnostics
 }
 
+/// Explain mapping decisions for an explicit Xbox Wireless Controller profile.
+#[must_use]
+pub fn diagnose_xbox_wireless_controller_mapping_with_profile(
+    profile: &MappingProfile,
+    composite: &CompositeInputFrame,
+) -> MappingDiagnosticsResponse {
+    map_composite_to_xbox_wireless_controller_with_profile_and_diagnostics(profile, composite)
+        .diagnostics
+}
+
 /// Select the best built-in Generic Gamepad profile for current sources.
 #[must_use]
 pub fn select_generic_gamepad_profile(composite: &CompositeInputFrame) -> MappingProfile {
@@ -339,13 +349,15 @@ fn map_composite_to_generic_gamepad_with_profile_and_diagnostics(
     let mut used_targets = HashSet::new();
     let mut processed_controls = Vec::new();
 
-    map_buttons_and_hat(
-        &ordered_controls,
-        &mut logical_controls,
-        &mut diagnostics,
-        &mut used_targets,
-        &mut processed_controls,
-    );
+    if profile.profile_id.0 != "custom_runtime" {
+        map_buttons_and_hat(
+            &ordered_controls,
+            &mut logical_controls,
+            &mut diagnostics,
+            &mut used_targets,
+            &mut processed_controls,
+        );
+    }
     if profile.source_mappings.is_empty() {
         map_axes(
             &ordered_controls,
@@ -602,11 +614,14 @@ fn map_profile_rules(
 
         processed_controls.push(processed_control(control));
         if used_targets.insert(rule.target_control_id.clone()) {
+            let value = apply_rule_value(control.value, rule);
             logical_controls.push(PersonaLogicalControlValue {
                 control_id: rule.target_control_id.clone(),
-                value: maybe_invert(control.value, rule.invert),
+                value,
             });
-            let reason = if rule.invert {
+            let reason = if rule.transform.is_some() || rule.deadzone.is_some() {
+                "profile_rule_calibrated"
+            } else if rule.invert {
                 "profile_rule_inverted"
             } else {
                 "profile_rule"
@@ -735,9 +750,12 @@ fn rule(product_id: u16, source_control_id: &str, target_control_id: &str) -> So
     SourceMappingRule {
         source_vendor_id: Some(THRUSTMASTER_VENDOR_ID),
         source_product_id: Some(product_id),
+        source_interface_id: None,
         source_control_id: source_control_id.to_string(),
         target_control_id: target_control_id.to_string(),
         invert: false,
+        deadzone: None,
+        transform: None,
     }
 }
 
@@ -747,7 +765,87 @@ fn profile_rule_matches(rule: &SourceMappingRule, control: &NormalizedCompositeV
         && rule
             .source_product_id
             .is_none_or(|product_id| product_id == control.source.device.product_id)
+        && rule
+            .source_interface_id
+            .is_none_or(|interface_id| interface_id == control.source.interface_id.0)
         && rule.source_control_id == control.control_id
+}
+
+fn apply_rule_value(
+    value: NormalizedControlValue,
+    rule: &SourceMappingRule,
+) -> NormalizedControlValue {
+    let mut value = maybe_invert(value, rule.invert);
+    if let Some(deadzone) = rule.deadzone {
+        value = apply_deadzone(value, deadzone);
+    }
+    if let Some(transform) = &rule.transform {
+        value = apply_transform(value, transform);
+    }
+    value
+}
+
+const fn apply_deadzone(value: NormalizedControlValue, deadzone: i32) -> NormalizedControlValue {
+    let deadzone = deadzone.abs();
+    match value {
+        NormalizedControlValue::Axis(raw) if raw.abs() <= deadzone => {
+            NormalizedControlValue::Axis(0)
+        }
+        NormalizedControlValue::Trigger(raw) if raw.abs() <= deadzone => {
+            NormalizedControlValue::Trigger(0)
+        }
+        NormalizedControlValue::Unknown(raw) if raw.abs() <= deadzone => {
+            NormalizedControlValue::Unknown(0)
+        }
+        unchanged => unchanged,
+    }
+}
+
+fn apply_transform(
+    value: NormalizedControlValue,
+    transform: &RuntimeTransform,
+) -> NormalizedControlValue {
+    match transform {
+        RuntimeTransform::AxisToTrigger {
+            source_min,
+            source_max,
+            invert,
+        } => {
+            let raw = scalar_value(value);
+            let span = i64::from(*source_max) - i64::from(*source_min);
+            if span == 0 {
+                return NormalizedControlValue::Trigger(0);
+            }
+            let clamped = raw.clamp(
+                (*source_min).min(*source_max),
+                (*source_min).max(*source_max),
+            );
+            let mut scaled = ((i64::from(clamped) - i64::from(*source_min)) * 1_023) / span;
+            if scaled.is_negative() {
+                scaled = 0;
+            }
+            if *invert {
+                scaled = 1_023 - scaled;
+            }
+            NormalizedControlValue::Trigger(i32::try_from(scaled.clamp(0, 1_023)).unwrap_or(0))
+        }
+    }
+}
+
+fn scalar_value(value: NormalizedControlValue) -> i32 {
+    match value {
+        NormalizedControlValue::Axis(value)
+        | NormalizedControlValue::Trigger(value)
+        | NormalizedControlValue::Unknown(value) => value,
+        NormalizedControlValue::Button(value) => {
+            if value {
+                i32::from(i16::MAX)
+            } else {
+                0
+            }
+        }
+        NormalizedControlValue::Hat(value) => i32::from(value),
+    }
 }
 
 const fn maybe_invert(value: NormalizedControlValue, invert: bool) -> NormalizedControlValue {
@@ -1183,6 +1281,89 @@ mod tests {
         }));
     }
 
+    #[test]
+    fn profile_rule_supports_interface_deadzone_and_axis_to_trigger() {
+        let iface0 = source_with_interface(1, 0x1234, 0x5678, 0);
+        let iface1 = source_with_interface(1, 0x1234, 0x5678, 1);
+        let composite = CompositeInputFrame {
+            sources: vec![iface0.clone(), iface1.clone()],
+            controls: vec![
+                value(iface0, "axis_01_30", NormalizedControlValue::Axis(24)),
+                value(
+                    iface1,
+                    "axis_01_30",
+                    NormalizedControlValue::Axis(i32::from(i16::MAX)),
+                ),
+            ],
+            timestamp_micros: 21,
+        };
+        let profile = MappingProfile {
+            profile_id: ProfileId("custom_runtime"),
+            display_name: "Custom".to_string(),
+            supported_signatures: Vec::new(),
+            target_persona: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+            source_mappings: vec![SourceMappingRule {
+                source_vendor_id: Some(0x1234),
+                source_product_id: Some(0x5678),
+                source_interface_id: Some(1),
+                source_control_id: "axis_01_30".to_string(),
+                target_control_id: "right_trigger".to_string(),
+                invert: false,
+                deadzone: Some(32),
+                transform: Some(RuntimeTransform::AxisToTrigger {
+                    source_min: i32::from(i16::MIN),
+                    source_max: i32::from(i16::MAX),
+                    invert: false,
+                }),
+            }],
+            merge_policy: None,
+        };
+
+        let frame = map_composite_to_xbox_wireless_controller_with_profile(&profile, &composite);
+        let diagnostics =
+            diagnose_xbox_wireless_controller_mapping_with_profile(&profile, &composite);
+
+        assert_eq!(
+            control(&frame, "right_trigger"),
+            Some(NormalizedControlValue::Trigger(1_023))
+        );
+        assert_eq!(diagnostics.entries[0].reason, "profile_rule_calibrated");
+    }
+
+    #[test]
+    fn profile_rule_deadzone_zeroes_centered_values() {
+        let source = source(1, 0x1234, 0x5678);
+        let composite = CompositeInputFrame {
+            sources: vec![source.clone()],
+            controls: vec![value(
+                source,
+                "axis_01_30",
+                NormalizedControlValue::Axis(12),
+            )],
+            timestamp_micros: 23,
+        };
+        let profile = MappingProfile {
+            profile_id: ProfileId("custom_runtime"),
+            display_name: "Custom".to_string(),
+            supported_signatures: Vec::new(),
+            target_persona: GENERIC_GAMEPAD_PERSONA_ID,
+            source_mappings: vec![SourceMappingRule {
+                source_vendor_id: Some(0x1234),
+                source_product_id: Some(0x5678),
+                source_interface_id: None,
+                source_control_id: "axis_01_30".to_string(),
+                target_control_id: "x".to_string(),
+                invert: false,
+                deadzone: Some(32),
+                transform: None,
+            }],
+            merge_policy: None,
+        };
+
+        let frame = map_composite_to_generic_gamepad_with_profile(&profile, &composite);
+        assert_eq!(control(&frame, "x"), Some(NormalizedControlValue::Axis(0)));
+    }
+
     fn control(frame: &PersonaInputFrame, control_id: &str) -> Option<NormalizedControlValue> {
         frame
             .logical_controls
@@ -1205,6 +1386,15 @@ mod tests {
     }
 
     fn source(device_id: u32, vendor_id: u16, product_id: u16) -> UsbInterfaceRef {
+        source_with_interface(device_id, vendor_id, product_id, 0)
+    }
+
+    fn source_with_interface(
+        device_id: u32,
+        vendor_id: u16,
+        product_id: u16,
+        interface_id: u32,
+    ) -> UsbInterfaceRef {
         UsbInterfaceRef {
             device: UsbDeviceRef {
                 device_id: DeviceId(device_id),
@@ -1212,7 +1402,7 @@ mod tests {
                 vendor_id,
                 product_id,
             },
-            interface_id: InterfaceId(0),
+            interface_id: InterfaceId(interface_id),
         }
     }
 }

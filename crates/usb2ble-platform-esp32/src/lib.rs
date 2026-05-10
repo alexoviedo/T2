@@ -13,7 +13,12 @@ use std::io;
 #[cfg(not(target_os = "espidf"))]
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
-use usb2ble_contracts::{UsbIngress, UsbIngressEvent};
+use usb2ble_contracts::{
+    BondStore, ConfigStore, ProfileId, ProfileStore, RuntimeConfig, StoreError, UsbIngress,
+    UsbIngressEvent,
+};
+#[cfg(not(target_os = "espidf"))]
+use usb2ble_storage::InMemoryStore;
 
 /// Result of a UART read operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,6 +163,202 @@ pub fn init() {
                 );
             }
         }
+
+        init_nvs_flash();
+    }
+}
+
+#[cfg(target_os = "espidf")]
+fn init_nvs_flash() {
+    unsafe {
+        let err = esp_idf_sys::nvs_flash_init();
+        if err == esp_idf_sys::ESP_ERR_NVS_NO_FREE_PAGES
+            || err == esp_idf_sys::ESP_ERR_NVS_NEW_VERSION_FOUND
+        {
+            let _ = esp_idf_sys::nvs_flash_erase();
+            let _ = esp_idf_sys::nvs_flash_init();
+        }
+    }
+}
+
+/// Platform-backed storage for runtime configuration and host tests.
+pub struct PlatformStore {
+    #[cfg(not(target_os = "espidf"))]
+    inner: InMemoryStore,
+}
+
+impl PlatformStore {
+    /// Create platform storage.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            #[cfg(not(target_os = "espidf"))]
+            inner: InMemoryStore::new(),
+        }
+    }
+}
+
+impl Default for PlatformStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ProfileStore for PlatformStore {
+    fn load_active_profile(&self) -> Result<Option<ProfileId>, StoreError> {
+        #[cfg(target_os = "espidf")]
+        {
+            Ok(None)
+        }
+        #[cfg(not(target_os = "espidf"))]
+        {
+            self.inner.load_active_profile()
+        }
+    }
+
+    fn save_active_profile(&mut self, profile: ProfileId) -> Result<(), StoreError> {
+        #[cfg(target_os = "espidf")]
+        {
+            let _ = profile;
+            Ok(())
+        }
+        #[cfg(not(target_os = "espidf"))]
+        {
+            self.inner.save_active_profile(profile)
+        }
+    }
+}
+
+impl ConfigStore for PlatformStore {
+    fn load_config(&self) -> Result<Option<RuntimeConfig>, StoreError> {
+        #[cfg(target_os = "espidf")]
+        {
+            load_config_from_nvs()
+        }
+        #[cfg(not(target_os = "espidf"))]
+        {
+            self.inner.load_config()
+        }
+    }
+
+    fn save_config(&mut self, config: &RuntimeConfig) -> Result<(), StoreError> {
+        #[cfg(target_os = "espidf")]
+        {
+            save_config_to_nvs(config)
+        }
+        #[cfg(not(target_os = "espidf"))]
+        {
+            self.inner.save_config(config)
+        }
+    }
+}
+
+impl BondStore for PlatformStore {
+    fn bonds_present(&self) -> Result<bool, StoreError> {
+        #[cfg(target_os = "espidf")]
+        {
+            Ok(false)
+        }
+        #[cfg(not(target_os = "espidf"))]
+        {
+            self.inner.bonds_present()
+        }
+    }
+
+    fn clear_bonds(&mut self) -> Result<(), StoreError> {
+        #[cfg(target_os = "espidf")]
+        {
+            Ok(())
+        }
+        #[cfg(not(target_os = "espidf"))]
+        {
+            self.inner.clear_bonds()
+        }
+    }
+}
+
+#[cfg(target_os = "espidf")]
+const CONFIG_NVS_NAMESPACE: &[u8] = b"usb2ble\0";
+#[cfg(target_os = "espidf")]
+const CONFIG_NVS_KEY: &[u8] = b"runtime_config\0";
+
+#[cfg(target_os = "espidf")]
+fn open_config_nvs(read_write: bool) -> Result<esp_idf_sys::nvs_handle_t, StoreError> {
+    let mut handle = 0;
+    let mode = if read_write {
+        esp_idf_sys::nvs_open_mode_t_NVS_READWRITE
+    } else {
+        esp_idf_sys::nvs_open_mode_t_NVS_READONLY
+    };
+    let err =
+        unsafe { esp_idf_sys::nvs_open(CONFIG_NVS_NAMESPACE.as_ptr().cast(), mode, &mut handle) };
+    if err == esp_idf_sys::ESP_OK {
+        Ok(handle)
+    } else {
+        Err(StoreError::Generic)
+    }
+}
+
+#[cfg(target_os = "espidf")]
+fn load_config_from_nvs() -> Result<Option<RuntimeConfig>, StoreError> {
+    let handle = open_config_nvs(true)?;
+    let mut len = 0_usize;
+    let len_err = unsafe {
+        esp_idf_sys::nvs_get_blob(
+            handle,
+            CONFIG_NVS_KEY.as_ptr().cast(),
+            std::ptr::null_mut(),
+            &mut len,
+        )
+    };
+    if len_err == esp_idf_sys::ESP_ERR_NVS_NOT_FOUND {
+        unsafe { esp_idf_sys::nvs_close(handle) };
+        return Ok(None);
+    }
+    if len_err != esp_idf_sys::ESP_OK {
+        unsafe { esp_idf_sys::nvs_close(handle) };
+        return Err(StoreError::Generic);
+    }
+    let mut bytes = vec![0_u8; len];
+    let get_err = unsafe {
+        esp_idf_sys::nvs_get_blob(
+            handle,
+            CONFIG_NVS_KEY.as_ptr().cast(),
+            bytes.as_mut_ptr().cast(),
+            &mut len,
+        )
+    };
+    unsafe { esp_idf_sys::nvs_close(handle) };
+    if get_err != esp_idf_sys::ESP_OK {
+        return Err(StoreError::Generic);
+    }
+    serde_json::from_slice(&bytes)
+        .map(Some)
+        .map_err(|_| StoreError::InvalidConfig)
+}
+
+#[cfg(target_os = "espidf")]
+fn save_config_to_nvs(config: &RuntimeConfig) -> Result<(), StoreError> {
+    let bytes = serde_json::to_vec(config).map_err(|_| StoreError::InvalidConfig)?;
+    let handle = open_config_nvs(true)?;
+    let set_err = unsafe {
+        esp_idf_sys::nvs_set_blob(
+            handle,
+            CONFIG_NVS_KEY.as_ptr().cast(),
+            bytes.as_ptr().cast(),
+            bytes.len(),
+        )
+    };
+    if set_err != esp_idf_sys::ESP_OK {
+        unsafe { esp_idf_sys::nvs_close(handle) };
+        return Err(StoreError::Generic);
+    }
+    let commit_err = unsafe { esp_idf_sys::nvs_commit(handle) };
+    unsafe { esp_idf_sys::nvs_close(handle) };
+    if commit_err == esp_idf_sys::ESP_OK {
+        Ok(())
+    } else {
+        Err(StoreError::Generic)
     }
 }
 

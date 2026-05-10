@@ -24,6 +24,7 @@ impl SerialControlPlane {
 }
 
 impl ControlPlane for SerialControlPlane {
+    #[allow(clippy::too_many_lines)]
     fn decode_command(&self, bytes: &[u8]) -> Result<ControlCommand, ControlError> {
         let s = std::str::from_utf8(bytes).map_err(|_| ControlError::Generic)?;
         let s = s.trim();
@@ -85,6 +86,62 @@ impl ControlPlane for SerialControlPlane {
         if s == "GET_BRIDGE_STATUS" {
             return Ok(ControlCommand::GetBridgeStatus);
         }
+        if s == "GET_CONFIG_STATUS" {
+            return Ok(ControlCommand::GetConfigStatus);
+        }
+        if s == "GET_CONFIG_SCHEMA" {
+            return Ok(ControlCommand::GetConfigSchema);
+        }
+        if let Some(rest) = s.strip_prefix("GET_PERSONA_SCHEMA ") {
+            return Ok(ControlCommand::GetPersonaSchema(rest.trim().to_string()));
+        }
+        if s == "GET_INPUT_CATALOG" {
+            return Ok(ControlCommand::GetInputCatalog);
+        }
+        if s == "GET_CONFIG_JSON" {
+            return Ok(ControlCommand::GetConfigJson);
+        }
+        if let Some(rest) = s.strip_prefix("BEGIN_CONFIG_JSON ") {
+            let mut parts = rest.split_whitespace();
+            let total_chunks = parts
+                .next()
+                .ok_or(ControlError::Generic)?
+                .parse::<usize>()
+                .map_err(|_| ControlError::Generic)?;
+            let checksum = parts
+                .next()
+                .filter(|value| *value != "none")
+                .map(str::to_string);
+            return Ok(ControlCommand::BeginConfigJson {
+                total_chunks,
+                checksum,
+            });
+        }
+        if let Some(rest) = s.strip_prefix("CONFIG_JSON_CHUNK ") {
+            let mut parts = rest.split_whitespace();
+            let index = parts
+                .next()
+                .ok_or(ControlError::Generic)?
+                .parse::<usize>()
+                .map_err(|_| ControlError::Generic)?;
+            let data = parts.next().ok_or(ControlError::Generic)?.to_string();
+            return Ok(ControlCommand::ConfigJsonChunk { index, data });
+        }
+        if s == "COMMIT_CONFIG_JSON" {
+            return Ok(ControlCommand::CommitConfigJson);
+        }
+        if s == "RESET_CONFIG" {
+            return Ok(ControlCommand::ResetConfig);
+        }
+        if s == "SAVE_CONFIG" {
+            return Ok(ControlCommand::SaveConfig);
+        }
+        if s == "LOAD_CONFIG" {
+            return Ok(ControlCommand::LoadConfig);
+        }
+        if s == "START_CONFIGURED" {
+            return Ok(ControlCommand::StartConfigured);
+        }
         if let Some(rest) = s.strip_prefix("SET_BRIDGE_RATE_HZ ") {
             let rate_hz = rest
                 .trim()
@@ -116,6 +173,7 @@ impl ControlPlane for SerialControlPlane {
         Err(ControlError::Generic)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn encode_response(&self, response: &ControlResponse) -> Result<Vec<u8>, ControlError> {
         let mut out = String::new();
 
@@ -212,6 +270,26 @@ impl ControlPlane for SerialControlPlane {
                 }
             }
             ControlResponse::BridgeStatus(resp) => encode_bridge_status(&mut out, resp),
+            ControlResponse::ConfigStatus(resp) => encode_config_status(&mut out, resp),
+            ControlResponse::Json(resp) => {
+                out.push_str(resp.prefix);
+                out.push(':');
+                out.push_str(&resp.json);
+            }
+            ControlResponse::ConfigImport(resp) => {
+                out.push_str("CONFIG_IMPORT:");
+                let _ = write!(out, "state={};", resp.state);
+                let _ = write!(out, "total_chunks={};", resp.total_chunks);
+                let _ = write!(out, "received_chunks={};", resp.received_chunks);
+                let _ = write!(out, "bytes={};", resp.bytes);
+            }
+            ControlResponse::ConfigAction(resp) => {
+                out.push_str("CONFIG_ACTION:");
+                let _ = write!(out, "action={};state={};", resp.action, resp.state);
+                if let Some(detail) = &resp.detail {
+                    let _ = write!(out, "detail={detail};");
+                }
+            }
             ControlResponse::Error(err) => {
                 let _ = write!(out, "ERROR:{err:?}");
             }
@@ -219,6 +297,21 @@ impl ControlPlane for SerialControlPlane {
 
         out.push('\n');
         Ok(out.into_bytes())
+    }
+}
+
+fn encode_config_status(out: &mut String, resp: &usb2ble_contracts::ConfigStatusResponse) {
+    out.push_str("CONFIG_STATUS:");
+    let _ = write!(out, "valid={};", resp.valid);
+    let _ = write!(out, "source={};", resp.source);
+    let _ = write!(out, "persona={};", resp.selected_persona);
+    let _ = write!(out, "profile={};", resp.selected_profile);
+    let _ = write!(out, "mappings={};", resp.mappings);
+    let _ = write!(out, "import_active={};", resp.import_active);
+    if let Some(last_error) = resp.last_error {
+        let _ = write!(out, "last_error={last_error};");
+    } else {
+        out.push_str("last_error=none;");
     }
 }
 
@@ -557,6 +650,66 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_config_commands() {
+        let cp = SerialControlPlane::new();
+
+        assert_eq!(
+            cp.decode_command(b"GET_CONFIG_STATUS").unwrap(),
+            ControlCommand::GetConfigStatus
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_CONFIG_SCHEMA").unwrap(),
+            ControlCommand::GetConfigSchema
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_PERSONA_SCHEMA xbox").unwrap(),
+            ControlCommand::GetPersonaSchema("xbox".to_string())
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_INPUT_CATALOG").unwrap(),
+            ControlCommand::GetInputCatalog
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_CONFIG_JSON").unwrap(),
+            ControlCommand::GetConfigJson
+        );
+        assert_eq!(
+            cp.decode_command(b"BEGIN_CONFIG_JSON 2 none").unwrap(),
+            ControlCommand::BeginConfigJson {
+                total_chunks: 2,
+                checksum: None,
+            }
+        );
+        assert_eq!(
+            cp.decode_command(b"CONFIG_JSON_CHUNK 1 e30").unwrap(),
+            ControlCommand::ConfigJsonChunk {
+                index: 1,
+                data: "e30".to_string(),
+            }
+        );
+        assert_eq!(
+            cp.decode_command(b"COMMIT_CONFIG_JSON").unwrap(),
+            ControlCommand::CommitConfigJson
+        );
+        assert_eq!(
+            cp.decode_command(b"RESET_CONFIG").unwrap(),
+            ControlCommand::ResetConfig
+        );
+        assert_eq!(
+            cp.decode_command(b"SAVE_CONFIG").unwrap(),
+            ControlCommand::SaveConfig
+        );
+        assert_eq!(
+            cp.decode_command(b"LOAD_CONFIG").unwrap(),
+            ControlCommand::LoadConfig
+        );
+        assert_eq!(
+            cp.decode_command(b"START_CONFIGURED").unwrap(),
+            ControlCommand::StartConfigured
+        );
+    }
+
+    #[test]
     #[allow(clippy::too_many_lines)]
     fn test_encode_m2_responses() {
         use usb2ble_contracts::{
@@ -771,6 +924,44 @@ mod tests {
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
             "ERROR:BridgeNoActivePersona\n"
+        );
+    }
+
+    #[test]
+    fn test_encode_config_responses() {
+        let cp = SerialControlPlane::new();
+        let status = ControlResponse::ConfigStatus(usb2ble_contracts::ConfigStatusResponse {
+            valid: true,
+            source: "runtime",
+            selected_persona: "xbox_wireless_controller".to_string(),
+            selected_profile: "custom_runtime".to_string(),
+            mappings: 4,
+            import_active: false,
+            last_error: None,
+        });
+        let bytes = cp.encode_response(&status).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "CONFIG_STATUS:valid=true;source=runtime;persona=xbox_wireless_controller;profile=custom_runtime;mappings=4;import_active=false;last_error=none;\n"
+        );
+
+        let json = ControlResponse::Json(usb2ble_contracts::JsonResponse {
+            prefix: "CONFIG_JSON",
+            json: "{}".to_string(),
+        });
+        let bytes = cp.encode_response(&json).unwrap();
+        assert_eq!(std::str::from_utf8(&bytes).unwrap(), "CONFIG_JSON:{}\n");
+
+        let import = ControlResponse::ConfigImport(usb2ble_contracts::ConfigImportResponse {
+            state: "chunk",
+            total_chunks: 2,
+            received_chunks: 1,
+            bytes: 16,
+        });
+        let bytes = cp.encode_response(&import).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "CONFIG_IMPORT:state=chunk;total_chunks=2;received_chunks=1;bytes=16;\n"
         );
     }
 }

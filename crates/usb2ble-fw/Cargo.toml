@@ -11,6 +11,9 @@ usb2ble-control = { path = "../usb2ble-control" }
 usb2ble-contracts = { path = "../usb2ble-contracts" }
 usb2ble-personas = { path = "../usb2ble-personas" }
 usb2ble-storage = { path = "../usb2ble-storage" }
+base64 = "0.22"
+sha2 = "0.10"
+serde_json = "1"
 
 [target.'cfg(target_os = "espidf")'.dependencies]
 esp-idf-sys = { version = "0.37", features = ["binstart"] }
