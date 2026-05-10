@@ -25,6 +25,10 @@
   games/apps because it continuously publishes USB-derived reports for the
   active BLE persona while connected. Manual publish commands remain diagnostic
   one-shot commands.
+- Repeatable soak and calibration witness tooling is available for the next
+  demo-hardening pass. Xbox live bridge now has a checked-in 300-second soak
+  witness; Generic soak and final Flight Pack calibration still need separate
+  evidence.
 
 ## What this project is building toward
 - ESP32-S3 USB HID to BLE bridge.
@@ -71,6 +75,8 @@
 - `tools/gamepad_witness/server.py` serves a repo-local browser Gamepad API witness page and captures snapshots under `target/gamepad-witness/`.
 - `tools/asap_demo_rehearsal.py` runs the operator-friendly Generic Gamepad demo rehearsal, auto-detects the T.16000M source by VID/PID, supports `--live-bridge`, and saves a timestamped transcript.
 - `tools/xbox_demo_rehearsal.py` runs the Xbox BLE compatibility rehearsal, supports `--live-bridge`, and saves serial proof plus optional browser witness evidence.
+- `tools/live_bridge_soak.py` runs a timed Generic or Xbox live bridge soak and saves bridge status samples.
+- `tools/flight_pack_calibration_witness.py` guides named Flight Pack movements and drafts calibration/axis-label evidence.
 - `tools/mapping_delta_witness.py` captures clean before/after or timed-watch `GET_GENERIC_GAMEPAD_MAPPING` deltas for one physical control.
 - `tools/usb_report_delta_witness.py` captures lower-level `GET_LAST_USB_REPORT` byte deltas so raw USB movement can be proven before debugging normalization or mapping.
 - `tools/detach_cleanup_witness.py` captures before/detach/after cleanup evidence for one downstream USB HID device.
@@ -85,6 +91,7 @@
 - exact RJ12 pedal axis labels.
 - game/application compatibility beyond the browser Gamepad API witness.
 - broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
+- checked-in Generic long-duration live bridge soak evidence.
 - real hardware live bridge evidence from an actual game/app; the checked-in
   live bridge witness uses serial counters and browser Gamepad API evidence,
   which is useful but is not a substitute for game compatibility.
@@ -163,6 +170,9 @@ See: `docs/ASAP_DEMO_RUNBOOK.md`
 
 ## Xbox BLE demo runbook
 See: `docs/XBOX_BLE_DEMO_RUNBOOK.md`
+
+## Game/app compatibility witness
+See: `docs/GAME_COMPATIBILITY_WITNESS.md`
 
 ## Integrity rules for agents
 * code and checked-in evidence are the source of truth.

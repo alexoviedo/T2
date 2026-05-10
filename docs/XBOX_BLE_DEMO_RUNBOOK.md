@@ -170,6 +170,20 @@ python3 tools/xbox_demo_rehearsal.py \
   --live-bridge
 ```
 
+Timed live bridge soak:
+
+```sh
+python3 tools/live_bridge_soak.py \
+  --port /dev/cu.usbmodem5B5E0200881 \
+  --persona xbox \
+  --duration-seconds 300 \
+  --sample-interval-seconds 5 \
+  --browser-witness
+```
+
+See `docs/milestone-evidence/LIVE_BRIDGE_SOAK_WITNESS_2026-05-10.md` for the
+first checked-in 300-second Xbox live bridge soak.
+
 Self-test only, without requiring live USB movement:
 
 ```sh
@@ -188,6 +202,10 @@ Browser/Gamepad API visibility is useful evidence. The 2026-05-09 witness saw a
 standard gamepad with Xbox VID/PID, but the browser display name was
 `USB2BLE Gamepad`; use VID `045e` and PID `0b13` as the reliable browser-side
 identity signal for this pass.
+
+For real app/game compatibility evidence, use
+`docs/GAME_COMPATIBILITY_WITNESS.md`. Do not claim game/app compatibility from
+serial or browser-only evidence.
 
 ## Recovery
 

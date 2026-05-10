@@ -189,10 +189,50 @@ What this adds:
 - disconnected BLE is recoverable and counted without serial spam
 - persona mismatch disables bridge mode because it indicates a logic error
 
+What evidence exists:
+
+- Xbox live bridge has a checked-in 300-second soak witness:
+  `docs/milestone-evidence/LIVE_BRIDGE_SOAK_WITNESS_2026-05-10.md`
+
 What still needs evidence:
 
 - game/application compatibility beyond browser Gamepad API evidence
-- longer duration bridge stability runs
+- Generic long-duration bridge stability runs
+- multi-hour bridge stability runs
+
+Hardening tool:
+
+```sh
+python3 tools/live_bridge_soak.py --persona xbox --duration-seconds 300
+```
+
+The soak helper records serial transcripts, bridge status JSONL samples,
+summary JSON, and optional browser witness data. Soak stability is not complete
+until a real soak witness is checked in.
+
+### Slice 3B: Flight Pack Calibration Witness
+
+Implemented as tooling, not firmware calibration:
+
+```text
+named operator movement -> normalized input/mapping snapshots -> inferred labels
+```
+
+Tool:
+
+```sh
+python3 tools/flight_pack_calibration_witness.py \
+  --port /dev/cu.usbmodem5B5E0200881
+```
+
+This captures T.16000M and TWCS/RJ12 movement evidence, including raw reports
+when requested, Generic mapping, Xbox mapping, parsed deltas, and a Markdown
+evidence draft. The tool does not invent axis labels; it reports observed
+control IDs, value changes, target mappings, and confidence.
+
+Calibration transforms remain future work until the witness evidence justifies
+specific `source_min`, `source_center`, `source_max`, inversion, deadzone, or
+target-scaling values.
 
 ### Slice 4: Xbox BLE Persona
 
@@ -217,6 +257,14 @@ The implemented persona work now includes:
 - real macOS 12.7.5 witness where Bluetooth sees `Xbox Wireless Controller`,
   browser Gamepad API sees Xbox VID/PID, and input changes are captured
 - no broad host/game compatibility claim without additional checked-in evidence
+
+### Slice 5: Real Game/App Compatibility
+
+Documented workflow exists in `docs/GAME_COMPATIBILITY_WITNESS.md`.
+
+The rule is simple: browser Gamepad API evidence supports the transport story,
+but game/app compatibility is not claimed until an actual app/game accepts the
+controller and that result is captured in repo evidence.
 
 ## Architecture Rules
 

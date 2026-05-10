@@ -220,6 +220,31 @@ may increase without disabling bridge mode.
 See `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md` for the first
 checked-in Generic live bridge hardware witness.
 
+## Soak And Calibration Hardening
+
+Run a timed Generic live bridge soak:
+
+```bash
+python3 tools/live_bridge_soak.py \
+  --port /dev/cu.usbmodem5B5E0200881 \
+  --persona generic \
+  --duration-seconds 300 \
+  --sample-interval-seconds 5 \
+  --browser-witness
+```
+
+Run the Flight Pack calibration/axis-label witness:
+
+```bash
+python3 tools/flight_pack_calibration_witness.py \
+  --port /dev/cu.usbmodem5B5E0200881 \
+  --out-dir target/flight-pack-calibration
+```
+
+The calibration helper captures named movements and drafts inferred labels. Do
+not treat those labels as final until the generated evidence has been reviewed
+and checked in.
+
 ## Fast Recovery
 
 If only the hub is visible:
@@ -268,5 +293,6 @@ The honest gaps are:
   broader host/game compatibility still needs separate evidence.
 - TWCS/TFRP semantic mapping and calibration still need refinement.
 - Browser Gamepad API evidence is not the same as broad game compatibility.
+- Real game/app compatibility should follow `docs/GAME_COMPATIBILITY_WITNESS.md`.
 - BLE bond persistence is not complete; current target status reports
   `bonds=false`.
