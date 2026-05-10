@@ -75,23 +75,23 @@ export class BoardProtocol {
   }
 
   async saveConfig(): Promise<void> {
-    const responses = await this.serial.commandResponse('SAVE_CONFIG');
-    assertOkOrData(responses, 'SAVE_CONFIG');
+    const responses = await this.serial.commandResponse('SAVE_CONFIG', ['CONFIG_ACTION:']);
+    assertOkOrData(responses, 'SAVE_CONFIG', ['CONFIG_ACTION:']);
   }
 
   async loadConfig(): Promise<void> {
-    const responses = await this.serial.commandResponse('LOAD_CONFIG');
-    assertOkOrData(responses, 'LOAD_CONFIG');
+    const responses = await this.serial.commandResponse('LOAD_CONFIG', ['CONFIG_ACTION:']);
+    assertOkOrData(responses, 'LOAD_CONFIG', ['CONFIG_ACTION:']);
   }
 
   async resetConfig(): Promise<void> {
-    const responses = await this.serial.commandResponse('RESET_CONFIG');
-    assertOkOrData(responses, 'RESET_CONFIG');
+    const responses = await this.serial.commandResponse('RESET_CONFIG', ['CONFIG_ACTION:']);
+    assertOkOrData(responses, 'RESET_CONFIG', ['CONFIG_ACTION:']);
   }
 
   async startConfigured(): Promise<void> {
-    const responses = await this.serial.commandResponse('START_CONFIGURED');
-    assertOkOrData(responses, 'START_CONFIGURED');
+    const responses = await this.serial.commandResponse('START_CONFIGURED', ['CONFIG_ACTION:']);
+    assertOkOrData(responses, 'START_CONFIGURED', ['CONFIG_ACTION:']);
   }
 
   async importConfig(config: RuntimeConfig): Promise<void> {
@@ -113,13 +113,13 @@ export class BoardProtocol {
     }
 
     // Begin
-    let responses = await this.serial.commandResponse(`BEGIN_CONFIG_JSON ${chunks.length} ${checksum}`, ['CONFIG_ACTION:']);
-    assertOkOrData(responses, 'BEGIN_CONFIG_JSON', ['CONFIG_ACTION:']);
+    let responses = await this.serial.commandResponse(`BEGIN_CONFIG_JSON ${chunks.length} ${checksum}`, ['CONFIG_IMPORT:']);
+    assertOkOrData(responses, 'BEGIN_CONFIG_JSON', ['CONFIG_IMPORT:']);
 
     // Chunks
     for (let i = 0; i < chunks.length; i++) {
-      responses = await this.serial.commandResponse(`CONFIG_JSON_CHUNK ${i} ${chunks[i]}`, ['CONFIG_ACTION:']);
-      assertOkOrData(responses, `CONFIG_JSON_CHUNK ${i}`, ['CONFIG_ACTION:']);
+      responses = await this.serial.commandResponse(`CONFIG_JSON_CHUNK ${i} ${chunks[i]}`, ['CONFIG_IMPORT:']);
+      assertOkOrData(responses, `CONFIG_JSON_CHUNK ${i}`, ['CONFIG_IMPORT:']);
     }
 
     // Commit
