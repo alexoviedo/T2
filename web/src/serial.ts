@@ -136,17 +136,22 @@ export class SerialConnection {
     });
   }
 
-  async commandResponse(cmd: string, timeoutMs = 5000): Promise<string[]> {
+  async commandResponse(cmd: string, expectedPrefixes: string[] = [], timeoutMs = 5000): Promise<string[]> {
     await this.writeLine(cmd);
     const responses: string[] = [];
 
     while (true) {
       const line = await this.readLine(timeoutMs);
+      responses.push(line);
+
       if (line === 'OK' || line.startsWith('ERROR:')) {
-        responses.push(line);
         break;
       }
-      responses.push(line);
+
+      const hasExpectedPrefix = expectedPrefixes.some(prefix => line.startsWith(prefix));
+      if (hasExpectedPrefix) {
+        break;
+      }
     }
 
     return responses;

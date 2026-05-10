@@ -11,11 +11,21 @@ export class ProtocolError extends Error {
   }
 }
 
-function assertOk(responses: string[], cmd: string) {
+function assertOkOrData(responses: string[], cmd: string, expectedPrefixes: string[] = []) {
   const last = responses[responses.length - 1];
-  if (!last || !last.startsWith('OK')) {
-    const err = responses.find(r => r.startsWith('ERROR:')) || 'Unknown error';
-    throw new ProtocolError(`Command '${cmd}' failed: ${err}`);
+  if (!last) {
+    throw new ProtocolError(`Command '${cmd}' failed: Unknown error`);
+  }
+
+  if (last.startsWith('ERROR:')) {
+    throw new ProtocolError(`Command '${cmd}' failed: ${last}`);
+  }
+
+  const hasOk = last.startsWith('OK');
+  const hasExpectedPrefix = expectedPrefixes.some(p => last.startsWith(p));
+
+  if (!hasOk && !hasExpectedPrefix) {
+    throw new ProtocolError(`Command '${cmd}' failed: Unknown response`);
   }
 }
 
@@ -23,37 +33,37 @@ export class BoardProtocol {
   constructor(private serial: SerialConnection) {}
 
   async getConfigStatus(): Promise<string> {
-    const responses = await this.serial.commandResponse('GET_CONFIG_STATUS');
-    assertOk(responses, 'GET_CONFIG_STATUS');
+    const responses = await this.serial.commandResponse('GET_CONFIG_STATUS', ['CONFIG_STATUS:']);
+    assertOkOrData(responses, 'GET_CONFIG_STATUS', ['CONFIG_STATUS:']);
     const statusLine = responses.find(r => r.startsWith('CONFIG_STATUS:'));
     return statusLine ? statusLine.substring('CONFIG_STATUS:'.length).trim() : 'UNKNOWN';
   }
 
   async getConfigSchema(): Promise<string> {
-    const responses = await this.serial.commandResponse('GET_CONFIG_SCHEMA');
-    assertOk(responses, 'GET_CONFIG_SCHEMA');
+    const responses = await this.serial.commandResponse('GET_CONFIG_SCHEMA', ['CONFIG_SCHEMA:']);
+    assertOkOrData(responses, 'GET_CONFIG_SCHEMA', ['CONFIG_SCHEMA:']);
     const schemaLine = responses.find(r => r.startsWith('CONFIG_SCHEMA:'));
     return schemaLine ? schemaLine.substring('CONFIG_SCHEMA:'.length).trim() : '{}';
   }
 
   async getPersonaSchema(persona: 'generic' | 'xbox'): Promise<string> {
-    const responses = await this.serial.commandResponse(`GET_PERSONA_SCHEMA ${persona}`);
-    assertOk(responses, `GET_PERSONA_SCHEMA ${persona}`);
-    const prefix = `PERSONA_SCHEMA_${persona.toUpperCase()}:`;
+    const responses = await this.serial.commandResponse(`GET_PERSONA_SCHEMA ${persona}`, ['PERSONA_SCHEMA_JSON:']);
+    assertOkOrData(responses, `GET_PERSONA_SCHEMA ${persona}`, ['PERSONA_SCHEMA_JSON:']);
+    const prefix = `PERSONA_SCHEMA_JSON:`;
     const schemaLine = responses.find(r => r.startsWith(prefix));
     return schemaLine ? schemaLine.substring(prefix.length).trim() : '{}';
   }
 
   async getInputCatalog(): Promise<string> {
-    const responses = await this.serial.commandResponse('GET_INPUT_CATALOG');
-    assertOk(responses, 'GET_INPUT_CATALOG');
-    const catalogLine = responses.find(r => r.startsWith('INPUT_CATALOG:'));
-    return catalogLine ? catalogLine.substring('INPUT_CATALOG:'.length).trim() : '[]';
+    const responses = await this.serial.commandResponse('GET_INPUT_CATALOG', ['INPUT_CATALOG_JSON:']);
+    assertOkOrData(responses, 'GET_INPUT_CATALOG', ['INPUT_CATALOG_JSON:']);
+    const catalogLine = responses.find(r => r.startsWith('INPUT_CATALOG_JSON:'));
+    return catalogLine ? catalogLine.substring('INPUT_CATALOG_JSON:'.length).trim() : '[]';
   }
 
   async getConfigJson(): Promise<RuntimeConfig | null> {
-    const responses = await this.serial.commandResponse('GET_CONFIG_JSON');
-    assertOk(responses, 'GET_CONFIG_JSON');
+    const responses = await this.serial.commandResponse('GET_CONFIG_JSON', ['CONFIG_JSON:']);
+    assertOkOrData(responses, 'GET_CONFIG_JSON', ['CONFIG_JSON:']);
     const configLine = responses.find(r => r.startsWith('CONFIG_JSON:'));
     if (!configLine) return null;
     try {
@@ -66,22 +76,22 @@ export class BoardProtocol {
 
   async saveConfig(): Promise<void> {
     const responses = await this.serial.commandResponse('SAVE_CONFIG');
-    assertOk(responses, 'SAVE_CONFIG');
+    assertOkOrData(responses, 'SAVE_CONFIG');
   }
 
   async loadConfig(): Promise<void> {
     const responses = await this.serial.commandResponse('LOAD_CONFIG');
-    assertOk(responses, 'LOAD_CONFIG');
+    assertOkOrData(responses, 'LOAD_CONFIG');
   }
 
   async resetConfig(): Promise<void> {
     const responses = await this.serial.commandResponse('RESET_CONFIG');
-    assertOk(responses, 'RESET_CONFIG');
+    assertOkOrData(responses, 'RESET_CONFIG');
   }
 
   async startConfigured(): Promise<void> {
     const responses = await this.serial.commandResponse('START_CONFIGURED');
-    assertOk(responses, 'START_CONFIGURED');
+    assertOkOrData(responses, 'START_CONFIGURED');
   }
 
   async importConfig(config: RuntimeConfig): Promise<void> {
@@ -103,18 +113,18 @@ export class BoardProtocol {
     }
 
     // Begin
-    let responses = await this.serial.commandResponse(`BEGIN_CONFIG_JSON ${chunks.length} ${checksum}`);
-    assertOk(responses, 'BEGIN_CONFIG_JSON');
+    let responses = await this.serial.commandResponse(`BEGIN_CONFIG_JSON ${chunks.length} ${checksum}`, ['CONFIG_ACTION:']);
+    assertOkOrData(responses, 'BEGIN_CONFIG_JSON', ['CONFIG_ACTION:']);
 
     // Chunks
     for (let i = 0; i < chunks.length; i++) {
-      responses = await this.serial.commandResponse(`CONFIG_JSON_CHUNK ${i} ${chunks[i]}`);
-      assertOk(responses, `CONFIG_JSON_CHUNK ${i}`);
+      responses = await this.serial.commandResponse(`CONFIG_JSON_CHUNK ${i} ${chunks[i]}`, ['CONFIG_ACTION:']);
+      assertOkOrData(responses, `CONFIG_JSON_CHUNK ${i}`, ['CONFIG_ACTION:']);
     }
 
     // Commit
-    responses = await this.serial.commandResponse('COMMIT_CONFIG_JSON');
-    assertOk(responses, 'COMMIT_CONFIG_JSON');
+    responses = await this.serial.commandResponse('COMMIT_CONFIG_JSON', ['CONFIG_IMPORT:']);
+    assertOkOrData(responses, 'COMMIT_CONFIG_JSON', ['CONFIG_IMPORT:']);
   }
 
   private base64urlEncode(buffer: Uint8Array): string {
