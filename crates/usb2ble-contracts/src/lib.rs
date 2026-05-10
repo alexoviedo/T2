@@ -843,6 +843,31 @@ pub struct BleActionResponse {
     pub report: Option<EncodedBleReport>,
 }
 
+/// Response payload for live bridge mode status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BridgeStatusResponse {
+    /// Whether automatic USB-to-BLE report publication is enabled.
+    pub enabled: bool,
+    /// Active BLE persona used by the bridge, if one has been started.
+    pub active_persona: Option<PersonaId>,
+    /// Maximum automatic publish rate in hertz.
+    pub rate_hz: u16,
+    /// Timestamp of the last successful automatic publish in milliseconds.
+    pub last_publish_ms: Option<u64>,
+    /// Number of reports automatically published.
+    pub published: u64,
+    /// Number of reports skipped because they were duplicates before heartbeat.
+    pub skipped_duplicate: u64,
+    /// Number of reports skipped by rate limiting.
+    pub skipped_rate: u64,
+    /// Number of publish attempts skipped because BLE was not connected.
+    pub skipped_not_connected: u64,
+    /// Number of bridge polls skipped because USB-derived input was not ready.
+    pub skipped_not_ready: u64,
+    /// Last bridge error as a stable string, when present.
+    pub last_error: Option<&'static str>,
+}
+
 /// A command received over the serial control plane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlCommand {
@@ -886,6 +911,14 @@ pub enum ControlCommand {
     SendXboxSelfTestReport,
     /// Clear BLE bond data.
     ForgetBleBonds,
+    /// Start automatic USB-to-BLE bridge publication.
+    StartBridge,
+    /// Stop automatic USB-to-BLE bridge publication.
+    StopBridge,
+    /// Request automatic bridge publication status.
+    GetBridgeStatus,
+    /// Set the automatic bridge maximum publish rate in hertz.
+    SetBridgeRateHz(u16),
 }
 
 /// A response to be sent over the serial control plane.
@@ -915,6 +948,8 @@ pub enum ControlResponse {
     MappingDiagnostics(MappingDiagnosticsResponse),
     /// Response to a BLE transport action.
     BleAction(BleActionResponse),
+    /// Response to live bridge mode commands.
+    BridgeStatus(BridgeStatusResponse),
     /// An error response.
     Error(ControlError),
 }
@@ -932,6 +967,10 @@ pub enum ControlError {
     PersonaMismatch,
     /// The BLE HID host is not currently connected.
     BleNotConnected,
+    /// Live bridge mode requires an active BLE persona first.
+    BridgeNoActivePersona,
+    /// The requested live bridge rate is outside the supported range.
+    InvalidBridgeRate,
 }
 
 /// Trait for serial control plane framing and schema.

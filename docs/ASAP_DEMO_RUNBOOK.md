@@ -48,6 +48,20 @@ publishes the BLE reports, and writes a timestamped transcript under
 `target/asap-demo-rehearsal/`. If the browser page already shows the gamepad
 connected and does not offer **Arm**, keep the tab focused and continue.
 
+For the real continuous controller path, use live bridge mode:
+
+```bash
+python3 tools/asap_demo_rehearsal.py \
+  --port /dev/cu.usbmodem5B5E0200881 \
+  --live-bridge
+```
+
+With `--live-bridge`, the helper starts `START_BRIDGE`, asks the operator to
+hold/move the control for a few seconds, polls `GET_BRIDGE_STATUS`, then runs
+`STOP_BRIDGE`. Passing evidence requires the bridge to be enabled, BLE to be
+connected, and the bridge `published` counter to increase. Browser Gamepad API
+evidence remains useful, but it is not a substitute for a real game/app witness.
+
 If source auto-detection ever chooses poorly during debugging, pin the source
 explicitly:
 
@@ -170,6 +184,41 @@ Expected browser witness evidence:
 ```json
 {"axes":[1,...],"connected":true,"id":"USB2BLE Gamepad (Vendor: 303a Product: 4001)","type":"change"}
 ```
+
+## Continuous Live Bridge Manual Flow
+
+Manual publish commands are diagnostics. For real games/apps, start the bridge
+after the Generic persona is connected:
+
+```bash
+python3 tools/serial_command.py \
+  --port /dev/cu.usbmodem5B5E0200881 \
+  START_BRIDGE \
+  GET_BRIDGE_STATUS
+```
+
+Move a control for 5-10 seconds, then poll and stop:
+
+```bash
+python3 tools/serial_command.py \
+  --port /dev/cu.usbmodem5B5E0200881 \
+  GET_BRIDGE_STATUS \
+  STOP_BRIDGE \
+  GET_BRIDGE_STATUS
+```
+
+Expected bridge status shape:
+
+```text
+BRIDGE_STATUS:enabled=true;persona=generic_gamepad;rate_hz=50;last_publish_ms=<ms>;published=<n>;skipped_duplicate=<n>;skipped_rate=<n>;skipped_not_connected=<n>;skipped_not_ready=<n>;last_error=none;
+```
+
+The `published` count should increase while the control is moved or while the
+heartbeat republishes stable state. If BLE disconnects, `skipped_not_connected`
+may increase without disabling bridge mode.
+
+See `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md` for the first
+checked-in Generic live bridge hardware witness.
 
 ## Fast Recovery
 

@@ -119,7 +119,11 @@ where
             | ControlCommand::StartBleXboxController
             | ControlCommand::PublishXboxGamepadReport
             | ControlCommand::SendXboxSelfTestReport
-            | ControlCommand::ForgetBleBonds => ControlResponse::Error(ControlError::Generic),
+            | ControlCommand::ForgetBleBonds
+            | ControlCommand::StartBridge
+            | ControlCommand::StopBridge
+            | ControlCommand::GetBridgeStatus
+            | ControlCommand::SetBridgeRateHz(_) => ControlResponse::Error(ControlError::Generic),
         }
     }
 

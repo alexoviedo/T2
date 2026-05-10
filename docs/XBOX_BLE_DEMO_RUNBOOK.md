@@ -121,6 +121,36 @@ Expected publish response when connected:
 BLE_ACTION:action=publish_xbox_gamepad;state=Connected;persona=xbox_wireless_controller;report_id=1;bytes=<32 hex chars>;
 ```
 
+Manual publish commands are diagnostics. For real games/apps, use live bridge
+mode after the Xbox persona is connected:
+
+```text
+START_BRIDGE
+GET_BRIDGE_STATUS
+```
+
+Move or press one attached USB control for 5-10 seconds, then run:
+
+```text
+GET_BRIDGE_STATUS
+STOP_BRIDGE
+GET_BRIDGE_STATUS
+```
+
+Expected bridge status shape:
+
+```text
+BRIDGE_STATUS:enabled=true;persona=xbox_wireless_controller;rate_hz=50;last_publish_ms=<ms>;published=<n>;skipped_duplicate=<n>;skipped_rate=<n>;skipped_not_connected=<n>;skipped_not_ready=<n>;last_error=none;
+```
+
+Passing bridge evidence requires `published` to increase while bridge mode is
+enabled. Browser/Gamepad API visibility is useful evidence, but game/app
+compatibility is not complete until checked-in evidence from an actual game/app
+exists.
+
+See `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md` for the first
+checked-in Xbox live bridge hardware witness.
+
 ## Rehearsal Helper
 
 Serial-only required proof plus optional browser witness:
@@ -129,6 +159,15 @@ Serial-only required proof plus optional browser witness:
 python3 tools/xbox_demo_rehearsal.py \
   --port /dev/cu.usbmodem5B5E0200881 \
   --browser-witness
+```
+
+Continuous live bridge rehearsal:
+
+```sh
+python3 tools/xbox_demo_rehearsal.py \
+  --port /dev/cu.usbmodem5B5E0200881 \
+  --browser-witness \
+  --live-bridge
 ```
 
 Self-test only, without requiring live USB movement:

@@ -156,7 +156,45 @@ What still needs demo polish:
 - exact TFRP pedal axis naming through the TWCS/RJ12 report
 - cleaner host naming after macOS has cached an older BLE product name
 
-### Slice 3: Xbox BLE Persona
+### Slice 3: Live Bridge Mode
+
+Implemented in code, host-tested, and target-witnessed for Generic and Xbox:
+
+```text
+USB input reports -> current active persona report -> automatic BLE publish loop
+```
+
+Operator commands:
+
+```text
+START_BRIDGE
+GET_BRIDGE_STATUS
+STOP_BRIDGE
+```
+
+Optional rate tuning:
+
+```text
+SET_BRIDGE_RATE_HZ 50
+```
+
+What this adds:
+
+- manual `PUBLISH_GENERIC_GAMEPAD_REPORT` and `PUBLISH_XBOX_GAMEPAD_REPORT`
+  remain one-shot diagnostics
+- live bridge mode is the intended path for real games/apps because it publishes
+  USB-derived reports continuously for the active BLE persona
+- default max publish rate is 50 Hz, with duplicate suppression and a 1000 ms
+  heartbeat for stable state
+- disconnected BLE is recoverable and counted without serial spam
+- persona mismatch disables bridge mode because it indicates a logic error
+
+What still needs evidence:
+
+- game/application compatibility beyond browser Gamepad API evidence
+- longer duration bridge stability runs
+
+### Slice 4: Xbox BLE Persona
 
 Research complete; host-side report/mapping and BLE identity/report publishing
 paths are implemented, and macOS pairing/input witness evidence is captured.

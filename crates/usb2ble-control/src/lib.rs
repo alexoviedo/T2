@@ -76,6 +76,22 @@ impl ControlPlane for SerialControlPlane {
         if s == "FORGET_BLE_BONDS" {
             return Ok(ControlCommand::ForgetBleBonds);
         }
+        if s == "START_BRIDGE" {
+            return Ok(ControlCommand::StartBridge);
+        }
+        if s == "STOP_BRIDGE" {
+            return Ok(ControlCommand::StopBridge);
+        }
+        if s == "GET_BRIDGE_STATUS" {
+            return Ok(ControlCommand::GetBridgeStatus);
+        }
+        if let Some(rest) = s.strip_prefix("SET_BRIDGE_RATE_HZ ") {
+            let rate_hz = rest
+                .trim()
+                .parse::<u16>()
+                .map_err(|_| ControlError::InvalidBridgeRate)?;
+            return Ok(ControlCommand::SetBridgeRateHz(rate_hz));
+        }
 
         if let Some(rest) = s.strip_prefix("GET_USB_DESCRIPTOR ") {
             let key = parse_descriptor_key(rest.trim()).ok_or(ControlError::Generic)?;
@@ -195,6 +211,7 @@ impl ControlPlane for SerialControlPlane {
                     out.push(';');
                 }
             }
+            ControlResponse::BridgeStatus(resp) => encode_bridge_status(&mut out, resp),
             ControlResponse::Error(err) => {
                 let _ = write!(out, "ERROR:{err:?}");
             }
@@ -202,6 +219,32 @@ impl ControlPlane for SerialControlPlane {
 
         out.push('\n');
         Ok(out.into_bytes())
+    }
+}
+
+fn encode_bridge_status(out: &mut String, resp: &usb2ble_contracts::BridgeStatusResponse) {
+    out.push_str("BRIDGE_STATUS:");
+    let _ = write!(out, "enabled={};", resp.enabled);
+    if let Some(persona) = resp.active_persona {
+        let _ = write!(out, "persona={};", persona.0);
+    } else {
+        out.push_str("persona=none;");
+    }
+    let _ = write!(out, "rate_hz={};", resp.rate_hz);
+    if let Some(last_publish_ms) = resp.last_publish_ms {
+        let _ = write!(out, "last_publish_ms={last_publish_ms};");
+    } else {
+        out.push_str("last_publish_ms=none;");
+    }
+    let _ = write!(out, "published={};", resp.published);
+    let _ = write!(out, "skipped_duplicate={};", resp.skipped_duplicate);
+    let _ = write!(out, "skipped_rate={};", resp.skipped_rate);
+    let _ = write!(out, "skipped_not_connected={};", resp.skipped_not_connected);
+    let _ = write!(out, "skipped_not_ready={};", resp.skipped_not_ready);
+    if let Some(last_error) = resp.last_error {
+        let _ = write!(out, "last_error={last_error};");
+    } else {
+        out.push_str("last_error=none;");
     }
 }
 
@@ -340,7 +383,9 @@ fn parse_descriptor_key(s: &str) -> Option<DescriptorKey> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use usb2ble_contracts::{BleLinkState, InfoResponse, PersonaId, ProfileId, StatusResponse};
+    use usb2ble_contracts::{
+        BleLinkState, BridgeStatusResponse, InfoResponse, PersonaId, ProfileId, StatusResponse,
+    };
 
     #[test]
     fn test_decode() {
@@ -486,6 +531,32 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_bridge_commands() {
+        let cp = SerialControlPlane::new();
+
+        assert_eq!(
+            cp.decode_command(b"START_BRIDGE").unwrap(),
+            ControlCommand::StartBridge
+        );
+        assert_eq!(
+            cp.decode_command(b"STOP_BRIDGE").unwrap(),
+            ControlCommand::StopBridge
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_BRIDGE_STATUS").unwrap(),
+            ControlCommand::GetBridgeStatus
+        );
+        assert_eq!(
+            cp.decode_command(b"SET_BRIDGE_RATE_HZ 25").unwrap(),
+            ControlCommand::SetBridgeRateHz(25)
+        );
+        assert_eq!(
+            cp.decode_command(b"SET_BRIDGE_RATE_HZ nope").unwrap_err(),
+            ControlError::InvalidBridgeRate
+        );
+    }
+
+    #[test]
     #[allow(clippy::too_many_lines)]
     fn test_encode_m2_responses() {
         use usb2ble_contracts::{
@@ -618,6 +689,24 @@ mod tests {
             "BLE_ACTION:action=self_test;state=Connected;persona=generic_gamepad;report_id=1;bytes=010008;\n"
         );
 
+        let resp = ControlResponse::BridgeStatus(BridgeStatusResponse {
+            enabled: true,
+            active_persona: Some(PersonaId("xbox_wireless_controller")),
+            rate_hz: 50,
+            last_publish_ms: Some(12345),
+            published: 42,
+            skipped_duplicate: 100,
+            skipped_rate: 25,
+            skipped_not_connected: 3,
+            skipped_not_ready: 2,
+            last_error: None,
+        });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "BRIDGE_STATUS:enabled=true;persona=xbox_wireless_controller;rate_hz=50;last_publish_ms=12345;published=42;skipped_duplicate=100;skipped_rate=25;skipped_not_connected=3;skipped_not_ready=2;last_error=none;\n"
+        );
+
         let resp =
             ControlResponse::MappingDiagnostics(usb2ble_contracts::MappingDiagnosticsResponse {
                 profile_id: ProfileId("generic_auto"),
@@ -675,6 +764,13 @@ mod tests {
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
             "ERROR:BleNotConnected\n"
+        );
+
+        let resp = ControlResponse::Error(ControlError::BridgeNoActivePersona);
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "ERROR:BridgeNoActivePersona\n"
         );
     }
 }

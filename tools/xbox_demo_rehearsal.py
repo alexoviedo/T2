@@ -17,8 +17,11 @@ from asap_demo_rehearsal import (
     SerialPort,
     find_latest_capture_file,
     open_browser,
+    parse_int_field,
+    parse_semicolon_fields,
     print_record,
     read_capture_tail,
+    responses_with_prefix,
     run_commands,
     start_witness_server,
     utc_stamp,
@@ -139,8 +142,10 @@ def analyze(
     connection: list[CommandRecord],
     self_test: list[CommandRecord],
     live: list[CommandRecord],
+    bridge: list[CommandRecord],
     capture_tail: list[str],
     live_required: bool,
+    live_bridge: bool,
 ) -> dict[str, object]:
     start = next(
         (
@@ -174,6 +179,27 @@ def analyze(
         for response in record.responses
         if response.startswith("STATUS:")
     ]
+    bridge_statuses = responses_with_prefix(bridge, "BRIDGE_STATUS:")
+    bridge_start_status = next(
+        (line for line in bridge_statuses if "enabled=true" in line),
+        None,
+    )
+    bridge_stop_status = next(
+        (line for line in reversed(bridge_statuses) if "enabled=false" in line),
+        None,
+    )
+    bridge_enabled_fields = parse_semicolon_fields(bridge_start_status)
+    bridge_published_values = [
+        value
+        for line in bridge_statuses
+        for value in [parse_int_field(parse_semicolon_fields(line), "published")]
+        if value is not None
+    ]
+    bridge_published_delta = (
+        bridge_published_values[-1] - bridge_published_values[0]
+        if len(bridge_published_values) >= 2
+        else 0
+    )
     checks = {
         "start_xbox_advertising_or_connected": start is not None
         and ("state=Advertising" in start or "state=Connected" in start),
@@ -184,7 +210,15 @@ def analyze(
             for line in self_test_reports[:2]
         ),
     }
-    if live_required:
+    if live_bridge:
+        checks["get_xbox_report_is_16_byte"] = is_xbox_report(get_report, "ENCODED_REPORT:")
+        checks["bridge_enabled"] = (
+            bridge_start_status is not None
+            and bridge_enabled_fields.get("persona") == XBOX_PERSONA
+        )
+        checks["bridge_published_increased"] = bridge_published_delta > 0
+        checks["bridge_stopped"] = bridge_stop_status is not None
+    elif live_required:
         checks["get_xbox_report_is_16_byte"] = is_xbox_report(get_report, "ENCODED_REPORT:")
         checks["publish_xbox_report_connected"] = (
             is_xbox_report(publish, "BLE_ACTION:action=publish_xbox_gamepad;")
@@ -196,6 +230,8 @@ def analyze(
         "self_test_reports": self_test_reports,
         "get_report": get_report,
         "publish": publish,
+        "bridge_statuses": bridge_statuses,
+        "bridge_published_delta": bridge_published_delta,
         "browser_saw_xbox": capture_shows_xbox(capture_tail),
     }
 
@@ -232,6 +268,12 @@ def main() -> int:
     parser.add_argument("--assume-ready", action="store_true")
     parser.add_argument("--connect-attempts", type=int, default=6)
     parser.add_argument("--skip-live-publish", action="store_true")
+    parser.add_argument(
+        "--live-bridge",
+        action="store_true",
+        help="Use START_BRIDGE/STOP_BRIDGE and verify automatic publish counters.",
+    )
+    parser.add_argument("--bridge-duration", type=float, default=6.0)
     parser.add_argument("--browser-witness", action="store_true")
     parser.add_argument("--witness-port", type=int, default=DEFAULT_WITNESS_PORT)
     parser.add_argument("--no-open", action="store_true")
@@ -251,6 +293,7 @@ def main() -> int:
     connection: list[CommandRecord] = []
     self_test: list[CommandRecord] = []
     live: list[CommandRecord] = []
+    bridge: list[CommandRecord] = []
 
     print("USB2BLE Xbox BLE demo rehearsal")
     print(f"Transcript directory: {run_dir}")
@@ -296,7 +339,37 @@ def main() -> int:
                     ],
                     args.timeout,
                 )
-                if not args.skip_live_publish:
+                if args.live_bridge:
+                    maybe_prompt(
+                        (
+                            "Move or press one attached USB control, then keep moving or holding "
+                            "it while live bridge mode publishes automatically."
+                        ),
+                        args.assume_ready,
+                    )
+                    bridge = run_commands(
+                        serial,
+                        ["GET_BRIDGE_STATUS", "START_BRIDGE", "GET_BRIDGE_STATUS"],
+                        args.timeout,
+                    )
+                    print()
+                    print(
+                        f"Keep moving or holding the control for {args.bridge_duration:.1f} seconds."
+                    )
+                    time.sleep(args.bridge_duration)
+                    bridge.extend(
+                        run_commands(
+                            serial,
+                            ["GET_BRIDGE_STATUS", "STOP_BRIDGE", "GET_BRIDGE_STATUS"],
+                            args.timeout,
+                        )
+                    )
+                    live = run_commands(
+                        serial,
+                        ["GET_XBOX_GAMEPAD_REPORT"],
+                        args.timeout,
+                    )
+                elif not args.skip_live_publish:
                     maybe_prompt(
                         (
                             "Move or press one attached USB control, then hold it. "
@@ -321,6 +394,7 @@ def main() -> int:
             ("preflight", preflight),
             ("connection", connection),
             ("self_test", self_test),
+            ("bridge", bridge),
             ("live", live),
         ]
         write_transcript(transcript_file, sections)
@@ -329,8 +403,10 @@ def main() -> int:
             connection,
             self_test,
             live,
+            bridge,
             capture_tail,
-            live_required=not args.skip_live_publish,
+            live_required=not args.skip_live_publish and not args.live_bridge,
+            live_bridge=args.live_bridge,
         )
         payload: dict[str, Any] = {
             "captured_at": stamp,
@@ -339,11 +415,13 @@ def main() -> int:
             "browser_witness_capture": None if capture_file is None else str(capture_file),
             "browser_witness_tail": capture_tail,
             "server_output": server_lines,
-            "live_publish_required": not args.skip_live_publish,
+            "live_publish_required": not args.skip_live_publish and not args.live_bridge,
+            "live_bridge": args.live_bridge,
             "analysis": analysis,
             "preflight": [record.to_json() for record in preflight],
             "connection": [record.to_json() for record in connection],
             "self_test": [record.to_json() for record in self_test],
+            "bridge": [record.to_json() for record in bridge],
             "live": [record.to_json() for record in live],
         }
         summary_file.write_text(

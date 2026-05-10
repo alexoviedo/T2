@@ -42,6 +42,7 @@ RESPONSE_PREFIXES = (
     "GENERIC_GAMEPAD_MAPPING:",
     "XBOX_GAMEPAD_MAPPING:",
     "BLE_ACTION:",
+    "BRIDGE_STATUS:",
     "ERROR:",
 )
 
@@ -140,6 +141,35 @@ def response_with_prefix(records: list[CommandRecord], prefix: str) -> str | Non
     return None
 
 
+def responses_with_prefix(records: list[CommandRecord], prefix: str) -> list[str]:
+    return [
+        response
+        for record in records
+        for response in record.responses
+        if response.startswith(prefix)
+    ]
+
+
+def parse_semicolon_fields(line: str | None) -> dict[str, str]:
+    if line is None or ":" not in line:
+        return {}
+    fields: dict[str, str] = {}
+    body = line.split(":", 1)[1]
+    for item in body.split(";"):
+        if not item or "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        fields[key] = value
+    return fields
+
+
+def parse_int_field(fields: dict[str, str], key: str) -> int | None:
+    try:
+        return int(fields[key])
+    except (KeyError, ValueError):
+        return None
+
+
 def normalize_hex_id(value: str) -> str:
     normalized = value.strip().lower()
     if normalized.startswith("0x"):
@@ -222,7 +252,11 @@ def wait_for_ble_connected(
         if assume_ready:
             time.sleep(2.0)
         else:
-            input(f"Press Enter to recheck BLE connection ({attempt}/{attempts})...")
+            try:
+                input(f"Press Enter to recheck BLE connection ({attempt}/{attempts})...")
+            except EOFError:
+                print("No interactive stdin available; rechecking after a short pause.")
+                time.sleep(2.0)
         record = CommandRecord("GET_STATUS", serial.command_response("GET_STATUS", timeout))
         print_record(record)
         records.append(record)
@@ -343,6 +377,15 @@ def capture_shows_stick_right(capture_tail: list[str]) -> bool:
     return False
 
 
+def capture_shows_input_change(capture_tail: list[str]) -> bool:
+    return any(
+        (capture := parse_capture(line)) is not None
+        and capture.get("connected") is True
+        and capture.get("type") == "change"
+        for line in capture_tail
+    )
+
+
 def wait_for_capture_tail(
     capture_dir: pathlib.Path,
     capture_file: pathlib.Path | None,
@@ -374,11 +417,13 @@ def analyze(
     preflight: list[CommandRecord],
     wake: list[CommandRecord],
     movement: list[CommandRecord],
+    bridge: list[CommandRecord],
     source: str,
     stick_vid: str,
     stick_pid: str,
     capture_tail: list[str],
     require_browser_witness: bool,
+    live_bridge: bool,
 ) -> dict[str, object]:
     usb_status = response_with_prefix(preflight, "USB_STATUS:")
     usb_devices = response_with_prefix(preflight, "USB_DEVICES:")
@@ -401,6 +446,28 @@ def analyze(
         ),
         None,
     )
+    bridge_statuses = responses_with_prefix(bridge, "BRIDGE_STATUS:")
+    bridge_start_status = next(
+        (line for line in bridge_statuses if "enabled=true" in line),
+        None,
+    )
+    bridge_stop_status = next(
+        (line for line in reversed(bridge_statuses) if "enabled=false" in line),
+        None,
+    )
+    bridge_enabled_fields = parse_semicolon_fields(bridge_start_status)
+    bridge_status_fields = [parse_semicolon_fields(line) for line in bridge_statuses]
+    bridge_published_values = [
+        value
+        for fields in bridge_status_fields
+        for value in [parse_int_field(fields, "published")]
+        if value is not None
+    ]
+    bridge_published_delta = (
+        bridge_published_values[-1] - bridge_published_values[0]
+        if len(bridge_published_values) >= 2
+        else 0
+    )
     axis_x = extract_axis(normalized, "axis_01_30")
     source_parts = source.split(":", 1)
     source_device = source_parts[0]
@@ -417,20 +484,33 @@ def analyze(
         "usb_has_t16000m": has_usb_device(devices, stick_vid, stick_pid),
         "usb_has_two_hid_interfaces": usb_status is not None and "interfaces=2" in usb_status,
         "ble_connected": any("ble=Connected" in line for line in status_lines),
-        "stick_x_fully_right": axis_x is not None and axis_x >= 30000,
         "flight_pack_profile": mapping is not None and "profile=flight_pack_demo" in mapping,
         "stick_x_maps_to_gamepad_x": mapping is not None and expected_mapping in mapping,
-        "publish_connected": publish is not None and "state=Connected" in publish,
     }
+    if live_bridge:
+        checks["bridge_enabled"] = (
+            bridge_start_status is not None
+            and bridge_enabled_fields.get("persona") == "generic_gamepad"
+        )
+        checks["bridge_published_increased"] = bridge_published_delta > 0
+        checks["bridge_stopped"] = bridge_stop_status is not None
+    else:
+        checks["stick_x_fully_right"] = axis_x is not None and axis_x >= 30000
+        checks["publish_connected"] = publish is not None and "state=Connected" in publish
     if require_browser_witness:
-        checks["browser_saw_usb2ble_gamepad"] = capture_shows_gamepad(capture_tail)
-        checks["browser_saw_stick_right"] = capture_shows_stick_right(capture_tail)
+        if live_bridge:
+            checks["browser_saw_input_change"] = capture_shows_input_change(capture_tail)
+        else:
+            checks["browser_saw_usb2ble_gamepad"] = capture_shows_gamepad(capture_tail)
+            checks["browser_saw_stick_right"] = capture_shows_stick_right(capture_tail)
     return {
         "checks": checks,
         "axis_01_30": axis_x,
         "usb_status": usb_status,
         "usb_devices": usb_devices,
         "publish": publish,
+        "bridge_statuses": bridge_statuses,
+        "bridge_published_delta": bridge_published_delta,
     }
 
 
@@ -438,7 +518,10 @@ def prompt(message: str, assume_yes: bool) -> None:
     print()
     print(message)
     if not assume_yes:
-        input("Press Enter when ready...")
+        try:
+            input("Press Enter when ready...")
+        except EOFError:
+            print("No interactive stdin available; continuing.")
 
 
 def main() -> int:
@@ -459,6 +542,12 @@ def main() -> int:
     parser.add_argument("--no-open", action="store_true")
     parser.add_argument("--assume-ready", action="store_true")
     parser.add_argument("--connect-attempts", type=int, default=6)
+    parser.add_argument(
+        "--live-bridge",
+        action="store_true",
+        help="Use START_BRIDGE/STOP_BRIDGE and verify automatic publish counters.",
+    )
+    parser.add_argument("--bridge-duration", type=float, default=6.0)
     args = parser.parse_args()
 
     stamp = utc_stamp()
@@ -471,6 +560,10 @@ def main() -> int:
     capture_dir = run_dir / "gamepad-witness"
     server: subprocess.Popen[str] | None = None
     server_lines: list[str] = []
+    preflight: list[CommandRecord] = []
+    wake: list[CommandRecord] = []
+    movement: list[CommandRecord] = []
+    bridge: list[CommandRecord] = []
 
     print("USB2BLE ASAP demo rehearsal")
     print(f"Transcript directory: {run_dir}")
@@ -549,17 +642,47 @@ def main() -> int:
                 ),
                 args.assume_ready,
             )
-            movement = run_commands(
-                serial,
-                [
-                    f"GET_LAST_USB_REPORT {source}",
-                    f"GET_NORMALIZED_INPUT {source}",
-                    "GET_GENERIC_GAMEPAD_MAPPING",
-                    "GET_GENERIC_GAMEPAD_REPORT",
-                    "PUBLISH_GENERIC_GAMEPAD_REPORT",
-                ],
-                args.timeout,
-            )
+            if args.live_bridge:
+                bridge = run_commands(
+                    serial,
+                    ["GET_BRIDGE_STATUS", "START_BRIDGE", "GET_BRIDGE_STATUS"],
+                    args.timeout,
+                )
+                print()
+                print(
+                    f"Keep moving or holding the control for {args.bridge_duration:.1f} seconds "
+                    "while live bridge mode publishes automatically."
+                )
+                time.sleep(args.bridge_duration)
+                bridge.extend(
+                    run_commands(
+                        serial,
+                        ["GET_BRIDGE_STATUS", "STOP_BRIDGE", "GET_BRIDGE_STATUS"],
+                        args.timeout,
+                    )
+                )
+                movement = run_commands(
+                    serial,
+                    [
+                        f"GET_LAST_USB_REPORT {source}",
+                        f"GET_NORMALIZED_INPUT {source}",
+                        "GET_GENERIC_GAMEPAD_MAPPING",
+                        "GET_GENERIC_GAMEPAD_REPORT",
+                    ],
+                    args.timeout,
+                )
+            else:
+                movement = run_commands(
+                    serial,
+                    [
+                        f"GET_LAST_USB_REPORT {source}",
+                        f"GET_NORMALIZED_INPUT {source}",
+                        "GET_GENERIC_GAMEPAD_MAPPING",
+                        "GET_GENERIC_GAMEPAD_REPORT",
+                        "PUBLISH_GENERIC_GAMEPAD_REPORT",
+                    ],
+                    args.timeout,
+                )
         finally:
             serial.close()
 
@@ -574,17 +697,20 @@ def main() -> int:
             preflight,
             wake,
             movement,
+            bridge,
             source,
             args.stick_vid,
             args.stick_pid,
             capture_tail,
             require_browser_witness=not args.no_browser_witness,
+            live_bridge=args.live_bridge,
         )
 
         transcript_lines: list[str] = []
         for section, records in (
             ("preflight", preflight),
             ("wake", wake),
+            ("bridge", bridge),
             ("movement", movement),
         ):
             transcript_lines.append(f"# {section}")
@@ -606,9 +732,11 @@ def main() -> int:
             "browser_witness_capture": None if capture_file is None else str(capture_file),
             "browser_witness_tail": capture_tail,
             "server_output": server_lines,
+            "live_bridge": args.live_bridge,
             "analysis": analysis,
             "preflight": [record.to_json() for record in preflight],
             "wake": [record.to_json() for record in wake],
+            "bridge": [record.to_json() for record in bridge],
             "movement": [record.to_json() for record in movement],
         }
         summary_file.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
