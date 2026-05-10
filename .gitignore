@@ -26,3 +26,5 @@ crates/*/sdkconfig.old
 .idea/
 *.swp
 *.swo
+node_modules/
+web/dist/
