@@ -121,18 +121,22 @@ export class SerialConnection {
     if (!this.keepReading) throw new Error('Not connected');
 
     return new Promise((resolve, reject) => {
+      let wrapper: (line: string) => void;
+
       const timer = setTimeout(() => {
-        const idx = this.pendingLines.indexOf(resolve);
+        const idx = this.pendingLines.indexOf(wrapper);
         if (idx >= 0) {
           this.pendingLines.splice(idx, 1);
         }
         reject(new Error('Timeout waiting for response'));
       }, timeoutMs);
 
-      this.pendingLines.push((line: string) => {
+      wrapper = (line: string) => {
         clearTimeout(timer);
         resolve(line);
-      });
+      };
+
+      this.pendingLines.push(wrapper);
     });
   }
 

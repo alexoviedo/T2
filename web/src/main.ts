@@ -171,17 +171,47 @@ function renderMappings() {
   currentConfig.mappings.forEach((rule, idx) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><input type="text" value="0x${rule.source_vendor_id.toString(16)}" disabled></td>
-      <td><input type="text" value="0x${rule.source_product_id.toString(16)}" disabled></td>
-      <td><input type="number" value="${rule.source_interface_id}" disabled></td>
-      <td><input type="text" value="${rule.source_control_id}" disabled></td>
-      <td><input type="text" value="${rule.target_control_id}" disabled></td>
-      <td><input type="checkbox" ${rule.invert ? 'checked' : ''} disabled></td>
-      <td><input type="number" value="${rule.deadzone ?? ''}" disabled></td>
-      <td><input type="text" value="${rule.transform?.type ?? ''}" disabled></td>
+      <td><input type="text" class="map-inp" data-field="source_vendor_id" data-idx="${idx}" value="0x${rule.source_vendor_id.toString(16)}"></td>
+      <td><input type="text" class="map-inp" data-field="source_product_id" data-idx="${idx}" value="0x${rule.source_product_id.toString(16)}"></td>
+      <td><input type="number" class="map-inp" data-field="source_interface_id" data-idx="${idx}" value="${rule.source_interface_id}"></td>
+      <td><input type="text" class="map-inp" data-field="source_control_id" data-idx="${idx}" value="${rule.source_control_id}"></td>
+      <td><input type="text" class="map-inp" data-field="target_control_id" data-idx="${idx}" value="${rule.target_control_id}"></td>
+      <td><input type="checkbox" class="map-inp" data-field="invert" data-idx="${idx}" ${rule.invert ? 'checked' : ''}></td>
+      <td><input type="number" class="map-inp" data-field="deadzone" data-idx="${idx}" value="${rule.deadzone ?? ''}"></td>
+      <td><input type="text" class="map-inp" data-field="transform_type" data-idx="${idx}" value="${rule.transform?.type ?? ''}"></td>
       <td><button class="btn-remove-mapping" data-idx="${idx}">Remove</button></td>
     `;
     els.mappingsTbody.appendChild(tr);
+  });
+
+  document.querySelectorAll('.map-inp').forEach(inp => {
+    inp.addEventListener('change', (e) => {
+      const target = e.target as HTMLInputElement;
+      const field = target.getAttribute('data-field')!;
+      const idx = parseInt(target.getAttribute('data-idx')!);
+      const rule = currentConfig!.mappings[idx];
+
+      if (field === 'source_vendor_id' || field === 'source_product_id') {
+        const val = target.value.startsWith('0x') ? parseInt(target.value, 16) : parseInt(target.value, 10);
+        if (!isNaN(val)) (rule as any)[field] = val;
+      } else if (field === 'source_interface_id') {
+        rule.source_interface_id = parseInt(target.value, 10) || 0;
+      } else if (field === 'invert') {
+        rule.invert = target.checked;
+      } else if (field === 'deadzone') {
+        rule.deadzone = target.value ? parseInt(target.value, 10) : null;
+      } else if (field === 'transform_type') {
+        if (target.value) {
+          rule.transform = { type: target.value };
+        } else {
+          rule.transform = null;
+        }
+      } else {
+        (rule as any)[field] = target.value;
+      }
+
+      els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
+    });
   });
 
   document.querySelectorAll('.btn-remove-mapping').forEach(btn => {
