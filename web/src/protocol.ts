@@ -40,10 +40,10 @@ export class BoardProtocol {
   }
 
   async getConfigSchema(): Promise<string> {
-    const responses = await this.serial.commandResponse('GET_CONFIG_SCHEMA', ['CONFIG_SCHEMA:']);
-    assertOkOrData(responses, 'GET_CONFIG_SCHEMA', ['CONFIG_SCHEMA:']);
-    const schemaLine = responses.find(r => r.startsWith('CONFIG_SCHEMA:'));
-    return schemaLine ? schemaLine.substring('CONFIG_SCHEMA:'.length).trim() : '{}';
+    const responses = await this.serial.commandResponse('GET_CONFIG_SCHEMA', ['CONFIG_SCHEMA_JSON:']);
+    assertOkOrData(responses, 'GET_CONFIG_SCHEMA', ['CONFIG_SCHEMA_JSON:']);
+    const schemaLine = responses.find(r => r.startsWith('CONFIG_SCHEMA_JSON:'));
+    return schemaLine ? schemaLine.substring('CONFIG_SCHEMA_JSON:'.length).trim() : '{}';
   }
 
   async getPersonaSchema(persona: 'generic' | 'xbox'): Promise<string> {

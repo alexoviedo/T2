@@ -9,6 +9,8 @@ export class SerialConnection {
 
   // A buffer for partial lines
   private rxBuffer = '';
+  // Queue for lines that arrived before a readLine call
+  private lineQueue: string[] = [];
   // Pending line resolution functions
   private pendingLines: ((line: string) => void)[] = [];
 
@@ -98,6 +100,8 @@ export class SerialConnection {
             if (this.pendingLines.length > 0) {
               const resolver = this.pendingLines.shift()!;
               resolver(line);
+            } else {
+              this.lineQueue.push(line);
             }
           }
         }
@@ -119,6 +123,10 @@ export class SerialConnection {
 
   async readLine(timeoutMs = 5000): Promise<string> {
     if (!this.keepReading) throw new Error('Not connected');
+
+    if (this.lineQueue.length > 0) {
+      return this.lineQueue.shift()!;
+    }
 
     return new Promise((resolve, reject) => {
       let wrapper: (line: string) => void;

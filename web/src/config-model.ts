@@ -6,9 +6,9 @@ export interface Transform {
 }
 
 export interface MappingRule {
-  source_vendor_id: number;
-  source_product_id: number;
-  source_interface_id: number;
+  source_vendor_id?: number | null;
+  source_product_id?: number | null;
+  source_interface_id?: number | null;
   source_control_id: string;
   target_control_id: string;
   invert: boolean;

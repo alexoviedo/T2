@@ -156,7 +156,39 @@ function renderConfig() {
 
   els.inpDisplayName.value = currentConfig.display_name || '';
   els.selPersona.value = currentConfig.selected_persona || 'generic_gamepad';
-  els.selProfile.value = currentConfig.selected_profile || 'custom_runtime';
+
+  // Synchronize Configure Form changes with JSON textarea
+  const updateJsonFromForm = () => {
+    buildConfigFromUI();
+    els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
+  };
+
+  els.inpDisplayName.addEventListener('input', updateJsonFromForm);
+  els.selPersona.addEventListener('change', updateJsonFromForm);
+  els.selProfile.addEventListener('change', updateJsonFromForm);
+  els.chkAutoStartPersona.addEventListener('change', updateJsonFromForm);
+  els.chkAutoStartBridge.addEventListener('change', updateJsonFromForm);
+  els.inpRateHz.addEventListener('input', updateJsonFromForm);
+
+  // Filter options based on persona
+  Array.from(els.selProfile.options).forEach(opt => {
+    if (opt.value === 'custom_runtime') {
+      opt.style.display = 'block';
+    } else if (els.selPersona.value === 'generic_gamepad') {
+      opt.style.display = (opt.value === 'generic_auto' || opt.value === 'flight_pack_demo') ? 'block' : 'none';
+    } else if (els.selPersona.value === 'xbox_wireless_controller') {
+      opt.style.display = (opt.value === 'xbox_auto' || opt.value === 'xbox_flight_pack_demo') ? 'block' : 'none';
+    }
+  });
+
+  // Ensure current selection is valid for persona
+  let selected = currentConfig.selected_profile || 'custom_runtime';
+  const opt = Array.from(els.selProfile.options).find(o => o.value === selected);
+  if (!opt || opt.style.display === 'none') {
+    selected = 'custom_runtime';
+  }
+
+  els.selProfile.value = selected;
   els.chkAutoStartPersona.checked = currentConfig.bridge?.auto_start_persona ?? true;
   els.chkAutoStartBridge.checked = currentConfig.bridge?.auto_start_bridge ?? false;
   els.inpRateHz.value = (currentConfig.bridge?.rate_hz ?? 50).toString();
@@ -177,7 +209,7 @@ function renderMappings() {
     inpVid.className = 'map-inp';
     inpVid.setAttribute('data-field', 'source_vendor_id');
     inpVid.setAttribute('data-idx', idx.toString());
-    inpVid.value = `0x${rule.source_vendor_id.toString(16)}`;
+    inpVid.value = rule.source_vendor_id != null ? `0x${rule.source_vendor_id.toString(16)}` : '';
     const tdVid = document.createElement('td');
     tdVid.appendChild(inpVid);
     tr.appendChild(tdVid);
@@ -188,7 +220,7 @@ function renderMappings() {
     inpPid.className = 'map-inp';
     inpPid.setAttribute('data-field', 'source_product_id');
     inpPid.setAttribute('data-idx', idx.toString());
-    inpPid.value = `0x${rule.source_product_id.toString(16)}`;
+    inpPid.value = rule.source_product_id != null ? `0x${rule.source_product_id.toString(16)}` : '';
     const tdPid = document.createElement('td');
     tdPid.appendChild(inpPid);
     tr.appendChild(tdPid);
@@ -199,7 +231,7 @@ function renderMappings() {
     inpIface.className = 'map-inp';
     inpIface.setAttribute('data-field', 'source_interface_id');
     inpIface.setAttribute('data-idx', idx.toString());
-    inpIface.value = rule.source_interface_id.toString();
+    inpIface.value = rule.source_interface_id != null ? rule.source_interface_id.toString() : '';
     const tdIface = document.createElement('td');
     tdIface.appendChild(inpIface);
     tr.appendChild(tdIface);
@@ -250,11 +282,21 @@ function renderMappings() {
     tr.appendChild(tdDz);
 
     // Transform Type
-    const inpTrans = document.createElement('input');
-    inpTrans.type = 'text';
+    const inpTrans = document.createElement('select');
     inpTrans.className = 'map-inp';
     inpTrans.setAttribute('data-field', 'transform_type');
     inpTrans.setAttribute('data-idx', idx.toString());
+
+    const optNone = document.createElement('option');
+    optNone.value = '';
+    optNone.text = 'None';
+    inpTrans.appendChild(optNone);
+
+    const optAtt = document.createElement('option');
+    optAtt.value = 'axis_to_trigger';
+    optAtt.text = 'axis_to_trigger';
+    inpTrans.appendChild(optAtt);
+
     inpTrans.value = rule.transform?.type ?? '';
     const tdTrans = document.createElement('td');
     tdTrans.appendChild(inpTrans);
@@ -280,10 +322,19 @@ function renderMappings() {
       const rule = currentConfig!.mappings[idx];
 
       if (field === 'source_vendor_id' || field === 'source_product_id') {
-        const val = target.value.startsWith('0x') ? parseInt(target.value, 16) : parseInt(target.value, 10);
-        if (!isNaN(val)) (rule as any)[field] = val;
+        if (!target.value.trim()) {
+          (rule as any)[field] = null;
+        } else {
+          const val = target.value.startsWith('0x') ? parseInt(target.value, 16) : parseInt(target.value, 10);
+          (rule as any)[field] = isNaN(val) ? null : val;
+        }
       } else if (field === 'source_interface_id') {
-        rule.source_interface_id = parseInt(target.value, 10) || 0;
+        if (!target.value.trim()) {
+          rule.source_interface_id = null;
+        } else {
+          const val = parseInt(target.value, 10);
+          rule.source_interface_id = isNaN(val) ? null : val;
+        }
       } else if (field === 'invert') {
         rule.invert = target.checked;
       } else if (field === 'deadzone') {
@@ -331,7 +382,12 @@ function buildConfigFromUI(): RuntimeConfig | null {
   currentConfig.bridge.auto_start_bridge = els.chkAutoStartBridge.checked;
 
   const parsedRate = parseInt(els.inpRateHz.value, 10);
-  currentConfig.bridge.rate_hz = isNaN(parsedRate) ? 50 : parsedRate;
+  if (isNaN(parsedRate) || parsedRate < 1 || parsedRate > 200) {
+    currentConfig.bridge.rate_hz = 50;
+    els.inpRateHz.value = '50';
+  } else {
+    currentConfig.bridge.rate_hz = parsedRate;
+  }
 
   return currentConfig;
 }
@@ -374,7 +430,10 @@ function setupEvents() {
   });
 
   els.btnSaveConfig.addEventListener('click', async () => {
+    const config = buildConfigFromUI();
+    if (!config) return;
     try {
+      await protocol.importConfig(config);
       await protocol.saveConfig();
       await refreshConfigStatus();
       alert('Config saved to NVS successfully.');
@@ -404,7 +463,10 @@ function setupEvents() {
   });
 
   els.btnStartConfigured.addEventListener('click', async () => {
+    const config = buildConfigFromUI();
+    if (!config) return;
     try {
+      await protocol.importConfig(config);
       await protocol.startConfigured();
       alert('Configured persona/bridge started.');
     } catch (e: any) {
@@ -414,7 +476,17 @@ function setupEvents() {
 
   els.btnImportJson.addEventListener('click', () => {
     try {
-      currentConfig = JSON.parse(els.txtJsonConfig.value);
+      const parsed = JSON.parse(els.txtJsonConfig.value);
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Config must be an object');
+      }
+      if (!parsed.bridge || typeof parsed.bridge !== 'object') {
+        throw new Error('Missing or invalid "bridge" configuration');
+      }
+      if (!Array.isArray(parsed.mappings)) {
+        throw new Error('Missing or invalid "mappings" array');
+      }
+      currentConfig = parsed;
       renderConfig();
     } catch (e: any) {
       showError(`Invalid JSON: ${e.message}`);
@@ -441,12 +513,24 @@ function setupEvents() {
 
   els.btnAddMapping.addEventListener('click', () => {
     if (!currentConfig) return;
+
+    // Find an unused target control id to avoid duplicates if possible
+    let newTarget = 'x';
+    const usedTargets = new Set(currentConfig.mappings.map(m => m.target_control_id));
+    const commonTargets = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'hat'];
+    for (const t of commonTargets) {
+      if (!usedTargets.has(t)) {
+        newTarget = t;
+        break;
+      }
+    }
+
     currentConfig.mappings.push({
-      source_vendor_id: 0,
-      source_product_id: 0,
-      source_interface_id: 0,
+      source_vendor_id: null,
+      source_product_id: null,
+      source_interface_id: null,
       source_control_id: 'axis_01_30',
-      target_control_id: 'x',
+      target_control_id: newTarget,
       invert: false,
       deadzone: null,
       transform: null
@@ -456,15 +540,38 @@ function setupEvents() {
   });
 
   // Presets
-  els.btnPresetGeneric.addEventListener('click', () => {
+  els.selPersona.addEventListener('change', () => {
+    renderConfig();
+  });
+
+  // Presets
+  els.btnPresetGeneric.addEventListener('click', async () => {
     currentConfig = JSON.parse(JSON.stringify(flightPackGeneric));
     renderConfig();
+    try {
+      if (currentConfig && serial.isConnected()) {
+        await protocol.importConfig(currentConfig);
+        await refreshConfigStatus();
+        alert('Flight Pack Generic applied to board.');
+      }
+    } catch (e: any) {
+      showError(e.message);
+    }
     document.querySelector('[data-tab="configure"]')?.dispatchEvent(new Event('click'));
   });
 
-  els.btnPresetXbox.addEventListener('click', () => {
+  els.btnPresetXbox.addEventListener('click', async () => {
     currentConfig = JSON.parse(JSON.stringify(flightPackXbox));
     renderConfig();
+    try {
+      if (currentConfig && serial.isConnected()) {
+        await protocol.importConfig(currentConfig);
+        await refreshConfigStatus();
+        alert('Flight Pack Xbox applied to board.');
+      }
+    } catch (e: any) {
+      showError(e.message);
+    }
     document.querySelector('[data-tab="configure"]')?.dispatchEvent(new Event('click'));
   });
 
