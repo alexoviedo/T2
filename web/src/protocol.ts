@@ -75,23 +75,23 @@ export class BoardProtocol {
   }
 
   async saveConfig(): Promise<void> {
-    const responses = await this.serial.commandResponse('SAVE_CONFIG', ['CONFIG_ACTION:']);
-    assertOkOrData(responses, 'SAVE_CONFIG', ['CONFIG_ACTION:']);
+    const responses = await this.serial.commandResponse('SAVE_CONFIG', ['CONFIG_ACTION:action=save;state=ok']);
+    assertOkOrData(responses, 'SAVE_CONFIG', ['CONFIG_ACTION:action=save;state=ok']);
   }
 
   async loadConfig(): Promise<void> {
-    const responses = await this.serial.commandResponse('LOAD_CONFIG', ['CONFIG_ACTION:']);
-    assertOkOrData(responses, 'LOAD_CONFIG', ['CONFIG_ACTION:']);
+    const responses = await this.serial.commandResponse('LOAD_CONFIG', ['CONFIG_ACTION:action=load;state=ok']);
+    assertOkOrData(responses, 'LOAD_CONFIG', ['CONFIG_ACTION:action=load;state=ok']);
   }
 
   async resetConfig(): Promise<void> {
-    const responses = await this.serial.commandResponse('RESET_CONFIG', ['CONFIG_ACTION:']);
-    assertOkOrData(responses, 'RESET_CONFIG', ['CONFIG_ACTION:']);
+    const responses = await this.serial.commandResponse('RESET_CONFIG', ['CONFIG_ACTION:action=reset;state=ok']);
+    assertOkOrData(responses, 'RESET_CONFIG', ['CONFIG_ACTION:action=reset;state=ok']);
   }
 
   async startConfigured(): Promise<void> {
-    const responses = await this.serial.commandResponse('START_CONFIGURED', ['CONFIG_ACTION:']);
-    assertOkOrData(responses, 'START_CONFIGURED', ['CONFIG_ACTION:']);
+    const responses = await this.serial.commandResponse('START_CONFIGURED', ['CONFIG_ACTION:action=start_configured;state=ok']);
+    assertOkOrData(responses, 'START_CONFIGURED', ['CONFIG_ACTION:action=start_configured;state=ok']);
   }
 
   async importConfig(config: RuntimeConfig): Promise<void> {
@@ -113,18 +113,18 @@ export class BoardProtocol {
     }
 
     // Begin
-    let responses = await this.serial.commandResponse(`BEGIN_CONFIG_JSON ${chunks.length} ${checksum}`, ['CONFIG_IMPORT:']);
-    assertOkOrData(responses, 'BEGIN_CONFIG_JSON', ['CONFIG_IMPORT:']);
+    let responses = await this.serial.commandResponse(`BEGIN_CONFIG_JSON ${chunks.length} ${checksum}`, ['CONFIG_IMPORT:state=started']);
+    assertOkOrData(responses, 'BEGIN_CONFIG_JSON', ['CONFIG_IMPORT:state=started']);
 
     // Chunks
     for (let i = 0; i < chunks.length; i++) {
-      responses = await this.serial.commandResponse(`CONFIG_JSON_CHUNK ${i} ${chunks[i]}`, ['CONFIG_IMPORT:']);
-      assertOkOrData(responses, `CONFIG_JSON_CHUNK ${i}`, ['CONFIG_IMPORT:']);
+      responses = await this.serial.commandResponse(`CONFIG_JSON_CHUNK ${i} ${chunks[i]}`, ['CONFIG_IMPORT:state=chunk']);
+      assertOkOrData(responses, `CONFIG_JSON_CHUNK ${i}`, ['CONFIG_IMPORT:state=chunk']);
     }
 
     // Commit
-    responses = await this.serial.commandResponse('COMMIT_CONFIG_JSON', ['CONFIG_IMPORT:']);
-    assertOkOrData(responses, 'COMMIT_CONFIG_JSON', ['CONFIG_IMPORT:']);
+    responses = await this.serial.commandResponse('COMMIT_CONFIG_JSON', ['CONFIG_IMPORT:state=committed']);
+    assertOkOrData(responses, 'COMMIT_CONFIG_JSON', ['CONFIG_IMPORT:state=committed']);
   }
 
   private base64urlEncode(buffer: Uint8Array): string {

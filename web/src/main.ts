@@ -8,6 +8,9 @@ import { flightPackGeneric, flightPackXbox } from './presets';
 let serial: SerialConnection;
 let protocol: BoardProtocol;
 let currentConfig: RuntimeConfig | null = null;
+let genericSchema: any = null;
+let xboxSchema: any = null;
+let inputCatalog: any = null;
 
 // UI Elements
 const els = {
@@ -188,6 +191,7 @@ function renderConfig() {
 
 // Synchronize Configure Form changes with JSON textarea
 function updateJsonFromForm() {
+  if (!currentConfig) return;
   buildConfigFromUI();
   els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
 }
@@ -233,22 +237,70 @@ function renderMappings() {
     tr.appendChild(tdIface);
 
     // Source Control ID
-    const inpSrcCtrl = document.createElement('input');
-    inpSrcCtrl.type = 'text';
+    const inpSrcCtrl = document.createElement('select');
     inpSrcCtrl.className = 'map-inp';
     inpSrcCtrl.setAttribute('data-field', 'source_control_id');
     inpSrcCtrl.setAttribute('data-idx', idx.toString());
+
+    let knownSources = new Set<string>();
+    if (Array.isArray(inputCatalog)) {
+      inputCatalog.forEach(entry => {
+        if (entry.control_id) knownSources.add(entry.control_id);
+      });
+    }
+
+    // Add common defaults if catalog is empty or just generic defaults
+    ['axis_01_30', 'axis_01_31', 'axis_01_32', 'axis_01_36', 'hat_01_39', 'button_1', 'button_2', 'button_3', 'button_4'].forEach(t => knownSources.add(t));
+
+    if (!knownSources.has(rule.source_control_id)) {
+      knownSources.add(rule.source_control_id);
+    }
+
+    Array.from(knownSources).sort().forEach(srcId => {
+      const opt = document.createElement('option');
+      opt.value = srcId;
+      opt.text = srcId;
+      inpSrcCtrl.appendChild(opt);
+    });
+
     inpSrcCtrl.value = rule.source_control_id;
     const tdSrcCtrl = document.createElement('td');
     tdSrcCtrl.appendChild(inpSrcCtrl);
     tr.appendChild(tdSrcCtrl);
 
     // Target Control ID
-    const inpTgtCtrl = document.createElement('input');
-    inpTgtCtrl.type = 'text';
+    const inpTgtCtrl = document.createElement('select');
     inpTgtCtrl.className = 'map-inp';
     inpTgtCtrl.setAttribute('data-field', 'target_control_id');
     inpTgtCtrl.setAttribute('data-idx', idx.toString());
+
+    let validTargets: string[] = [];
+    if (currentConfig?.selected_persona === 'xbox_wireless_controller') {
+      if (xboxSchema && xboxSchema.mappings && xboxSchema.mappings.controls) {
+        validTargets = Object.keys(xboxSchema.mappings.controls);
+      } else {
+        validTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'hat'];
+      }
+    } else {
+      if (genericSchema && genericSchema.mappings && genericSchema.mappings.controls) {
+        validTargets = Object.keys(genericSchema.mappings.controls);
+      } else {
+        validTargets = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'hat'];
+      }
+    }
+
+    // Always include the current rule's target even if not in schema (e.g. from JSON import)
+    if (!validTargets.includes(rule.target_control_id)) {
+      validTargets.push(rule.target_control_id);
+    }
+
+    validTargets.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.text = t;
+      inpTgtCtrl.appendChild(opt);
+    });
+
     inpTgtCtrl.value = rule.target_control_id;
     const tdTgtCtrl = document.createElement('td');
     tdTgtCtrl.appendChild(inpTgtCtrl);
@@ -297,6 +349,43 @@ function renderMappings() {
     const tdTrans = document.createElement('td');
     tdTrans.appendChild(inpTrans);
     tr.appendChild(tdTrans);
+
+    // Transform Params
+    const tdTransParams = document.createElement('td');
+    if (rule.transform && rule.transform.type === 'axis_to_trigger') {
+      const inpMin = document.createElement('input');
+      inpMin.type = 'number';
+      inpMin.className = 'map-inp';
+      inpMin.style.width = '60px';
+      inpMin.setAttribute('data-field', 'transform_min');
+      inpMin.setAttribute('data-idx', idx.toString());
+      inpMin.value = rule.transform.source_min?.toString() ?? '-32768';
+
+      const inpMax = document.createElement('input');
+      inpMax.type = 'number';
+      inpMax.className = 'map-inp';
+      inpMax.style.width = '60px';
+      inpMax.setAttribute('data-field', 'transform_max');
+      inpMax.setAttribute('data-idx', idx.toString());
+      inpMax.value = rule.transform.source_max?.toString() ?? '32767';
+
+      const inpInv = document.createElement('input');
+      inpInv.type = 'checkbox';
+      inpInv.className = 'map-inp';
+      inpInv.setAttribute('data-field', 'transform_invert');
+      inpInv.setAttribute('data-idx', idx.toString());
+      inpInv.checked = rule.transform.invert ?? false;
+
+      tdTransParams.appendChild(document.createTextNode('Min: '));
+      tdTransParams.appendChild(inpMin);
+      tdTransParams.appendChild(document.createElement('br'));
+      tdTransParams.appendChild(document.createTextNode('Max: '));
+      tdTransParams.appendChild(inpMax);
+      tdTransParams.appendChild(document.createElement('br'));
+      tdTransParams.appendChild(document.createTextNode('Inv: '));
+      tdTransParams.appendChild(inpInv);
+    }
+    tr.appendChild(tdTransParams);
 
     // Remove btn
     const btnRm = document.createElement('button');
@@ -355,6 +444,13 @@ function renderMappings() {
         } else {
           rule.transform = null;
         }
+        renderMappings(); // re-render to show/hide param inputs
+      } else if (field === 'transform_min' && rule.transform) {
+        rule.transform.source_min = parseInt(target.value, 10);
+      } else if (field === 'transform_max' && rule.transform) {
+        rule.transform.source_max = parseInt(target.value, 10);
+      } else if (field === 'transform_invert' && rule.transform) {
+        rule.transform.invert = target.checked;
       } else {
         (rule as any)[field] = target.value;
       }
@@ -394,7 +490,16 @@ function buildConfigFromUI(): RuntimeConfig | null {
 
 function setupEvents() {
   els.inpDisplayName.addEventListener('input', updateJsonFromForm);
-  els.selPersona.addEventListener('change', updateJsonFromForm);
+
+  els.selPersona.addEventListener('change', () => {
+    // When persona changes, we need to re-render the available options
+    // and correctly fallback to valid options first, THEN update the JSON source of truth.
+    if (!currentConfig) return;
+    currentConfig.selected_persona = els.selPersona.value as any;
+    renderConfig();
+    updateJsonFromForm();
+  });
+
   els.selProfile.addEventListener('change', updateJsonFromForm);
   els.chkAutoStartPersona.addEventListener('change', updateJsonFromForm);
   els.chkAutoStartBridge.addEventListener('change', updateJsonFromForm);
@@ -518,7 +623,9 @@ function setupEvents() {
   // Mappings Tab
   els.btnRefreshCatalog.addEventListener('click', async () => {
     try {
-      els.preInputCatalog.textContent = await protocol.getInputCatalog();
+      const raw = await protocol.getInputCatalog();
+      els.preInputCatalog.textContent = raw;
+      try { inputCatalog = JSON.parse(raw); } catch (e) { /* ignore parse error for catalog */ }
     } catch (e: any) {
       showError(e.message);
     }
@@ -526,8 +633,15 @@ function setupEvents() {
 
   els.btnRefreshSchemas.addEventListener('click', async () => {
     try {
-      els.preSchemaGeneric.textContent = await protocol.getPersonaSchema('generic');
-      els.preSchemaXbox.textContent = await protocol.getPersonaSchema('xbox');
+      const genRaw = await protocol.getPersonaSchema('generic');
+      els.preSchemaGeneric.textContent = genRaw;
+      try { genericSchema = JSON.parse(genRaw); } catch (e) {}
+
+      const xboxRaw = await protocol.getPersonaSchema('xbox');
+      els.preSchemaXbox.textContent = xboxRaw;
+      try { xboxSchema = JSON.parse(xboxRaw); } catch (e) {}
+
+      renderMappings(); // re-render to update dropdowns
     } catch (e: any) {
       showError(e.message);
     }

@@ -43,9 +43,10 @@ export class SerialConnection {
 
     // Set up standard stream with TextEncoder
     const textEncoder = new TextEncoderStream();
-    textEncoder.readable.pipeTo(this.port.writable as any).catch((e: any) => {
+    const writePromise = textEncoder.readable.pipeTo(this.port.writable as any).catch((e: any) => {
       console.error('Writer error:', e);
     });
+    (this as any).writePromise = writePromise;
     this.writer = textEncoder.writable.getWriter();
 
     // Start background read loop
@@ -63,6 +64,10 @@ export class SerialConnection {
     if (this.writer) {
       await this.writer.close();
       this.writer.releaseLock();
+    }
+
+    if ((this as any).writePromise) {
+      await (this as any).writePromise;
     }
 
     if (this.readPromise) {

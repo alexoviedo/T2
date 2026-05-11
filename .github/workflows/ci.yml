@@ -118,7 +118,7 @@ jobs:
       - name: Build Web App
         run: |
           cd web
-          npm install
+          npm ci
           npm run build
 
   release:
@@ -172,7 +172,7 @@ jobs:
       - name: Build Web App
         run: |
           cd web
-          npm install
+          npm ci
           npm run build
 
       - name: Prepare Firmware Assets
