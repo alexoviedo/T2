@@ -70,7 +70,7 @@ export class BoardProtocol {
       return JSON.parse(configLine.substring('CONFIG_JSON:'.length).trim()) as RuntimeConfig;
     } catch (e) {
       console.error('Failed to parse config JSON', e);
-      return null;
+      throw new ProtocolError('Failed to parse config JSON from board');
     }
   }
 

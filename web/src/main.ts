@@ -68,7 +68,7 @@ function init() {
   setupEvents();
 
   // Initialize Flasher with relative path assuming GitHub pages structure
-  const manifestUrl = new URL('/T2/firmware/manifest.json', window.location.href).href;
+  const manifestUrl = new URL('./firmware/manifest.json', window.location.href).href;
   setupFlasher('flasher-root', manifestUrl);
 }
 
@@ -159,7 +159,7 @@ function renderConfig() {
   els.selProfile.value = currentConfig.selected_profile || 'custom_runtime';
   els.chkAutoStartPersona.checked = currentConfig.bridge?.auto_start_persona ?? true;
   els.chkAutoStartBridge.checked = currentConfig.bridge?.auto_start_bridge ?? false;
-  els.inpRateHz.value = (currentConfig.bridge?.rate_hz || 50).toString();
+  els.inpRateHz.value = (currentConfig.bridge?.rate_hz ?? 50).toString();
 
   renderMappings();
 }
@@ -170,17 +170,105 @@ function renderMappings() {
 
   currentConfig.mappings.forEach((rule, idx) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><input type="text" class="map-inp" data-field="source_vendor_id" data-idx="${idx}" value="0x${rule.source_vendor_id.toString(16)}"></td>
-      <td><input type="text" class="map-inp" data-field="source_product_id" data-idx="${idx}" value="0x${rule.source_product_id.toString(16)}"></td>
-      <td><input type="number" class="map-inp" data-field="source_interface_id" data-idx="${idx}" value="${rule.source_interface_id}"></td>
-      <td><input type="text" class="map-inp" data-field="source_control_id" data-idx="${idx}" value="${rule.source_control_id}"></td>
-      <td><input type="text" class="map-inp" data-field="target_control_id" data-idx="${idx}" value="${rule.target_control_id}"></td>
-      <td><input type="checkbox" class="map-inp" data-field="invert" data-idx="${idx}" ${rule.invert ? 'checked' : ''}></td>
-      <td><input type="number" class="map-inp" data-field="deadzone" data-idx="${idx}" value="${rule.deadzone ?? ''}"></td>
-      <td><input type="text" class="map-inp" data-field="transform_type" data-idx="${idx}" value="${rule.transform?.type ?? ''}"></td>
-      <td><button class="btn-remove-mapping" data-idx="${idx}">Remove</button></td>
-    `;
+
+    // Vendor ID
+    const inpVid = document.createElement('input');
+    inpVid.type = 'text';
+    inpVid.className = 'map-inp';
+    inpVid.setAttribute('data-field', 'source_vendor_id');
+    inpVid.setAttribute('data-idx', idx.toString());
+    inpVid.value = `0x${rule.source_vendor_id.toString(16)}`;
+    const tdVid = document.createElement('td');
+    tdVid.appendChild(inpVid);
+    tr.appendChild(tdVid);
+
+    // Product ID
+    const inpPid = document.createElement('input');
+    inpPid.type = 'text';
+    inpPid.className = 'map-inp';
+    inpPid.setAttribute('data-field', 'source_product_id');
+    inpPid.setAttribute('data-idx', idx.toString());
+    inpPid.value = `0x${rule.source_product_id.toString(16)}`;
+    const tdPid = document.createElement('td');
+    tdPid.appendChild(inpPid);
+    tr.appendChild(tdPid);
+
+    // Interface ID
+    const inpIface = document.createElement('input');
+    inpIface.type = 'number';
+    inpIface.className = 'map-inp';
+    inpIface.setAttribute('data-field', 'source_interface_id');
+    inpIface.setAttribute('data-idx', idx.toString());
+    inpIface.value = rule.source_interface_id.toString();
+    const tdIface = document.createElement('td');
+    tdIface.appendChild(inpIface);
+    tr.appendChild(tdIface);
+
+    // Source Control ID
+    const inpSrcCtrl = document.createElement('input');
+    inpSrcCtrl.type = 'text';
+    inpSrcCtrl.className = 'map-inp';
+    inpSrcCtrl.setAttribute('data-field', 'source_control_id');
+    inpSrcCtrl.setAttribute('data-idx', idx.toString());
+    inpSrcCtrl.value = rule.source_control_id;
+    const tdSrcCtrl = document.createElement('td');
+    tdSrcCtrl.appendChild(inpSrcCtrl);
+    tr.appendChild(tdSrcCtrl);
+
+    // Target Control ID
+    const inpTgtCtrl = document.createElement('input');
+    inpTgtCtrl.type = 'text';
+    inpTgtCtrl.className = 'map-inp';
+    inpTgtCtrl.setAttribute('data-field', 'target_control_id');
+    inpTgtCtrl.setAttribute('data-idx', idx.toString());
+    inpTgtCtrl.value = rule.target_control_id;
+    const tdTgtCtrl = document.createElement('td');
+    tdTgtCtrl.appendChild(inpTgtCtrl);
+    tr.appendChild(tdTgtCtrl);
+
+    // Invert
+    const inpInv = document.createElement('input');
+    inpInv.type = 'checkbox';
+    inpInv.className = 'map-inp';
+    inpInv.setAttribute('data-field', 'invert');
+    inpInv.setAttribute('data-idx', idx.toString());
+    inpInv.checked = rule.invert;
+    const tdInv = document.createElement('td');
+    tdInv.appendChild(inpInv);
+    tr.appendChild(tdInv);
+
+    // Deadzone
+    const inpDz = document.createElement('input');
+    inpDz.type = 'number';
+    inpDz.step = 'any';
+    inpDz.className = 'map-inp';
+    inpDz.setAttribute('data-field', 'deadzone');
+    inpDz.setAttribute('data-idx', idx.toString());
+    inpDz.value = rule.deadzone?.toString() ?? '';
+    const tdDz = document.createElement('td');
+    tdDz.appendChild(inpDz);
+    tr.appendChild(tdDz);
+
+    // Transform Type
+    const inpTrans = document.createElement('input');
+    inpTrans.type = 'text';
+    inpTrans.className = 'map-inp';
+    inpTrans.setAttribute('data-field', 'transform_type');
+    inpTrans.setAttribute('data-idx', idx.toString());
+    inpTrans.value = rule.transform?.type ?? '';
+    const tdTrans = document.createElement('td');
+    tdTrans.appendChild(inpTrans);
+    tr.appendChild(tdTrans);
+
+    // Remove btn
+    const btnRm = document.createElement('button');
+    btnRm.className = 'btn-remove-mapping';
+    btnRm.setAttribute('data-idx', idx.toString());
+    btnRm.textContent = 'Remove';
+    const tdRm = document.createElement('td');
+    tdRm.appendChild(btnRm);
+    tr.appendChild(tdRm);
+
     els.mappingsTbody.appendChild(tr);
   });
 
@@ -199,10 +287,20 @@ function renderMappings() {
       } else if (field === 'invert') {
         rule.invert = target.checked;
       } else if (field === 'deadzone') {
-        rule.deadzone = target.value ? parseInt(target.value, 10) : null;
+        const parsedDz = parseFloat(target.value);
+        rule.deadzone = isNaN(parsedDz) ? null : parsedDz;
       } else if (field === 'transform_type') {
         if (target.value) {
-          rule.transform = { type: target.value };
+          if (!rule.transform) {
+            rule.transform = { type: target.value };
+          } else {
+            rule.transform.type = target.value;
+          }
+          if (target.value === 'axis_to_trigger') {
+            rule.transform.source_min = rule.transform.source_min ?? -32768;
+            rule.transform.source_max = rule.transform.source_max ?? 32767;
+            rule.transform.invert = rule.transform.invert ?? false;
+          }
         } else {
           rule.transform = null;
         }
@@ -231,7 +329,10 @@ function buildConfigFromUI(): RuntimeConfig | null {
   currentConfig.selected_profile = els.selProfile.value;
   currentConfig.bridge.auto_start_persona = els.chkAutoStartPersona.checked;
   currentConfig.bridge.auto_start_bridge = els.chkAutoStartBridge.checked;
-  currentConfig.bridge.rate_hz = parseInt(els.inpRateHz.value, 10);
+
+  const parsedRate = parseInt(els.inpRateHz.value, 10);
+  currentConfig.bridge.rate_hz = isNaN(parsedRate) ? 50 : parsedRate;
+
   return currentConfig;
 }
 
