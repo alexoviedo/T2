@@ -276,16 +276,16 @@ function renderMappings() {
 
     let validTargets: string[] = [];
     if (currentConfig?.selected_persona === 'xbox_wireless_controller') {
-      if (xboxSchema && xboxSchema.mappings && xboxSchema.mappings.controls) {
-        validTargets = Object.keys(xboxSchema.mappings.controls);
+      if (xboxSchema && Array.isArray(xboxSchema.controls)) {
+        validTargets = xboxSchema.controls.map((c: any) => c.control_id);
       } else {
-        validTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'hat'];
+        validTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'lb', 'rb', 'view', 'menu', 'nexus', 'share', 'left_stick', 'right_stick', 'paddle_1', 'paddle_2', 'paddle_3', 'paddle_4', 'hat'];
       }
     } else {
-      if (genericSchema && genericSchema.mappings && genericSchema.mappings.controls) {
-        validTargets = Object.keys(genericSchema.mappings.controls);
+      if (genericSchema && Array.isArray(genericSchema.controls)) {
+        validTargets = genericSchema.controls.map((c: any) => c.control_id);
       } else {
-        validTargets = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'hat'];
+        validTargets = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'button_5', 'button_6', 'button_7', 'button_8', 'button_9', 'button_10', 'button_11', 'button_12', 'button_13', 'button_14', 'button_15', 'button_16', 'hat'];
       }
     }
 
@@ -437,8 +437,8 @@ function renderMappings() {
             rule.transform.type = target.value;
           }
           if (target.value === 'axis_to_trigger') {
-            rule.transform.source_min = rule.transform.source_min ?? -32768;
-            rule.transform.source_max = rule.transform.source_max ?? 32767;
+            rule.transform.source_min = rule.transform.source_min ?? 0;
+            rule.transform.source_max = rule.transform.source_max ?? 255;
             rule.transform.invert = rule.transform.invert ?? false;
           }
         } else {
@@ -655,9 +655,21 @@ function setupEvents() {
     const usedTargets = new Set(currentConfig.mappings.map(m => m.target_control_id));
 
     const isXbox = currentConfig.selected_persona === 'xbox_wireless_controller';
-    const commonTargets = isXbox
-      ? ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'hat']
-      : ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'hat'];
+
+    let commonTargets: string[] = [];
+    if (isXbox) {
+      if (xboxSchema && Array.isArray(xboxSchema.controls)) {
+        commonTargets = xboxSchema.controls.map((c: any) => c.control_id);
+      } else {
+        commonTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'lb', 'rb', 'view', 'menu', 'nexus', 'share', 'left_stick', 'right_stick', 'paddle_1', 'paddle_2', 'paddle_3', 'paddle_4', 'hat'];
+      }
+    } else {
+      if (genericSchema && Array.isArray(genericSchema.controls)) {
+        commonTargets = genericSchema.controls.map((c: any) => c.control_id);
+      } else {
+        commonTargets = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'button_5', 'button_6', 'button_7', 'button_8', 'button_9', 'button_10', 'button_11', 'button_12', 'button_13', 'button_14', 'button_15', 'button_16', 'hat'];
+      }
+    }
 
     for (const t of commonTargets) {
       if (!usedTargets.has(t)) {
