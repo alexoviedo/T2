@@ -14,6 +14,9 @@ export class SerialConnection {
   // Pending line resolution functions
   private pendingLines: ((line: string) => void)[] = [];
 
+  // Mutex to prevent concurrent command interleaving
+  private commandMutex: Promise<void> = Promise.resolve();
+
   constructor(private logCallback?: SerialLogCallback) {}
 
   async requestPort(): Promise<void> {
@@ -85,7 +88,10 @@ export class SerialConnection {
     try {
       while (this.keepReading) {
         const { value, done } = await this.reader.read();
-        if (done) break;
+        if (done) {
+          this.keepReading = false;
+          break;
+        }
         if (value) {
           this.rxBuffer += value;
           let newlineIdx;
@@ -149,23 +155,46 @@ export class SerialConnection {
   }
 
   async commandResponse(cmd: string, expectedPrefixes: string[] = [], timeoutMs = 5000): Promise<string[]> {
-    await this.writeLine(cmd);
-    const responses: string[] = [];
+    const execute = async () => {
+      // Drain stale lines before sending the command
+      this.lineQueue = [];
+      this.pendingLines.forEach(resolve => resolve('')); // flush pending but there shouldn't be any
+      this.pendingLines = [];
 
-    while (true) {
-      const line = await this.readLine(timeoutMs);
-      responses.push(line);
+      await this.writeLine(cmd);
+      const responses: string[] = [];
 
-      if (line === 'OK' || line.startsWith('ERROR:')) {
-        break;
+      while (true) {
+        const line = await this.readLine(timeoutMs);
+        if (!line) continue; // Skip flushed empty lines if any
+
+        responses.push(line);
+
+        if (line === 'OK' || line.startsWith('ERROR:')) {
+          break;
+        }
+
+        const hasExpectedPrefix = expectedPrefixes.some(prefix => line.startsWith(prefix));
+        if (hasExpectedPrefix) {
+          break;
+        }
       }
 
-      const hasExpectedPrefix = expectedPrefixes.some(prefix => line.startsWith(prefix));
-      if (hasExpectedPrefix) {
-        break;
-      }
+      return responses;
+    };
+
+    // Acquire lock
+    const currentMutex = this.commandMutex;
+    let releaseMutex: () => void;
+    this.commandMutex = new Promise<void>(resolve => {
+      releaseMutex = resolve;
+    });
+
+    try {
+      await currentMutex;
+      return await execute();
+    } finally {
+      releaseMutex!();
     }
-
-    return responses;
   }
 }

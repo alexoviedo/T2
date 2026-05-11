@@ -157,19 +157,6 @@ function renderConfig() {
   els.inpDisplayName.value = currentConfig.display_name || '';
   els.selPersona.value = currentConfig.selected_persona || 'generic_gamepad';
 
-  // Synchronize Configure Form changes with JSON textarea
-  const updateJsonFromForm = () => {
-    buildConfigFromUI();
-    els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
-  };
-
-  els.inpDisplayName.addEventListener('input', updateJsonFromForm);
-  els.selPersona.addEventListener('change', updateJsonFromForm);
-  els.selProfile.addEventListener('change', updateJsonFromForm);
-  els.chkAutoStartPersona.addEventListener('change', updateJsonFromForm);
-  els.chkAutoStartBridge.addEventListener('change', updateJsonFromForm);
-  els.inpRateHz.addEventListener('input', updateJsonFromForm);
-
   // Filter options based on persona
   Array.from(els.selProfile.options).forEach(opt => {
     if (opt.value === 'custom_runtime') {
@@ -189,11 +176,20 @@ function renderConfig() {
   }
 
   els.selProfile.value = selected;
+  currentConfig.selected_profile = selected; // Ensure fallback updates runtime
   els.chkAutoStartPersona.checked = currentConfig.bridge?.auto_start_persona ?? true;
   els.chkAutoStartBridge.checked = currentConfig.bridge?.auto_start_bridge ?? false;
   els.inpRateHz.value = (currentConfig.bridge?.rate_hz ?? 50).toString();
 
+  els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
+
   renderMappings();
+}
+
+// Synchronize Configure Form changes with JSON textarea
+function updateJsonFromForm() {
+  buildConfigFromUI();
+  els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
 }
 
 function renderMappings() {
@@ -272,7 +268,7 @@ function renderMappings() {
     // Deadzone
     const inpDz = document.createElement('input');
     inpDz.type = 'number';
-    inpDz.step = 'any';
+    inpDz.step = '1';
     inpDz.className = 'map-inp';
     inpDz.setAttribute('data-field', 'deadzone');
     inpDz.setAttribute('data-idx', idx.toString());
@@ -326,7 +322,11 @@ function renderMappings() {
           (rule as any)[field] = null;
         } else {
           const val = target.value.startsWith('0x') ? parseInt(target.value, 16) : parseInt(target.value, 10);
-          (rule as any)[field] = isNaN(val) ? null : val;
+          if (isNaN(val)) {
+            (rule as any)[field] = null;
+          } else {
+            (rule as any)[field] = Math.max(0, Math.min(val, 0xFFFF));
+          }
         }
       } else if (field === 'source_interface_id') {
         if (!target.value.trim()) {
@@ -338,7 +338,7 @@ function renderMappings() {
       } else if (field === 'invert') {
         rule.invert = target.checked;
       } else if (field === 'deadzone') {
-        const parsedDz = parseFloat(target.value);
+        const parsedDz = parseInt(target.value, 10);
         rule.deadzone = isNaN(parsedDz) ? null : parsedDz;
       } else if (field === 'transform_type') {
         if (target.value) {
@@ -393,6 +393,13 @@ function buildConfigFromUI(): RuntimeConfig | null {
 }
 
 function setupEvents() {
+  els.inpDisplayName.addEventListener('input', updateJsonFromForm);
+  els.selPersona.addEventListener('change', updateJsonFromForm);
+  els.selProfile.addEventListener('change', updateJsonFromForm);
+  els.chkAutoStartPersona.addEventListener('change', updateJsonFromForm);
+  els.chkAutoStartBridge.addEventListener('change', updateJsonFromForm);
+  els.inpRateHz.addEventListener('input', updateJsonFromForm);
+
   els.btnConnect.addEventListener('click', async () => {
     try {
       await serial.requestPort();
@@ -415,9 +422,24 @@ function setupEvents() {
     }
   });
 
+  // Parse textarea directly on commit/save/start to act as source of truth
+  const getConfigFromTextarea = (): RuntimeConfig | null => {
+    try {
+      const parsed = JSON.parse(els.txtJsonConfig.value);
+      if (!parsed || typeof parsed !== 'object') throw new Error('Config must be an object');
+      if (!parsed.bridge || typeof parsed.bridge !== 'object') throw new Error('Missing bridge configuration');
+      if (!Array.isArray(parsed.mappings)) throw new Error('Missing mappings array');
+      currentConfig = parsed;
+      return currentConfig;
+    } catch (e: any) {
+      showError(`Invalid JSON configuration: ${e.message}`);
+      return null;
+    }
+  };
+
   // Action Buttons
   els.btnCommitConfig.addEventListener('click', async () => {
-    const config = buildConfigFromUI();
+    const config = getConfigFromTextarea();
     if (!config) return;
     try {
       await protocol.importConfig(config);
@@ -430,7 +452,7 @@ function setupEvents() {
   });
 
   els.btnSaveConfig.addEventListener('click', async () => {
-    const config = buildConfigFromUI();
+    const config = getConfigFromTextarea();
     if (!config) return;
     try {
       await protocol.importConfig(config);
@@ -463,7 +485,7 @@ function setupEvents() {
   });
 
   els.btnStartConfigured.addEventListener('click', async () => {
-    const config = buildConfigFromUI();
+    const config = getConfigFromTextarea();
     if (!config) return;
     try {
       await protocol.importConfig(config);
@@ -517,7 +539,12 @@ function setupEvents() {
     // Find an unused target control id to avoid duplicates if possible
     let newTarget = 'x';
     const usedTargets = new Set(currentConfig.mappings.map(m => m.target_control_id));
-    const commonTargets = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'hat'];
+
+    const isXbox = currentConfig.selected_persona === 'xbox_wireless_controller';
+    const commonTargets = isXbox
+      ? ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'hat']
+      : ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'hat'];
+
     for (const t of commonTargets) {
       if (!usedTargets.has(t)) {
         newTarget = t;
@@ -526,8 +553,8 @@ function setupEvents() {
     }
 
     currentConfig.mappings.push({
-      source_vendor_id: null,
-      source_product_id: null,
+      source_vendor_id: 0,
+      source_product_id: 0,
       source_interface_id: null,
       source_control_id: 'axis_01_30',
       target_control_id: newTarget,
@@ -537,11 +564,6 @@ function setupEvents() {
     });
     renderMappings();
     els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
-  });
-
-  // Presets
-  els.selPersona.addEventListener('change', () => {
-    renderConfig();
   });
 
   // Presets
