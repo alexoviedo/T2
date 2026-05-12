@@ -11,14 +11,21 @@ export function setupFlasher(containerId: string, manifestUrl: string) {
       <h3>Flash Firmware</h3>
       <p>Connect your ESP32-S3 board to flash the latest firmware directly from your browser.</p>
 
-      <!-- ESP Web Tools component -->
-      <esp-web-install-button manifest="${manifestUrl}"></esp-web-install-button>
+      <!-- ESP Web Tools component will be inserted here -->
+      <div id="esp-web-tools-wrapper"></div>
 
       <div class="flasher-notes">
         <p><small>Note: Web Serial requires Chrome or Edge on desktop.</small></p>
       </div>
     </div>
   `;
+
+  const wrapper = container.querySelector('#esp-web-tools-wrapper');
+  if (wrapper) {
+    const installButton = document.createElement('esp-web-install-button');
+    installButton.setAttribute('manifest', manifestUrl);
+    wrapper.appendChild(installButton);
+  }
 
   // Inject script if not already present
   if (!document.querySelector('script[src*="esp-web-tools"]')) {

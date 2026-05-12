@@ -161,10 +161,8 @@ export class SerialConnection {
 
   async commandResponse(cmd: string, expectedPrefixes: string[] = [], timeoutMs = 5000): Promise<string[]> {
     const execute = async () => {
-      // Drain stale lines before sending the command
+      // Drain stale lines before sending the command, but preserve pending lines
       this.lineQueue = [];
-      this.pendingLines.forEach(resolve => resolve('')); // flush pending but there shouldn't be any
-      this.pendingLines = [];
 
       await this.writeLine(cmd);
       const responses: string[] = [];
