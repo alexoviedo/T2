@@ -51,7 +51,7 @@ export const flightPackXbox: RuntimeConfig = {
   mappings: [
     thrustmasterRule(0xb10a, 'axis_01_30', 'left_x'),
     thrustmasterRule(0xb10a, 'axis_01_31', 'left_y'),
-    thrustmasterRule(0xb10a, 'axis_01_36', 'right_x'),
+    thrustmasterRule(0xb687, 'axis_01_36', 'right_x'),
     thrustmasterRule(0xb687, 'axis_01_32', 'right_trigger', {
       type: 'axis_to_trigger',
       source_min: -32768,

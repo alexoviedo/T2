@@ -242,28 +242,40 @@ function renderMappings() {
     inpSrcCtrl.setAttribute('data-field', 'source_control_id');
     inpSrcCtrl.setAttribute('data-idx', idx.toString());
 
-    let knownSources = new Set<string>();
+    const optEmpty = document.createElement('option');
+    optEmpty.value = '';
+    optEmpty.text = 'Select from Catalog...';
+    inpSrcCtrl.appendChild(optEmpty);
+
+    let hasMatch = false;
     if (inputCatalog && Array.isArray(inputCatalog.entries)) {
       inputCatalog.entries.forEach((entry: any) => {
-        if (entry.source_control_id) knownSources.add(entry.source_control_id);
+        if (!entry.source_control_id) return;
+        const vid = entry.vendor_id || 0;
+        const pid = entry.product_id || 0;
+        const iface = entry.interface_id === undefined ? null : entry.interface_id;
+        const ctrl = entry.source_control_id;
+
+        const compositeVal = `${vid}:${pid}:${iface}:${ctrl}`;
+        const opt = document.createElement('option');
+        opt.value = compositeVal;
+        opt.text = `[0x${vid.toString(16).padStart(4, '0')}:0x${pid.toString(16).padStart(4, '0')}] ${ctrl}`;
+        inpSrcCtrl.appendChild(opt);
+
+        if (rule.source_vendor_id === vid && rule.source_product_id === pid && rule.source_control_id === ctrl) {
+          inpSrcCtrl.value = compositeVal;
+          hasMatch = true;
+        }
       });
     }
 
-    // Add common defaults if catalog is empty or just generic defaults
-    ['axis_01_30', 'axis_01_31', 'axis_01_32', 'axis_01_36', 'hat_01_39', 'button_1', 'button_2', 'button_3', 'button_4'].forEach(t => knownSources.add(t));
-
-    if (!knownSources.has(rule.source_control_id)) {
-      knownSources.add(rule.source_control_id);
+    if (!hasMatch) {
+      const optCustom = document.createElement('option');
+      optCustom.value = 'custom';
+      optCustom.text = `Custom (${rule.source_control_id})`;
+      inpSrcCtrl.appendChild(optCustom);
+      inpSrcCtrl.value = 'custom';
     }
-
-    Array.from(knownSources).sort().forEach(srcId => {
-      const opt = document.createElement('option');
-      opt.value = srcId;
-      opt.text = srcId;
-      inpSrcCtrl.appendChild(opt);
-    });
-
-    inpSrcCtrl.value = rule.source_control_id;
     const tdSrcCtrl = document.createElement('td');
     tdSrcCtrl.appendChild(inpSrcCtrl);
     tr.appendChild(tdSrcCtrl);
@@ -418,13 +430,28 @@ function renderMappings() {
         }
       }
 
+      if (field === 'source_control_id') {
+        if (target.value && target.value !== 'custom') {
+          const parts = target.value.split(':');
+          if (parts.length === 4) {
+            rule.source_vendor_id = parseInt(parts[0], 10);
+            rule.source_product_id = parseInt(parts[1], 10);
+            rule.source_interface_id = parts[2] === 'null' ? null : parseInt(parts[2], 10);
+            rule.source_control_id = parts[3];
+            renderMappings();
+            els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
+            return;
+          }
+        }
+      }
+
       if (field === 'source_vendor_id' || field === 'source_product_id') {
         if (!target.value.trim()) {
-          (rule as any)[field] = 0;
+          (rule as any)[field] = null;
         } else {
           const val = target.value.startsWith('0x') ? parseInt(target.value, 16) : parseInt(target.value, 10);
           if (isNaN(val)) {
-            (rule as any)[field] = 0;
+            (rule as any)[field] = null;
           } else {
             (rule as any)[field] = Math.max(0, Math.min(val, 0xFFFF));
           }
@@ -509,34 +536,8 @@ function setupEvents() {
     if (!currentConfig) return;
     currentConfig.selected_persona = els.selPersona.value as any;
 
-    let validTargets: string[] = [];
-    if (currentConfig.selected_persona === 'xbox_wireless_controller') {
-      if (xboxSchema && Array.isArray(xboxSchema.controls)) {
-        validTargets = xboxSchema.controls.map((c: any) => c.control_id);
-      } else {
-        validTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'lb', 'rb', 'view', 'menu', 'nexus', 'share', 'left_stick_press', 'right_stick_press', 'paddle_1', 'paddle_2', 'paddle_3', 'paddle_4', 'hat'];
-      }
-    } else {
-      if (genericSchema && Array.isArray(genericSchema.controls)) {
-        validTargets = genericSchema.controls.map((c: any) => c.control_id);
-      } else {
-        validTargets = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'button_5', 'button_6', 'button_7', 'button_8', 'button_9', 'button_10', 'button_11', 'button_12', 'button_13', 'button_14', 'button_15', 'button_16', 'hat'];
-      }
-    }
-
-    const usedTargets = new Set(currentConfig.mappings.map(m => validTargets.includes(m.target_control_id) ? m.target_control_id : null).filter(Boolean));
     currentConfig.mappings.forEach(m => {
-      if (!validTargets.includes(m.target_control_id)) {
-        let newTarget = '';
-        for (const t of validTargets) {
-          if (!usedTargets.has(t)) {
-            newTarget = t;
-            usedTargets.add(t);
-            break;
-          }
-        }
-        m.target_control_id = newTarget;
-      }
+      m.target_control_id = 'remap_' + m.target_control_id;
     });
 
     renderConfig();
@@ -695,7 +696,7 @@ function setupEvents() {
     if (!currentConfig) return;
 
     // Find an unused target control id to avoid duplicates if possible
-    let newTarget = 'x';
+    let newTarget = '';
     const usedTargets = new Set(currentConfig.mappings.map(m => m.target_control_id));
 
     const isXbox = currentConfig.selected_persona === 'xbox_wireless_controller';
