@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>USB2BLE Configurator</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>USB2BLE Configurator</h1>
+      <div id="connection-badge" class="badge disconnected">Disconnected</div>
+    </header>
+
+    <div class="layout">
+      <nav class="sidebar">
+        <button class="tab-btn active" data-tab="connect">Connect</button>
+        <button class="tab-btn" data-tab="configure">Configure</button>
+        <button class="tab-btn" data-tab="mappings">Mappings</button>
+        <button class="tab-btn" data-tab="presets">Presets</button>
+        <button class="tab-btn" data-tab="firmware">Firmware</button>
+        <button class="tab-btn" data-tab="logs">Logs</button>
+      </nav>
+
+      <main class="content">
+        <!-- ERROR BANNER -->
+        <div id="error-banner" class="hidden">
+          <span id="error-message"></span>
+          <button id="dismiss-error">&times;</button>
+        </div>
+
+        <!-- CONNECT TAB -->
+        <section id="tab-connect" class="tab-content active">
+          <h2>Connection</h2>
+          <p>Connect your USB2BLE board over Web Serial.</p>
+          <div class="card">
+            <button id="btn-connect" class="primary">Connect</button>
+            <button id="btn-disconnect" class="hidden">Disconnect</button>
+          </div>
+
+          <div id="status-card" class="card hidden">
+            <h3>Board Status</h3>
+            <div class="grid-2">
+              <div>Config Status:</div><div id="lbl-config-status">-</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CONFIGURE TAB -->
+        <section id="tab-configure" class="tab-content">
+          <h2>Configure Bridge</h2>
+          <div class="card">
+            <div class="form-group">
+              <label>Config Name:</label>
+              <input type="text" id="inp-display-name" />
+            </div>
+            <div class="form-group">
+              <label>Persona:</label>
+              <select id="sel-persona">
+                <option value="generic_gamepad">Generic Gamepad</option>
+                <option value="xbox_wireless_controller">Xbox Wireless Controller</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Profile:</label>
+              <select id="sel-profile">
+                <option value="custom_runtime">Custom Runtime</option>
+                <option value="generic_auto">Generic Auto</option>
+                <option value="flight_pack_demo">Flight Pack Demo</option>
+                <option value="xbox_auto">Xbox Auto</option>
+                <option value="xbox_flight_pack_demo">Xbox Flight Pack Demo</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Bridge Auto-start Persona:</label>
+              <input type="checkbox" id="chk-auto-start-persona" />
+            </div>
+            <div class="form-group">
+              <label>Bridge Auto-start Bridge:</label>
+              <input type="checkbox" id="chk-auto-start-bridge" />
+            </div>
+            <div class="form-group">
+              <label>Rate (Hz):</label>
+              <input type="number" id="inp-rate-hz" min="1" max="200" />
+            </div>
+          </div>
+
+          <div class="actions card">
+            <button id="btn-commit-config">Commit Config to Board</button>
+            <button id="btn-save-config">Save Config (NVS)</button>
+            <button id="btn-load-config">Load Config</button>
+            <button id="btn-reset-config">Reset Config</button>
+            <button id="btn-start-configured">Start Configured</button>
+          </div>
+
+          <div class="card">
+            <h3>Advanced JSON</h3>
+            <textarea id="txt-json-config" rows="10"></textarea>
+            <button id="btn-import-json">Import JSON Text</button>
+          </div>
+        </section>
+
+        <!-- MAPPINGS TAB -->
+        <section id="tab-mappings" class="tab-content">
+          <h2>Mappings Editor</h2>
+          <div class="card">
+            <table id="mappings-table">
+              <thead>
+                <tr>
+                  <th>Src VID</th>
+                  <th>Src PID</th>
+                  <th>Src I/F</th>
+                  <th>Src Control</th>
+                  <th>Target Control</th>
+                  <th>Invert</th>
+                  <th>Deadzone</th>
+                  <th>Transform Type</th>
+                  <th>Transform Params</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="mappings-tbody">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+            <button id="btn-add-mapping" style="margin-top: 1rem">+ Add Mapping</button>
+          </div>
+
+          <div class="card">
+            <h3>Input Catalog (Connected Devices)</h3>
+            <button id="btn-refresh-catalog">Refresh Catalog</button>
+            <pre id="pre-input-catalog">[]</pre>
+          </div>
+
+          <div class="card">
+            <h3>Persona Schemas</h3>
+            <button id="btn-refresh-schemas">Refresh Schemas</button>
+            <h4>Generic</h4>
+            <pre id="pre-schema-generic">{}</pre>
+            <h4>Xbox</h4>
+            <pre id="pre-schema-xbox">{}</pre>
+          </div>
+        </section>
+
+        <!-- PRESETS TAB -->
+        <section id="tab-presets" class="tab-content">
+          <h2>Presets</h2>
+          <p>Apply predefined configurations to the board.</p>
+          <div class="card">
+            <button id="btn-preset-generic" class="primary">Apply Flight Pack Generic</button>
+            <button id="btn-preset-xbox" class="primary">Apply Flight Pack Xbox</button>
+          </div>
+        </section>
+
+        <!-- FIRMWARE TAB -->
+        <section id="tab-firmware" class="tab-content">
+          <div id="flasher-root"></div>
+        </section>
+
+        <!-- LOGS TAB -->
+        <section id="tab-logs" class="tab-content">
+          <h2>Serial Logs</h2>
+          <div class="card">
+            <button id="btn-clear-logs">Clear Logs</button>
+            <div id="serial-log-container" class="log-container"></div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
