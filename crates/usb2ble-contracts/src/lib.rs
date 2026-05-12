@@ -847,7 +847,7 @@ impl RuntimeConfig {
             mappings: vec![
                 thrustmaster_rule(0xb10a, Some(0), "axis_01_30", "left_x"),
                 thrustmaster_rule(0xb10a, Some(0), "axis_01_31", "left_y"),
-                thrustmaster_rule(0xb687, Some(0), "axis_01_36", "right_x"),
+                thrustmaster_rule(0xb10a, Some(0), "axis_01_36", "right_x"),
                 throttle,
                 thrustmaster_rule(0xb10a, Some(0), "hat_01_39", "hat"),
                 thrustmaster_rule(0xb10a, Some(0), "button_1", "a"),

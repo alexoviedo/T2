@@ -447,11 +447,11 @@ function renderMappings() {
 
       if (field === 'source_vendor_id' || field === 'source_product_id') {
         if (!target.value.trim()) {
-          (rule as any)[field] = null;
+          (rule as any)[field] = 0;
         } else {
           const val = target.value.startsWith('0x') ? parseInt(target.value, 16) : parseInt(target.value, 10);
           if (isNaN(val)) {
-            (rule as any)[field] = null;
+            (rule as any)[field] = 0;
           } else {
             (rule as any)[field] = Math.max(0, Math.min(val, 0xFFFF));
           }
@@ -536,8 +536,54 @@ function setupEvents() {
     if (!currentConfig) return;
     currentConfig.selected_persona = els.selPersona.value as any;
 
+    let validTargets: string[] = [];
+    const isXbox = currentConfig.selected_persona === 'xbox_wireless_controller';
+    if (isXbox) {
+      if (xboxSchema && Array.isArray(xboxSchema.controls)) {
+        validTargets = xboxSchema.controls.map((c: any) => c.control_id);
+      } else {
+        validTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'lb', 'rb', 'view', 'menu', 'nexus', 'share', 'left_stick_press', 'right_stick_press', 'paddle_1', 'paddle_2', 'paddle_3', 'paddle_4', 'hat'];
+      }
+    } else {
+      if (genericSchema && Array.isArray(genericSchema.controls)) {
+        validTargets = genericSchema.controls.map((c: any) => c.control_id);
+      } else {
+        validTargets = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'button_5', 'button_6', 'button_7', 'button_8', 'button_9', 'button_10', 'button_11', 'button_12', 'button_13', 'button_14', 'button_15', 'button_16', 'hat'];
+      }
+    }
+
+    const ambiguous = ['x', 'y'];
+    const usedTargets = new Set<string>();
+
     currentConfig.mappings.forEach(m => {
-      m.target_control_id = 'remap_' + m.target_control_id;
+      const keep = validTargets.includes(m.target_control_id) && !ambiguous.includes(m.target_control_id);
+      if (keep && !usedTargets.has(m.target_control_id)) {
+        usedTargets.add(m.target_control_id);
+        (m as any)._kept = true;
+      } else {
+        (m as any)._kept = false;
+      }
+    });
+
+    currentConfig.mappings.forEach(m => {
+      if (!(m as any)._kept) {
+        let newTarget = '';
+        for (const t of validTargets) {
+          if (!usedTargets.has(t)) {
+            newTarget = t;
+            usedTargets.add(t);
+            break;
+          }
+        }
+        if (!newTarget) {
+          if (validTargets.includes(m.target_control_id)) {
+            m.target_control_id = 'remap_' + m.target_control_id;
+          }
+        } else {
+          m.target_control_id = newTarget;
+        }
+      }
+      delete (m as any)._kept;
     });
 
     renderConfig();
