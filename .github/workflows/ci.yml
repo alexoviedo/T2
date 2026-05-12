@@ -153,6 +153,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [host_checks, esp32s3_target_preflight, web_checks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -179,7 +182,8 @@ jobs:
         run: |
           mkdir -p web/dist/firmware
           cp firmware-dist/usb2ble-fw-esp32s3-merged.bin web/dist/firmware/
-          cat << 'EOF' > web/dist/firmware/manifest.json
+          FW_SHA=$(sha256sum firmware-dist/usb2ble-fw-esp32s3-merged.bin | awk '{print $1}')
+          cat << EOF > web/dist/firmware/manifest.json
 {
   "name": "USB2BLE",
   "version": "latest",
@@ -190,7 +194,8 @@ jobs:
       "parts": [
         {
           "path": "usb2ble-fw-esp32s3-merged.bin",
-          "offset": 0
+          "offset": 0,
+          "sha256": "$FW_SHA"
         }
       ]
     }

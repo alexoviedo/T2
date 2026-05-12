@@ -243,9 +243,9 @@ function renderMappings() {
     inpSrcCtrl.setAttribute('data-idx', idx.toString());
 
     let knownSources = new Set<string>();
-    if (Array.isArray(inputCatalog)) {
-      inputCatalog.forEach(entry => {
-        if (entry.control_id) knownSources.add(entry.control_id);
+    if (inputCatalog && Array.isArray(inputCatalog.entries)) {
+      inputCatalog.entries.forEach((entry: any) => {
+        if (entry.source_control_id) knownSources.add(entry.source_control_id);
       });
     }
 
@@ -279,7 +279,7 @@ function renderMappings() {
       if (xboxSchema && Array.isArray(xboxSchema.controls)) {
         validTargets = xboxSchema.controls.map((c: any) => c.control_id);
       } else {
-        validTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'lb', 'rb', 'view', 'menu', 'nexus', 'share', 'left_stick', 'right_stick', 'paddle_1', 'paddle_2', 'paddle_3', 'paddle_4', 'hat'];
+        validTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'lb', 'rb', 'view', 'menu', 'nexus', 'share', 'left_stick_press', 'right_stick_press', 'paddle_1', 'paddle_2', 'paddle_3', 'paddle_4', 'hat'];
       }
     } else {
       if (genericSchema && Array.isArray(genericSchema.controls)) {
@@ -289,17 +289,20 @@ function renderMappings() {
       }
     }
 
-    // Always include the current rule's target even if not in schema (e.g. from JSON import)
-    if (!validTargets.includes(rule.target_control_id)) {
-      validTargets.push(rule.target_control_id);
-    }
-
     validTargets.forEach(t => {
       const opt = document.createElement('option');
       opt.value = t;
       opt.text = t;
       inpTgtCtrl.appendChild(opt);
     });
+
+    // If the current rule's target is invalid, add it as a visually invalid option
+    if (rule.target_control_id && !validTargets.includes(rule.target_control_id)) {
+      const opt = document.createElement('option');
+      opt.value = rule.target_control_id;
+      opt.text = `Invalid (${rule.target_control_id})`;
+      inpTgtCtrl.appendChild(opt);
+    }
 
     inpTgtCtrl.value = rule.target_control_id;
     const tdTgtCtrl = document.createElement('td');
@@ -406,13 +409,22 @@ function renderMappings() {
       const idx = parseInt(target.getAttribute('data-idx')!);
       const rule = currentConfig!.mappings[idx];
 
+      if (field === 'target_control_id') {
+        const usedByOther = currentConfig!.mappings.some((m, i) => i !== idx && m.target_control_id === target.value);
+        if (usedByOther) {
+          alert(`Target control ID '${target.value}' is already used by another mapping.`);
+          target.value = rule.target_control_id; // Revert change visually
+          return; // Skip updating the model
+        }
+      }
+
       if (field === 'source_vendor_id' || field === 'source_product_id') {
         if (!target.value.trim()) {
-          (rule as any)[field] = null;
+          (rule as any)[field] = 0;
         } else {
           const val = target.value.startsWith('0x') ? parseInt(target.value, 16) : parseInt(target.value, 10);
           if (isNaN(val)) {
-            (rule as any)[field] = null;
+            (rule as any)[field] = 0;
           } else {
             (rule as any)[field] = Math.max(0, Math.min(val, 0xFFFF));
           }
@@ -428,7 +440,7 @@ function renderMappings() {
         rule.invert = target.checked;
       } else if (field === 'deadzone') {
         const parsedDz = parseInt(target.value, 10);
-        rule.deadzone = isNaN(parsedDz) ? null : parsedDz;
+        rule.deadzone = isNaN(parsedDz) ? null : Math.max(0, Math.min(parsedDz, 0xFFFF));
       } else if (field === 'transform_type') {
         if (target.value) {
           if (!rule.transform) {
@@ -437,8 +449,8 @@ function renderMappings() {
             rule.transform.type = target.value;
           }
           if (target.value === 'axis_to_trigger') {
-            rule.transform.source_min = rule.transform.source_min ?? 0;
-            rule.transform.source_max = rule.transform.source_max ?? 255;
+            rule.transform.source_min = rule.transform.source_min ?? -32768;
+            rule.transform.source_max = rule.transform.source_max ?? 32767;
             rule.transform.invert = rule.transform.invert ?? false;
           }
         } else {
@@ -496,6 +508,28 @@ function setupEvents() {
     // and correctly fallback to valid options first, THEN update the JSON source of truth.
     if (!currentConfig) return;
     currentConfig.selected_persona = els.selPersona.value as any;
+
+    let validTargets: string[] = [];
+    if (currentConfig.selected_persona === 'xbox_wireless_controller') {
+      if (xboxSchema && Array.isArray(xboxSchema.controls)) {
+        validTargets = xboxSchema.controls.map((c: any) => c.control_id);
+      } else {
+        validTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'lb', 'rb', 'view', 'menu', 'nexus', 'share', 'left_stick_press', 'right_stick_press', 'paddle_1', 'paddle_2', 'paddle_3', 'paddle_4', 'hat'];
+      }
+    } else {
+      if (genericSchema && Array.isArray(genericSchema.controls)) {
+        validTargets = genericSchema.controls.map((c: any) => c.control_id);
+      } else {
+        validTargets = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'button_1', 'button_2', 'button_3', 'button_4', 'button_5', 'button_6', 'button_7', 'button_8', 'button_9', 'button_10', 'button_11', 'button_12', 'button_13', 'button_14', 'button_15', 'button_16', 'hat'];
+      }
+    }
+
+    currentConfig.mappings.forEach(m => {
+      if (!validTargets.includes(m.target_control_id)) {
+        m.target_control_id = validTargets.length > 0 ? validTargets[0] : '';
+      }
+    });
+
     renderConfig();
     updateJsonFromForm();
   });
@@ -626,6 +660,7 @@ function setupEvents() {
       const raw = await protocol.getInputCatalog();
       els.preInputCatalog.textContent = raw;
       try { inputCatalog = JSON.parse(raw); } catch (e) { /* ignore parse error for catalog */ }
+      renderMappings();
     } catch (e: any) {
       showError(e.message);
     }
@@ -661,7 +696,7 @@ function setupEvents() {
       if (xboxSchema && Array.isArray(xboxSchema.controls)) {
         commonTargets = xboxSchema.controls.map((c: any) => c.control_id);
       } else {
-        commonTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'lb', 'rb', 'view', 'menu', 'nexus', 'share', 'left_stick', 'right_stick', 'paddle_1', 'paddle_2', 'paddle_3', 'paddle_4', 'hat'];
+        commonTargets = ['left_x', 'left_y', 'right_x', 'right_y', 'left_trigger', 'right_trigger', 'a', 'b', 'x', 'y', 'lb', 'rb', 'view', 'menu', 'nexus', 'share', 'left_stick_press', 'right_stick_press', 'paddle_1', 'paddle_2', 'paddle_3', 'paddle_4', 'hat'];
       }
     } else {
       if (genericSchema && Array.isArray(genericSchema.controls)) {
@@ -679,8 +714,8 @@ function setupEvents() {
     }
 
     currentConfig.mappings.push({
-      source_vendor_id: 0,
-      source_product_id: 0,
+      source_vendor_id: 0x044f,
+      source_product_id: 0xb10a,
       source_interface_id: null,
       source_control_id: 'axis_01_30',
       target_control_id: newTarget,
