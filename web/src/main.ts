@@ -524,9 +524,18 @@ function setupEvents() {
       }
     }
 
+    const usedTargets = new Set(currentConfig.mappings.map(m => validTargets.includes(m.target_control_id) ? m.target_control_id : null).filter(Boolean));
     currentConfig.mappings.forEach(m => {
       if (!validTargets.includes(m.target_control_id)) {
-        m.target_control_id = validTargets.length > 0 ? validTargets[0] : '';
+        let newTarget = '';
+        for (const t of validTargets) {
+          if (!usedTargets.has(t)) {
+            newTarget = t;
+            usedTargets.add(t);
+            break;
+          }
+        }
+        m.target_control_id = newTarget;
       }
     });
 

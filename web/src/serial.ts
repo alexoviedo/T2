@@ -173,6 +173,11 @@ export class SerialConnection {
         if (line === 'OK' || line.startsWith('ERROR:')) {
           break;
         }
+
+        const hasExpectedPrefix = expectedPrefixes.some(prefix => line.startsWith(prefix));
+        if (hasExpectedPrefix) {
+          break;
+        }
       }
 
       return responses;
