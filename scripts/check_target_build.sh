@@ -9,7 +9,7 @@ fi
 TARGET="xtensa-esp32s3-espidf"
 
 # Use the Espressif Rust toolchain explicitly when available (CI via xtensa-toolchain action).
-if rustup toolchain list | grep -q '^esp'; then
+if cargo +esp --version >/dev/null 2>&1; then
     CARGO_BIN=(cargo +esp)
     BUILD_FLAGS=("-Z" "build-std=std,panic_abort")
 else
