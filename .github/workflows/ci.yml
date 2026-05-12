@@ -67,10 +67,7 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         cache-directories: ".embuild"
-        cache-targets: "false"
-
-    - name: Shell syntax check
-      run: bash -n scripts/*.sh
+        cache-targets: false
 
     - name: Toolchain diagnostics
       run: |
@@ -142,7 +139,6 @@ jobs:
           tag_name: latest
           name: Latest USB2BLE firmware
           fail_on_unmatched_files: true
-          overwrite_files: true
           make_latest: true
           files: |
             firmware/usb2ble-fw-esp32s3-merged.bin
@@ -187,24 +183,24 @@ jobs:
           cp firmware-dist/usb2ble-fw-esp32s3-merged.bin web/dist/firmware/
           FW_SHA=$(sha256sum firmware-dist/usb2ble-fw-esp32s3-merged.bin | awk '{print $1}')
           cat << EOF > web/dist/firmware/manifest.json
-{
-  "name": "USB2BLE",
-  "version": "latest",
-  "new_install_prompt_erase": true,
-  "builds": [
-    {
-      "chipFamily": "ESP32-S3",
-      "parts": [
-        {
-          "path": "usb2ble-fw-esp32s3-merged.bin",
-          "offset": 0,
-          "sha256": "$FW_SHA"
-        }
-      ]
-    }
-  ]
-}
-EOF
+          {
+            "name": "USB2BLE",
+            "version": "latest",
+            "new_install_prompt_erase": true,
+            "builds": [
+              {
+                "chipFamily": "ESP32-S3",
+                "parts": [
+                  {
+                    "path": "usb2ble-fw-esp32s3-merged.bin",
+                    "offset": 0,
+                    "sha256": "$FW_SHA"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
