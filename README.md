@@ -87,6 +87,8 @@
 - `tools/flight_pack_calibration_witness.py` guides named Flight Pack movements and drafts calibration/axis-label evidence.
 - `tools/configure_board.py` exercises the runtime configuration protocol over
   USB serial for Web Serial/webapp smoke testing.
+- `tools/config_persistence_witness.py` captures target-side runtime config
+  import/save/reset/load/start evidence under `target/`.
 - `tools/mapping_delta_witness.py` captures clean before/after or timed-watch `GET_GENERIC_GAMEPAD_MAPPING` deltas for one physical control.
 - `tools/usb_report_delta_witness.py` captures lower-level `GET_LAST_USB_REPORT` byte deltas so raw USB movement can be proven before debugging normalization or mapping.
 - `tools/detach_cleanup_witness.py` captures before/detach/after cleanup evidence for one downstream USB HID device.
@@ -184,6 +186,9 @@ See: `docs/XBOX_BLE_DEMO_RUNBOOK.md`
 
 ## Game/app compatibility witness
 See: `docs/GAME_COMPATIBILITY_WITNESS.md`
+
+## Config persistence witness
+See: `docs/CONFIG_PERSISTENCE_WITNESS.md`
 
 ## Project status handoff
 See: `docs/PROJECT_STATUS_HANDOFF.md`

@@ -68,3 +68,16 @@ python3 tools/configure_board.py --port <PORT> start-configured
 ```
 
 Transcripts are saved under `target/configure-board/<timestamp>/`.
+
+## Persistence Witness
+
+For a complete target-side evidence run that captures baseline status, schema,
+catalog, chunked import, save/reset/load, and `START_CONFIGURED`, use:
+
+```bash
+python3 tools/config_persistence_witness.py --port <PORT>
+```
+
+See `docs/CONFIG_PERSISTENCE_WITNESS.md`. The witness proves the CLI/Web
+Serial-compatible protocol path, not browser UI behavior or game/app
+compatibility.

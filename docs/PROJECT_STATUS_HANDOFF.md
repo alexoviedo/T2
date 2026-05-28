@@ -33,6 +33,9 @@ Checked-in evidence supports:
 - No-hardware host validation through `scripts/validate_no_hardware.sh`.
 - ESP32-S3 target preflight through `./scripts/check_target_build.sh` when the
   local Xtensa/ESP-IDF toolchain is installed.
+- Runtime config protocol evidence through
+  `tools/config_persistence_witness.py` when a serial port is explicitly
+  provided.
 - Generic BLE demo rehearsal through `tools/asap_demo_rehearsal.py` when
   hardware is connected.
 - Xbox BLE compatibility rehearsal through `tools/xbox_demo_rehearsal.py` when
@@ -120,8 +123,8 @@ Recommended order:
 - Flight Pack calibration/axis-label evidence and profile refinement.
 - Web Serial configurator smoke against real hardware, including config import
   and `START_CONFIGURED`.
-- Target evidence for durable config persistence, or an explicit doc note if
-  persistence is still only an API surface.
+- Target config persistence witness using `docs/CONFIG_PERSISTENCE_WITNESS.md`;
+  add checked-in evidence only from real captured transcripts.
 - First real game/app compatibility witness using
   `docs/GAME_COMPATIBILITY_WITNESS.md`.
 - Reconnect/bond recovery hardening with checked-in transcripts.
