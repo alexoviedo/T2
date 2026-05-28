@@ -132,6 +132,7 @@ bash -n scripts/*.sh
 - [x] Normalized report coverage captured for TFRP pedals.
 - [x] Normalized report coverage captured for TWCS throttle when connected through the hub without the other Flight Pack devices.
 - [x] Normalized report coverage captured for the practical RJ12 Flight Pack topology: TFRP pedals connected to TWCS by RJ12, with TWCS USB plus T.16000M stick USB through the HooToo hub.
+- [x] Practical RJ12 topology axis-label witness captured for TWCS throttle, TFRP rudder, and TFRP toe brakes.
 - [ ] Normalized report coverage captured for all three separate simultaneous Flight Pack USB devices.
 
 ## M4 Current Evidence
@@ -141,7 +142,8 @@ bash -n scripts/*.sh
 - **Additional Flight Pack coverage:** TFRP pedals `044f:b679` normalized in a full-pack run; TWCS throttle `044f:b687` normalized when connected through the hub without the other Flight Pack devices; RJ12 topology normalized with pedals connected to TWCS and both TWCS USB plus T.16000M stick USB streaming together through the hub
 - **Normalized command:** `GET_NORMALIZED_INPUT 2:0`
 - **Normalized result:** `controls=21`, including 16 buttons, 1 hat, and 4 axes from a real 64-byte target input report
-- **Remaining M4-specific scope:** exact RJ12 pedal axis labels and all-device simultaneous Flight Pack streaming with three separate USB Flight Pack devices remain future work. Later demo-bridge evidence covers BLE publishing separately.
+- **Flight Pack axis-label evidence:** `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md` captures high-confidence labels for TWCS throttle and TFRP/RJ12 rudder/toe axes in the practical two-USB topology.
+- **Remaining M4-specific scope:** all-device simultaneous Flight Pack streaming with three separate USB Flight Pack devices remains future work. Later demo-bridge evidence covers BLE publishing separately.
 
 ## Demo Bridge — USB state to encoded Generic Gamepad report
 
@@ -154,7 +156,7 @@ bash -n scripts/*.sh
 - [x] Explicit `START_BRIDGE` live bridge mode publishes USB-derived Generic reports automatically while connected.
 - [ ] Broad game/app compatibility witness captured for the Generic Gamepad path.
 - [ ] Generic long-duration live bridge soak evidence checked in.
-- [ ] Final Flight Pack calibration/deadzone semantics evidenced.
+- [ ] Final Flight Pack calibration/deadzone semantics evidenced. Axis-label evidence exists for the practical RJ12 topology, but final calibration quality remains open.
 
 ## Demo Bridge Validation Commands
 

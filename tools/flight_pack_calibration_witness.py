@@ -190,8 +190,12 @@ def source_for_device(devices: list[dict[str, str]], pid: str) -> str | None:
 def parse_normalized(line: str | None) -> dict[str, dict[str, int | str]]:
     if line is None or not line.startswith("NORMALIZED_INPUT:"):
         return {}
+    _, _, payload = line.partition(":")
     values: dict[str, dict[str, int | str]] = {}
-    for key, kind, value in re.findall(r"(.*?[^;=])=(axis|button|hat|trigger|unknown):(-?\d+);", line):
+    for key, kind, value in re.findall(
+        r"([^;=]+)=(axis|button|hat|trigger|unknown):(-?\d+);",
+        payload,
+    ):
         if key == "controls":
             continue
         values[key] = {"kind": kind, "value": int(value)}
@@ -252,6 +256,19 @@ def changed_summary(
     generic_mapping: dict[str, dict[str, str]],
     xbox_mapping: dict[str, dict[str, str]],
 ) -> dict[str, Any]:
+    if previous is None:
+        return {
+            "step": step.key,
+            "label": step.label,
+            "expected_inferred_label": step.inferred_label,
+            "primary_control_id": None,
+            "primary_delta": None,
+            "generic_target": None,
+            "xbox_target": None,
+            "confidence": "reference",
+            "changed_controls": [],
+        }
+
     deltas = numeric_delta(previous or {}, current)
     primary = deltas[0] if deltas else None
     confidence = "none"
@@ -489,6 +506,17 @@ def main() -> int:
         serial.close()
 
     line_refs = write_transcript(transcript_file, sections)
+    high_confidence_steps = [
+        summary["step"] for summary in summaries if summary.get("confidence") == "high"
+    ]
+    low_confidence_steps = [
+        summary["step"]
+        for summary in summaries
+        if summary.get("confidence") in {"low", "none"}
+    ]
+    reference_steps = [
+        summary["step"] for summary in summaries if summary.get("confidence") == "reference"
+    ]
     payload = {
         "captured_at": stamp,
         "port": args.port,
@@ -496,6 +524,10 @@ def main() -> int:
         "parsed_deltas": str(parsed_file),
         "markdown_draft": str(markdown_file),
         "source_map": source_map,
+        "all_required_steps_captured": len(summaries) == len(selected_steps),
+        "high_confidence_steps": high_confidence_steps,
+        "low_confidence_steps": low_confidence_steps,
+        "reference_steps": reference_steps,
         "summaries": summaries,
         "steps": step_payloads,
     }

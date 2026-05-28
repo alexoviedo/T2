@@ -27,7 +27,8 @@
   one-shot commands.
 - Repeatable soak and calibration witness tooling is available for the next
   demo-hardening pass. Xbox live bridge now has a checked-in 300-second soak
-  witness; Generic soak and final Flight Pack calibration still need separate
+  witness; practical RJ12 Flight Pack axis labels are checked in; Generic soak
+  and final Flight Pack calibration/deadzone semantics still need separate
   evidence.
 - Browser Web Serial configurator smoke is checked in for Google Chrome:
   connect, config/status/schema/catalog load, Flight Pack Generic import,
@@ -44,8 +45,8 @@
 ## Current project phase: post-M4 demo bridge / pre-product-hardening
 - M4 target scope was HID report decoding and normalized live-input diagnostics.
 - descriptor/report/summary/normalized-input control-plane fulfillment is proven for the THRUSTMASTER T.16000 FCS HOTAS through the HooToo powered hub.
-- expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, and simultaneous normalized input for the recommended two-USB topology: pedals connected to TWCS by RJ12, with TWCS USB plus stick USB through the HooToo hub.
-- explicit calibrated TWCS/TFRP axis targets, exact RJ12 pedal axis labels, and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4 completion.
+- expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, simultaneous normalized input for the recommended two-USB topology, and practical RJ12 labels for TWCS throttle plus TFRP rudder/toe axes.
+- final deadzone/calibration semantics and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4/product hardening.
 - BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses; final app/game compatibility and HOTAS mapping remain open.
 
 ## What works today
@@ -88,6 +89,8 @@
 - `tools/xbox_demo_rehearsal.py` runs the Xbox BLE compatibility rehearsal, supports `--live-bridge`, and saves serial proof plus optional browser witness evidence.
 - `tools/live_bridge_soak.py` runs a timed Generic or Xbox live bridge soak and saves bridge status samples.
 - `tools/flight_pack_calibration_witness.py` guides named Flight Pack movements and drafts calibration/axis-label evidence.
+- Practical Flight Pack axis-label evidence exists in
+  `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md`.
 - `tools/configure_board.py` exercises the runtime configuration protocol over
   USB serial for Web Serial/webapp smoke testing.
 - Browser Web Serial configurator smoke evidence exists in
@@ -106,8 +109,8 @@
 ## What is not implemented yet
 - direct-attach hardware transcript remains blocked by available cabling/port geometry.
 - full target IR diagnostic dump.
-- calibrated TWCS/TFRP profile refinements beyond the current demo rules.
-- exact RJ12 pedal axis labels.
+- calibrated TWCS/TFRP profile refinements and deadzone semantics beyond the
+  current demo rules.
 - game/application compatibility beyond the browser Gamepad API witness.
 - broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
 - checked-in Generic long-duration live bridge soak evidence.
