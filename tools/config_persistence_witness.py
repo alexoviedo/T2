@@ -13,6 +13,8 @@ import json
 import os
 import pathlib
 import select
+import shlex
+import subprocess
 import sys
 import termios
 import time
@@ -23,6 +25,7 @@ from typing import Any
 CHUNK_BYTES = 72
 DEFAULT_OUT_DIR = pathlib.Path("target/config-persistence-witness")
 DEFAULT_TIMEOUT = 8.0
+DEFAULT_RESET_COMMAND = "espflash reset --chip esp32s3 --port {port} --non-interactive"
 RESPONSE_PREFIXES = (
     "INFO:",
     "STATUS:",
@@ -356,6 +359,21 @@ def config_jsons(records: list[CommandRecord]) -> list[dict[str, Any]]:
     return parsed
 
 
+def last_config_json_for(records: list[CommandRecord], section: str) -> dict[str, Any] | None:
+    line = last_response(
+        records,
+        section=section,
+        command="GET_CONFIG_JSON",
+        prefix="CONFIG_JSON:",
+    )
+    if line is None:
+        return None
+    try:
+        return json.loads(line.split(":", 1)[1])
+    except json.JSONDecodeError:
+        return None
+
+
 def write_text_transcript(path: pathlib.Path, records: list[CommandRecord]) -> None:
     lines: list[str] = []
     last_section = None
@@ -382,6 +400,7 @@ def write_outputs(
     imported_config: dict[str, Any],
     loaded_config: dict[str, Any] | None,
     summary: dict[str, Any],
+    evidence_path: pathlib.Path | None = None,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     write_text_transcript(out_dir / "serial_transcript.txt", records)
@@ -414,7 +433,59 @@ def write_outputs(
         "- Reboot persistence unless this run was paired with an actual board reset and",
         "  a second LOAD_CONFIG/GET_CONFIG_JSON capture.",
     ]
+    if evidence_path is not None:
+        notes.extend(
+            [
+                "",
+                "## Checked-In Evidence",
+                "",
+                f"Concise evidence summary: `{evidence_path}`",
+            ]
+        )
     (out_dir / "operator_notes.md").write_text("\n".join(notes) + "\n", encoding="utf-8")
+
+
+def run_reset_command(command_template: str, port: str) -> dict[str, Any]:
+    try:
+        command = command_template.format(port=port)
+    except (KeyError, ValueError) as err:
+        return {
+            "command": command_template,
+            "returncode": 1,
+            "stdout": "",
+            "stderr": f"reset command template error: {err}",
+            "ok": False,
+        }
+    if not command.strip():
+        return {
+            "command": command,
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "reset command is empty",
+            "ok": False,
+        }
+    try:
+        completed = subprocess.run(
+            shlex.split(command),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as err:
+        return {
+            "command": command,
+            "returncode": None,
+            "stdout": "",
+            "stderr": str(err),
+            "ok": False,
+        }
+    return {
+        "command": command,
+        "returncode": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+        "ok": completed.returncode == 0,
+    }
 
 
 def build_summary(
@@ -423,6 +494,7 @@ def build_summary(
     records: list[CommandRecord],
     imported_config: dict[str, Any],
     loaded_config: dict[str, Any] | None,
+    reset_command_result: dict[str, Any] | None,
 ) -> dict[str, Any]:
     config_statuses = responses_with_prefix(records, "CONFIG_STATUS:")
     config_json_list = config_jsons(records)
@@ -439,10 +511,11 @@ def build_summary(
             prefix="CONFIG_STATUS:",
         )
     )
+    loaded_section = "post-reboot" if args.reboot_after_save else "persistence"
     loaded_status = parse_fields(
         last_response(
             records,
-            section="persistence",
+            section=loaded_section,
             command="GET_CONFIG_STATUS",
             prefix="CONFIG_STATUS:",
         )
@@ -450,6 +523,24 @@ def build_summary(
     start_action = response_with_prefix(
         [record for record in records if record.command == "START_CONFIGURED"],
         "CONFIG_ACTION:",
+    )
+    persistence_errors = [
+        response
+        for record in records
+        if record.section in ("import", "post-import", "persistence", "post-reboot")
+        for response in record.responses
+        if response.startswith("ERROR:")
+    ]
+    command_path_persistence_proven = bool(
+        imported_matches_export
+        and loaded_matches_imported
+        and post_import_status.get("valid") == "true"
+        and loaded_status.get("valid") == "true"
+        and not persistence_errors
+    )
+    reset_ok = reset_command_result is None or reset_command_result.get("ok") is True
+    reboot_persistence_proven = bool(
+        args.reboot_after_save and reset_ok and command_path_persistence_proven
     )
     return {
         "started_at_utc": args.started_at,
@@ -461,8 +552,14 @@ def build_summary(
         "config_file": str(args.config_json) if args.config_json else None,
         "skip_reset": args.skip_reset,
         "auto_start_bridge": args.auto_start_bridge,
+        "reboot_after_save": args.reboot_after_save,
+        "reset_command": args.reset_command,
+        "post_reset_wait_seconds": args.post_reset_wait_seconds,
+        "checked_in_evidence_requested": not args.no_checked_in_evidence,
         "commands": len(records),
         "errors": errors,
+        "persistence_errors": persistence_errors,
+        "reset_command_result": reset_command_result,
         "config_statuses": config_statuses,
         "final_config_status": final_status,
         "post_import_config_status": post_import_status,
@@ -475,14 +572,122 @@ def build_summary(
         "loaded_status_valid": loaded_status.get("valid") == "true",
         "imported_matches_export": imported_matches_export,
         "loaded_matches_imported": loaded_matches_imported,
+        "command_path_persistence_proven": command_path_persistence_proven,
         "start_configured_response": start_action,
         "bridge_status": response_with_prefix(records, "BRIDGE_STATUS:"),
         "config_sha256": hashlib.sha256(minified_json_bytes(imported_config)).hexdigest(),
         "web_serial_protocol_smoke": not errors,
-        "reboot_persistence_proven": False,
+        "reboot_persistence_attempted": args.reboot_after_save,
+        "reboot_persistence_proven": reboot_persistence_proven,
         "browser_web_serial_ui_proven": False,
         "game_app_compatibility_proven": False,
     }
+
+
+def evidence_excerpt(records: list[CommandRecord], commands: set[str]) -> list[str]:
+    lines: list[str] = []
+    for record in records:
+        if record.command not in commands:
+            continue
+        lines.append(f">> {record.command}")
+        lines.extend(record.responses[:3] or ["<no matching response>"])
+        lines.append("")
+    return lines
+
+
+def write_checked_in_evidence(
+    run_dir: pathlib.Path,
+    records: list[CommandRecord],
+    summary: dict[str, Any],
+) -> pathlib.Path:
+    date = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    path = pathlib.Path("docs/milestone-evidence") / f"CONFIG_PERSISTENCE_WITNESS_{date}.md"
+    git_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() or "unknown"
+    git_dirty = (
+        subprocess.run(
+            ["git", "diff", "--quiet", "--ignore-submodules", "HEAD", "--"],
+            check=False,
+        ).returncode
+        != 0
+    )
+    excerpt_commands = {
+        "GET_INFO",
+        "GET_STATUS",
+        "GET_USB_STATUS",
+        "LIST_USB_DEVICES",
+        "GET_CONFIG_STATUS",
+        "COMMIT_CONFIG_JSON",
+        "SAVE_CONFIG",
+        "RESET_CONFIG",
+        "LOAD_CONFIG",
+        "GET_CONFIG_JSON",
+        "START_CONFIGURED",
+    }
+    lines = [
+        f"# Config Persistence Witness - {date}",
+        "",
+        "## Summary",
+        "",
+        "Real ESP32-S3 target evidence for runtime configuration import, save,",
+        "load, and configured start behavior.",
+        "",
+        "This is CLI serial protocol evidence for the Web Serial-compatible config",
+        "path. It is not browser Web Serial UI evidence, BLE/gamepad compatibility,",
+        "game/app compatibility, BLE bond persistence, or Flight Pack calibration",
+        "evidence.",
+        "",
+        "## Environment",
+        "",
+        f"- Date/time UTC: `{summary['started_at_utc']}`",
+        f"- Commit SHA: `{git_sha}`",
+        f"- Git dirty during run: `{str(git_dirty).lower()}`",
+        f"- Serial port: `{summary['port']}`",
+        f"- Persona/profile: `{summary['persona']}` / `{summary['profile']}`",
+        "- Hardware topology: ESP32-S3 serial/programming USB; HooToo SHUTTLE",
+        "  HT-UC001 powered hub on ESP32-S3 USB host/OTG; T.16000M stick USB and",
+        "  TWCS throttle USB on the hub; TFRP pedals connected to TWCS via RJ12",
+        "  when present.",
+        f"- Generated artifacts: `{run_dir}`",
+        "",
+        "## Commands Run",
+        "",
+        "```bash",
+        "python3 tools/config_persistence_witness.py --help",
+        f"python3 tools/config_persistence_witness.py --port {summary['port']}"
+        + (" --reboot-after-save" if summary["reboot_persistence_attempted"] else ""),
+        "```",
+        "",
+        "## Result Summary",
+        "",
+        f"- `imported_matches_export`: `{summary['imported_matches_export']}`",
+        f"- `loaded_matches_imported`: `{summary['loaded_matches_imported']}`",
+        f"- `command_path_persistence_proven`: `{summary['command_path_persistence_proven']}`",
+        f"- `reboot_persistence_attempted`: `{summary['reboot_persistence_attempted']}`",
+        f"- `reboot_persistence_proven`: `{summary['reboot_persistence_proven']}`",
+        f"- `errors`: `{summary['errors']}`",
+        "",
+        "## Transcript Excerpts",
+        "",
+        "```text",
+        *evidence_excerpt(records, excerpt_commands),
+        "```",
+        "",
+        "## Limitations",
+        "",
+        "- Browser Web Serial UI smoke is not claimed.",
+        "- BLE/gamepad and game/app compatibility are not claimed.",
+        "- BLE bond persistence is not claimed.",
+        "- Final Flight Pack calibration/deadzone semantics are not claimed.",
+    ]
+    if not summary["reboot_persistence_proven"]:
+        lines.append("- Actual post-reboot config persistence remains unproven by this run.")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
 
 
 def parse_args() -> argparse.Namespace:
@@ -517,6 +722,30 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Set bridge.auto_start_bridge=true in the imported config.",
     )
+    parser.add_argument(
+        "--reboot-after-save",
+        action="store_true",
+        help="After SAVE_CONFIG, reset the board and verify config after reboot.",
+    )
+    parser.add_argument(
+        "--reset-command",
+        default=DEFAULT_RESET_COMMAND,
+        help=(
+            "Command used with --reboot-after-save. Use {port} as the serial "
+            f"placeholder. Default: {DEFAULT_RESET_COMMAND!r}"
+        ),
+    )
+    parser.add_argument(
+        "--post-reset-wait-seconds",
+        type=float,
+        default=10.0,
+        help="Seconds to wait after reset before reopening serial.",
+    )
+    parser.add_argument(
+        "--no-checked-in-evidence",
+        action="store_true",
+        help="Do not write docs/milestone-evidence even after a successful run.",
+    )
     return parser.parse_args()
 
 
@@ -548,7 +777,8 @@ def main() -> int:
     records: list[CommandRecord] = []
     payload = minified_json_bytes(imported_config)
 
-    serial = SerialPort(args.port, args.baud)
+    reset_command_result: dict[str, Any] | None = None
+    serial: SerialPort | None = SerialPort(args.port, args.baud)
     try:
         print("Capturing baseline...")
         for command in (
@@ -572,28 +802,81 @@ def main() -> int:
 
         print("Exercising save/load command path...")
         send(serial, records, "persistence", "SAVE_CONFIG", args.timeout)
-        if not args.skip_reset:
+        if args.reboot_after_save:
+            serial.close()
+            serial = None
+            print("Resetting board with configured reset command...")
+            reset_command_result = run_reset_command(args.reset_command, args.port)
+            if reset_command_result["ok"]:
+                time.sleep(args.post_reset_wait_seconds)
+                try:
+                    serial = SerialPort(args.port, args.baud)
+                except OSError as err:
+                    reset_command_result["ok"] = False
+                    reset_command_result["post_reset_open_error"] = str(err)
+                    print(
+                        "Serial reopen failed after reset; writing artifacts before exiting.",
+                        file=sys.stderr,
+                    )
+                    serial = None
+                for command in (
+                    "GET_INFO",
+                    "GET_STATUS",
+                    "GET_CONFIG_STATUS",
+                    "LOAD_CONFIG",
+                    "GET_CONFIG_STATUS",
+                    "GET_CONFIG_JSON",
+                ):
+                    if serial is not None:
+                        send(serial, records, "post-reboot", command, args.timeout)
+            else:
+                print("Reset command failed; writing artifacts before exiting.", file=sys.stderr)
+        elif not args.skip_reset:
             send(serial, records, "persistence", "RESET_CONFIG", args.timeout)
             send(serial, records, "persistence", "GET_CONFIG_STATUS", args.timeout)
             send(serial, records, "persistence", "GET_CONFIG_JSON", args.timeout)
-        send(serial, records, "persistence", "LOAD_CONFIG", args.timeout)
-        send(serial, records, "persistence", "GET_CONFIG_STATUS", args.timeout)
-        send(serial, records, "persistence", "GET_CONFIG_JSON", args.timeout)
+        if not args.reboot_after_save:
+            send(serial, records, "persistence", "LOAD_CONFIG", args.timeout)
+            send(serial, records, "persistence", "GET_CONFIG_STATUS", args.timeout)
+            send(serial, records, "persistence", "GET_CONFIG_JSON", args.timeout)
 
-        print("Starting configured persona/bridge behavior...")
-        send(serial, records, "start-configured", "START_CONFIGURED", args.timeout)
-        send(serial, records, "start-configured", "GET_STATUS", args.timeout)
-        send(serial, records, "start-configured", "GET_BRIDGE_STATUS", args.timeout)
+        if serial is not None and (reset_command_result is None or reset_command_result["ok"]):
+            print("Starting configured persona/bridge behavior...")
+            send(serial, records, "start-configured", "START_CONFIGURED", args.timeout)
+            send(serial, records, "start-configured", "GET_STATUS", args.timeout)
+            send(serial, records, "start-configured", "GET_BRIDGE_STATUS", args.timeout)
     finally:
-        serial.close()
+        if serial is not None:
+            serial.close()
 
-    json_exports = config_jsons(records)
-    loaded_config = json_exports[-1] if json_exports else None
-    summary = build_summary(args, run_dir, records, imported_config, loaded_config)
-    write_outputs(run_dir, records, imported_config, loaded_config, summary)
+    loaded_section = "post-reboot" if args.reboot_after_save else "persistence"
+    loaded_config = last_config_json_for(records, loaded_section)
+    summary = build_summary(
+        args,
+        run_dir,
+        records,
+        imported_config,
+        loaded_config,
+        reset_command_result,
+    )
+    evidence_path = None
+    if (
+        summary["command_path_persistence_proven"]
+        and not args.no_checked_in_evidence
+        and not summary["errors"]
+    ):
+        evidence_path = write_checked_in_evidence(run_dir, records, summary)
+    write_outputs(run_dir, records, imported_config, loaded_config, summary, evidence_path)
     print(f"Saved witness artifacts: {run_dir}")
-    if summary["errors"]:
-        print("Witness completed with ERROR responses; see summary.json.", file=sys.stderr)
+    if evidence_path is not None:
+        print(f"Wrote checked-in evidence: {evidence_path}")
+    if (
+        summary["errors"]
+        or not summary["command_path_persistence_proven"]
+        or (args.reboot_after_save and not summary["reboot_persistence_proven"])
+        or (reset_command_result is not None and not reset_command_result["ok"])
+    ):
+        print("Witness did not complete cleanly; see summary.json.", file=sys.stderr)
         return 1
     return 0
 

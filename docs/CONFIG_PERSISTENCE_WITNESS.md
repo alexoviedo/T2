@@ -57,6 +57,31 @@ Run the default Generic Flight Pack config witness:
 python3 tools/config_persistence_witness.py --port <PORT>
 ```
 
+Run the strongest persistence witness, including an actual board reset after
+`SAVE_CONFIG`:
+
+```bash
+python3 tools/config_persistence_witness.py --port <PORT> --reboot-after-save
+```
+
+By default the reset phase runs:
+
+```bash
+espflash reset --chip esp32s3 --port <PORT> --non-interactive
+```
+
+Override it when needed:
+
+```bash
+python3 tools/config_persistence_witness.py \
+  --port <PORT> \
+  --reboot-after-save \
+  --reset-command 'espflash reset --chip esp32s3 --port {port} --non-interactive'
+```
+
+Use `--no-checked-in-evidence` to keep a successful target run entirely under
+`target/` while reviewing the artifacts.
+
 Run the Xbox config shape:
 
 ```bash
@@ -88,6 +113,10 @@ The script captures:
 - `RESET_CONFIG`
 - `LOAD_CONFIG`
 - final `GET_CONFIG_STATUS` and `GET_CONFIG_JSON`
+- with `--reboot-after-save`: close serial, reset the board, wait for reboot,
+  reopen serial, capture post-reboot `GET_INFO`, `GET_STATUS`,
+  `GET_CONFIG_STATUS`, then `LOAD_CONFIG`, `GET_CONFIG_STATUS`, and
+  `GET_CONFIG_JSON`
 - `START_CONFIGURED`
 - `GET_STATUS`
 - `GET_BRIDGE_STATUS`
@@ -110,10 +139,10 @@ This workflow can prove that a target accepted runtime config JSON, persisted it
 through `SAVE_CONFIG`, restored it through the `RESET_CONFIG` plus `LOAD_CONFIG`
 command path, and accepted `START_CONFIGURED`.
 
-It does not prove durable reboot persistence unless the operator performs an
-actual board reset/reboot and captures a second `LOAD_CONFIG`/`GET_CONFIG_JSON`
-pass showing the saved config still present. It also does not prove the browser
-Web Serial UI; browser UI smoke needs a separate manual browser run.
+It proves durable reboot persistence only when `--reboot-after-save` succeeds
+and `summary.json` reports `reboot_persistence_proven: true`. It also does not
+prove the browser Web Serial UI; browser UI smoke needs a separate manual
+browser run.
 
 ## Manual Web Serial UI Smoke
 
@@ -142,12 +171,14 @@ real browser artifacts.
 
 ## Checked-In Evidence
 
-After a successful hardware run, review the generated `target/` directory and
-add a concise summary under:
+After a successful hardware run, the script may write a concise summary under:
 
 ```text
 docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_<YYYY-MM-DD>.md
 ```
+
+Pass `--no-checked-in-evidence` to suppress that and keep only `target/`
+artifacts.
 
 Only check in real transcript excerpts from the generated artifacts. Do not add
 synthetic target evidence.
