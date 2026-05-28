@@ -53,6 +53,8 @@ This matrix tracks the support status for devices, personas, and milestones.
 - Xbox support is limited to the checked-in macOS/browser compatibility evidence
   and live bridge/soak transcripts; it is not a claim of console, Windows,
   Steam, or arbitrary app compatibility.
-- Runtime configuration APIs and Web Serial tooling exist, but checked-in
-  evidence does not yet prove durable config persistence, calibration quality,
-  or product-ready recovery behavior.
+- Runtime configuration APIs and Web Serial tooling exist, and durable runtime
+  config persistence is proven by
+  `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
+  Browser Web Serial UI smoke, calibration quality, and product-ready recovery
+  behavior remain unproven.

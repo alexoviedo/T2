@@ -6,6 +6,12 @@ This witness exercises the same serial protocol used by the Web Serial
 configurator path. It is CLI protocol evidence, not browser UI evidence, and it
 does not prove BLE/game/app compatibility by itself.
 
+Current checked-in target evidence:
+`docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md` proves
+runtime config import/export, `SAVE_CONFIG`, command-path `LOAD_CONFIG`, actual
+board reset, post-reboot `LOAD_CONFIG`, and matching imported/loaded config for
+a Generic Gamepad runtime config.
+
 ## Hardware Setup
 
 - ESP32-S3 serial/programming USB connected to the computer.

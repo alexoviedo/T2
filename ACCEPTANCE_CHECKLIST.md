@@ -192,6 +192,6 @@ bash -n scripts/*.sh
 - [x] Chunked JSON config import commands are implemented: `BEGIN_CONFIG_JSON`, `CONFIG_JSON_CHUNK`, and `COMMIT_CONFIG_JSON`.
 - [x] `RESET_CONFIG`, `SAVE_CONFIG`, `LOAD_CONFIG`, and `START_CONFIGURED` command paths exist.
 - [x] `tools/config_persistence_witness.py` provides a repeatable target-side protocol witness workflow.
-- [ ] Durable config persistence proven by checked-in target evidence.
+- [x] Durable config persistence proven by checked-in target evidence: `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
 - [ ] Web Serial configurator smoke evidence checked in against real hardware.
 - [ ] Calibration profile quality proven by checked-in target and host-visible evidence.

@@ -88,7 +88,9 @@
 - `tools/configure_board.py` exercises the runtime configuration protocol over
   USB serial for Web Serial/webapp smoke testing.
 - `tools/config_persistence_witness.py` captures target-side runtime config
-  import/save/reset/load/start evidence under `target/`.
+  import/save/reset/load/start evidence under `target/`; checked-in reboot
+  persistence evidence exists in
+  `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
 - `tools/mapping_delta_witness.py` captures clean before/after or timed-watch `GET_GENERIC_GAMEPAD_MAPPING` deltas for one physical control.
 - `tools/usb_report_delta_witness.py` captures lower-level `GET_LAST_USB_REPORT` byte deltas so raw USB movement can be proven before debugging normalization or mapping.
 - `tools/detach_cleanup_witness.py` captures before/detach/after cleanup evidence for one downstream USB HID device.
@@ -104,7 +106,6 @@
 - game/application compatibility beyond the browser Gamepad API witness.
 - broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
 - checked-in Generic long-duration live bridge soak evidence.
-- checked-in durable runtime config persistence evidence.
 - real hardware live bridge evidence from an actual game/app; the checked-in
   live bridge witness uses serial counters and browser Gamepad API evidence,
   which is useful but is not a substitute for game compatibility.

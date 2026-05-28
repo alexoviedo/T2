@@ -25,6 +25,8 @@ Checked-in evidence supports:
 - A 300-second Xbox live bridge soak.
 - Web Serial-facing runtime configuration command substrate and web app build
   wiring.
+- Durable runtime config persistence across an actual board reset, with
+  post-reboot loaded config matching the imported config.
 - CI host checks, ESP32-S3 target preflight, firmware packaging, latest GitHub
   Release refresh, and Pages deployment.
 
@@ -36,6 +38,8 @@ Checked-in evidence supports:
 - Runtime config protocol evidence through
   `tools/config_persistence_witness.py` when a serial port is explicitly
   provided.
+- Runtime config reboot-persistence evidence through
+  `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
 - Generic BLE demo rehearsal through `tools/asap_demo_rehearsal.py` when
   hardware is connected.
 - Xbox BLE compatibility rehearsal through `tools/xbox_demo_rehearsal.py` when
@@ -49,7 +53,6 @@ Checked-in evidence supports:
 - Any console compatibility.
 - Host breadth beyond the checked-in macOS/browser witnesses.
 - Durable BLE bond persistence.
-- Durable runtime config persistence on target.
 - Real Web Serial configurator smoke evidence against connected hardware.
 - Final Flight Pack calibration, deadzones, semantic TWCS/TFRP labels, and exact
   RJ12 pedal axis labels.
@@ -121,10 +124,10 @@ Recommended order:
 
 - Generic 300-second live bridge soak and checked-in evidence.
 - Flight Pack calibration/axis-label evidence and profile refinement.
-- Web Serial configurator smoke against real hardware, including config import
-  and `START_CONFIGURED`.
-- Target config persistence witness using `docs/CONFIG_PERSISTENCE_WITNESS.md`;
-  add checked-in evidence only from real captured transcripts.
+- Web Serial configurator browser smoke against real hardware, including config
+  import, save/load, and `START_CONFIGURED`.
+- Runtime config recovery/error-path hardening using
+  `docs/CONFIG_PERSISTENCE_WITNESS.md` as the target-side protocol baseline.
 - First real game/app compatibility witness using
   `docs/GAME_COMPATIBILITY_WITNESS.md`.
 - Reconnect/bond recovery hardening with checked-in transcripts.
