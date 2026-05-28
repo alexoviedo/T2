@@ -166,14 +166,31 @@ export class SerialConnection {
 
       await this.writeLine(cmd);
       const responses: string[] = [];
+      const deadline = Date.now() + timeoutMs;
+      const expectsData = expectedPrefixes.length > 0;
 
       while (true) {
-        const line = await this.readLine(timeoutMs);
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+          throw new Error(`Timeout waiting for response to ${cmd}`);
+        }
+
+        let line = await this.readLine(remainingMs);
         if (!line) continue; // Skip flushed empty lines if any
+
+        if (expectsData) {
+          const expectedOffset = expectedPrefixes
+            .map(prefix => line.indexOf(prefix))
+            .filter(index => index >= 0)
+            .sort((a, b) => a - b)[0];
+          if (expectedOffset !== undefined && expectedOffset > 0) {
+            line = line.slice(expectedOffset);
+          }
+        }
 
         responses.push(line);
 
-        if (line === 'OK' || line.startsWith('ERROR:')) {
+        if (!expectsData && (line === 'OK' || line.startsWith('ERROR:'))) {
           break;
         }
 

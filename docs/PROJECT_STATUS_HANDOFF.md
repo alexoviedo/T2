@@ -27,6 +27,9 @@ Checked-in evidence supports:
   wiring.
 - Durable runtime config persistence across an actual board reset, with
   post-reboot loaded config matching the imported config.
+- Browser Web Serial configurator smoke in Google Chrome, covering connect,
+  config/status/schema/catalog load, Flight Pack Generic import, save, load,
+  and `START_CONFIGURED`.
 - CI host checks, ESP32-S3 target preflight, firmware packaging, latest GitHub
   Release refresh, and Pages deployment.
 
@@ -40,6 +43,8 @@ Checked-in evidence supports:
   provided.
 - Runtime config reboot-persistence evidence through
   `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
+- Browser Web Serial configurator smoke evidence through
+  `docs/milestone-evidence/WEB_SERIAL_CONFIGURATOR_SMOKE_2026-05-28.md`.
 - Generic BLE demo rehearsal through `tools/asap_demo_rehearsal.py` when
   hardware is connected.
 - Xbox BLE compatibility rehearsal through `tools/xbox_demo_rehearsal.py` when
@@ -53,7 +58,8 @@ Checked-in evidence supports:
 - Any console compatibility.
 - Host breadth beyond the checked-in macOS/browser witnesses.
 - Durable BLE bond persistence.
-- Real Web Serial configurator smoke evidence against connected hardware.
+- Browser breadth beyond the checked-in Google Chrome Web Serial configurator
+  smoke.
 - Final Flight Pack calibration, deadzones, semantic TWCS/TFRP labels, and exact
   RJ12 pedal axis labels.
 - Generic long-duration live bridge soak.
@@ -124,8 +130,8 @@ Recommended order:
 
 - Generic 300-second live bridge soak and checked-in evidence.
 - Flight Pack calibration/axis-label evidence and profile refinement.
-- Web Serial configurator browser smoke against real hardware, including config
-  import, save/load, and `START_CONFIGURED`.
+- Web Serial configurator hardening from the checked-in smoke baseline,
+  especially recovery/error UX under live target report chatter.
 - Runtime config recovery/error-path hardening using
   `docs/CONFIG_PERSISTENCE_WITNESS.md` as the target-side protocol baseline.
 - First real game/app compatibility witness using

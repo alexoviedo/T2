@@ -12,6 +12,12 @@ runtime config import/export, `SAVE_CONFIG`, command-path `LOAD_CONFIG`, actual
 board reset, post-reboot `LOAD_CONFIG`, and matching imported/loaded config for
 a Generic Gamepad runtime config.
 
+Current checked-in browser UI evidence:
+`docs/milestone-evidence/WEB_SERIAL_CONFIGURATOR_SMOKE_2026-05-28.md` proves
+the Google Chrome Web Serial configurator smoke path for connect,
+config/status/schema/catalog load, Flight Pack Generic import, save, load, and
+`START_CONFIGURED`.
+
 ## Hardware Setup
 
 - ESP32-S3 serial/programming USB connected to the computer.
@@ -146,9 +152,8 @@ through `SAVE_CONFIG`, restored it through the `RESET_CONFIG` plus `LOAD_CONFIG`
 command path, and accepted `START_CONFIGURED`.
 
 It proves durable reboot persistence only when `--reboot-after-save` succeeds
-and `summary.json` reports `reboot_persistence_proven: true`. It also does not
-prove the browser Web Serial UI; browser UI smoke needs a separate manual
-browser run.
+and `summary.json` reports `reboot_persistence_proven: true`. Browser UI smoke
+is a separate workflow from this CLI witness.
 
 ## Manual Web Serial UI Smoke
 
@@ -172,8 +177,8 @@ exercise the Configure tab:
 - start configured
 
 Save screenshots or copied serial-log excerpts under `target/web-serial-smoke/`.
-Only summarize this as checked-in Web Serial UI evidence after reviewing those
-real browser artifacts.
+Only summarize a new browser/platform run as checked-in Web Serial UI evidence
+after reviewing those real browser artifacts.
 
 ## Checked-In Evidence
 

@@ -29,6 +29,9 @@
   demo-hardening pass. Xbox live bridge now has a checked-in 300-second soak
   witness; Generic soak and final Flight Pack calibration still need separate
   evidence.
+- Browser Web Serial configurator smoke is checked in for Google Chrome:
+  connect, config/status/schema/catalog load, Flight Pack Generic import,
+  save, load, and `START_CONFIGURED`.
 
 ## What this project is building toward
 - ESP32-S3 USB HID to BLE bridge.
@@ -87,6 +90,8 @@
 - `tools/flight_pack_calibration_witness.py` guides named Flight Pack movements and drafts calibration/axis-label evidence.
 - `tools/configure_board.py` exercises the runtime configuration protocol over
   USB serial for Web Serial/webapp smoke testing.
+- Browser Web Serial configurator smoke evidence exists in
+  `docs/milestone-evidence/WEB_SERIAL_CONFIGURATOR_SMOKE_2026-05-28.md`.
 - `tools/config_persistence_witness.py` captures target-side runtime config
   import/save/reset/load/start evidence under `target/`; checked-in reboot
   persistence evidence exists in

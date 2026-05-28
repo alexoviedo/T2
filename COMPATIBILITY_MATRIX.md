@@ -56,5 +56,7 @@ This matrix tracks the support status for devices, personas, and milestones.
 - Runtime configuration APIs and Web Serial tooling exist, and durable runtime
   config persistence is proven by
   `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
-  Browser Web Serial UI smoke, calibration quality, and product-ready recovery
+- Browser Web Serial configurator smoke is proven for Google Chrome by
+  `docs/milestone-evidence/WEB_SERIAL_CONFIGURATOR_SMOKE_2026-05-28.md`.
+  Calibration quality, broad browser compatibility, and product-ready recovery
   behavior remain unproven.

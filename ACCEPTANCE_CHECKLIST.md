@@ -193,5 +193,5 @@ bash -n scripts/*.sh
 - [x] `RESET_CONFIG`, `SAVE_CONFIG`, `LOAD_CONFIG`, and `START_CONFIGURED` command paths exist.
 - [x] `tools/config_persistence_witness.py` provides a repeatable target-side protocol witness workflow.
 - [x] Durable config persistence proven by checked-in target evidence: `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
-- [ ] Web Serial configurator smoke evidence checked in against real hardware.
+- [x] Web Serial configurator smoke evidence checked in against real hardware: `docs/milestone-evidence/WEB_SERIAL_CONFIGURATOR_SMOKE_2026-05-28.md`.
 - [ ] Calibration profile quality proven by checked-in target and host-visible evidence.
