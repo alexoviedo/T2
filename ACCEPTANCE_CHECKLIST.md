@@ -94,7 +94,9 @@ bash -n scripts/*.sh
 - **Descriptor result:** 134-byte HID report descriptor returned as `USB_DESCRIPTOR:<hex>`
 - **Input report command:** `GET_LAST_USB_REPORT 2:0`
 - **Input report result:** 64-byte HID input report returned as `USB_REPORT:<hex>`
-- **Remaining scope:** BLE publishing and report coverage for every Flight Pack component remain future work.
+- **Remaining M2B.2-specific scope:** report coverage for every Flight Pack
+  component remains future work. Later demo-bridge evidence covers BLE
+  publishing separately.
 
 ## M3 — HID descriptor IR and hardware/host parity (Summary witness captured)
 
@@ -113,7 +115,9 @@ bash -n scripts/*.sh
 - **Verified descriptor device:** THRUSTMASTER T.16000 FCS HOTAS through HooToo SHUTTLE HT-UC001, `VID=044f, PID=b10a`, interface `0`
 - **Summary command:** `GET_HID_SUMMARY 2:0`
 - **Summary result:** `axes=4`, `buttons=16`, `hats=1`, `report_ids=0`, axis usages `01:30,01:31,01:35,01:36`, hat usage `01:39`
-- **Remaining scope:** Full IR diagnostic dump, BLE publishing, and all-device Flight Pack coverage remain future work.
+- **Remaining M3-specific scope:** full IR diagnostic dump and all-device Flight
+  Pack coverage remain future work. Later demo-bridge evidence covers BLE
+  publishing separately.
 
 ## M4 — live normalized input on hardware (baseline witness captured)
 
@@ -137,7 +141,7 @@ bash -n scripts/*.sh
 - **Additional Flight Pack coverage:** TFRP pedals `044f:b679` normalized in a full-pack run; TWCS throttle `044f:b687` normalized when connected through the hub without the other Flight Pack devices; RJ12 topology normalized with pedals connected to TWCS and both TWCS USB plus T.16000M stick USB streaming together through the hub
 - **Normalized command:** `GET_NORMALIZED_INPUT 2:0`
 - **Normalized result:** `controls=21`, including 16 buttons, 1 hat, and 4 axes from a real 64-byte target input report
-- **Remaining scope:** Button-press delta evidence, normalized detach cleanup evidence, exact RJ12 pedal axis labels, BLE publishing, and all-device simultaneous Flight Pack streaming with three separate USB Flight Pack devices remain future work.
+- **Remaining M4-specific scope:** exact RJ12 pedal axis labels and all-device simultaneous Flight Pack streaming with three separate USB Flight Pack devices remain future work. Later demo-bridge evidence covers BLE publishing separately.
 
 ## Demo Bridge — USB state to encoded Generic Gamepad report
 
@@ -146,12 +150,47 @@ bash -n scripts/*.sh
 - [x] Composite normalized input merge keeps source identity.
 - [x] `GET_GENERIC_GAMEPAD_REPORT` returns encoded report bytes from latest app USB state.
 - [x] Real target witness captured for `GET_GENERIC_GAMEPAD_REPORT`.
-- [ ] BLE transport publishes this report to a connected host.
+- [x] BLE transport publishes this report to a connected host for the witnessed Generic Gamepad demo path.
+- [x] Explicit `START_BRIDGE` live bridge mode publishes USB-derived Generic reports automatically while connected.
+- [ ] Broad game/app compatibility witness captured for the Generic Gamepad path.
+- [ ] Generic long-duration live bridge soak evidence checked in.
+- [ ] Final Flight Pack calibration/deadzone semantics evidenced.
 
 ## Demo Bridge Validation Commands
 
 ```bash
-cargo test -p usb2ble-personas -p usb2ble-mapping -p usb2ble-input -p usb2ble-control -p usb2ble-app --locked
+./scripts/validate_no_hardware.sh
 ```
 
 - **Target evidence:** `docs/milestone-evidence/DEMO_BRIDGE_GENERIC_GAMEPAD_REPORT_WITNESS_2026-04-29.md`
+- **Generic BLE evidence:** `docs/milestone-evidence/BLE_HID_MAC_PAIRING_INPUT_WITNESS_2026-04-30.md`; `docs/milestone-evidence/BROWSER_GAMEPAD_API_WITNESS_2026-04-30.md`; `docs/milestone-evidence/FLIGHT_PACK_DEMO_BLE_BROWSER_WITNESS_2026-05-08.md`; `docs/milestone-evidence/ASAP_DEMO_REHEARSAL_WITNESS_2026-05-08.md`
+- **Live bridge evidence:** `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`
+
+## Xbox Persona Slice — compatibility persona, not broad app support
+
+- [x] Xbox Wireless Controller report encoder implemented and host-tested.
+- [x] `GET_XBOX_GAMEPAD_REPORT` returns an encoded Xbox BLE input report.
+- [x] `START_BLE_XBOX_CONTROLLER` starts the Xbox BLE persona on ESP32-S3.
+- [x] `SEND_XBOX_SELF_TEST_REPORT` publishes synthetic Xbox reports while connected.
+- [x] `PUBLISH_XBOX_GAMEPAD_REPORT` publishes latest USB-derived Xbox reports while connected.
+- [x] macOS 12.7.5 pairing/input witness captured with `Xbox Wireless Controller` identity.
+- [x] Explicit `START_BRIDGE` live bridge mode witnessed for Xbox.
+- [x] 300-second Xbox live bridge soak witness checked in.
+- [ ] Broad Xbox game/app compatibility witness captured.
+- [ ] Browser Gamepad API display name stability proven across clean host state.
+- [ ] Host/platform breadth beyond the checked-in macOS witness proven.
+
+## Xbox Current Evidence
+
+- **Xbox BLE evidence:** `docs/milestone-evidence/XBOX_BLE_WITNESS_2026-05-09.md`
+- **Xbox live bridge evidence:** `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`
+- **Xbox soak evidence:** `docs/milestone-evidence/LIVE_BRIDGE_SOAK_WITNESS_2026-05-10.md`
+
+## Runtime Configuration Substrate
+
+- [x] `GET_CONFIG_STATUS`, `GET_CONFIG_SCHEMA`, `GET_PERSONA_SCHEMA <generic|xbox>`, `GET_INPUT_CATALOG`, and `GET_CONFIG_JSON` are implemented as control-plane commands.
+- [x] Chunked JSON config import commands are implemented: `BEGIN_CONFIG_JSON`, `CONFIG_JSON_CHUNK`, and `COMMIT_CONFIG_JSON`.
+- [x] `RESET_CONFIG`, `SAVE_CONFIG`, `LOAD_CONFIG`, and `START_CONFIGURED` command paths exist.
+- [ ] Durable config persistence proven by checked-in target evidence.
+- [ ] Web Serial configurator smoke evidence checked in against real hardware.
+- [ ] Calibration profile quality proven by checked-in target and host-visible evidence.

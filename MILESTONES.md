@@ -195,7 +195,9 @@ Turn real HID input into a stable normalized model that can be inspected live on
 - **Target baseline normalized witness:** ESP32-S3 target `GET_NORMALIZED_INPUT 2:0` returned a 21-control frame for a real 64-byte T.16000 report through the HooToo powered hub. Evidence is checked in at `docs/milestone-evidence/M4_NORMALIZED_INPUT_WITNESS_2026-04-29.md`.
 - **Expanded Flight Pack evidence:** TFRP pedals (`044f:b679`) and the T.16000 stick (`044f:b10a`) produced normalized frames in a full-pack run; the TWCS throttle (`044f:b687`) produced normalized frames when connected through the same hub without the other Flight Pack devices. Evidence is checked in at `docs/milestone-evidence/M4_FLIGHT_PACK_NORMALIZED_WITNESS_2026-04-29.md`.
 - **RJ12 two-USB Flight Pack evidence:** With TFRP pedals connected to the TWCS by RJ12, and TWCS USB plus T.16000 stick USB connected through the HooToo hub, both USB HID streams produced simultaneous normalized frames. A pedals-only movement pass changed the TWCS normalized axes while the stick stayed essentially fixed. Evidence is checked in at `docs/milestone-evidence/M4_RJ12_TWO_USB_FLIGHT_PACK_WITNESS_2026-04-29.md`.
-- **Remaining scope:** Button-press delta evidence, normalized detach cleanup evidence, exact RJ12 pedal axis labels, BLE publishing, and simultaneous normalized streaming from all three separate Flight Pack USB devices remain future work.
+- **Remaining M4-specific scope:** exact RJ12 pedal axis labels and simultaneous
+  normalized streaming from all three separate Flight Pack USB devices remain
+  future work. Later demo-bridge evidence covers BLE publishing separately.
 
 ### Scope
 - HID report decode
@@ -232,6 +234,20 @@ This is the earliest milestone where real-world usability starts to matter mater
 
 ### Goal
 Prove real BLE transport end-to-end using synthetic input injection before full USB-to-BLE integration.
+
+### Current evidence status
+- **Generic Gamepad BLE slice witnessed:** ESP32-S3 target evidence shows
+  `START_BLE_GENERIC_GAMEPAD` reaching advertising, macOS pairing/connection,
+  synthetic self-test input visible to the host, and browser Gamepad API
+  visibility. Evidence is checked in at
+  `docs/milestone-evidence/BLE_HID_GENERIC_GAMEPAD_ADVERTISING_WITNESS_2026-04-30.md`,
+  `docs/milestone-evidence/BLE_HID_MAC_PAIRING_INPUT_WITNESS_2026-04-30.md`,
+  and `docs/milestone-evidence/BROWSER_GAMEPAD_API_WITNESS_2026-04-30.md`.
+- **Still not product-hardening completion:** durable BLE bond persistence and
+  reconnect behavior are not proven. The `FORGET_BLE_BONDS` command path exists,
+  but bond-clear recovery still needs checked-in target evidence. Synthetic
+  reports remain transport evidence only and must not be presented as USB
+  hardware behavior.
 
 ### Scope
 - BLE transport initialization
@@ -277,7 +293,16 @@ one curated USB HID device -> normalization -> mapping -> Generic BLE Gamepad pe
 - `GET_GENERIC_GAMEPAD_REPORT` bridges current live USB state through normalization,
   merge, mapping, and persona encoding, then returns BLE-ready report bytes over
   serial.
-- This is not M6 completion because BLE transport publication is not yet proven.
+- `PUBLISH_GENERIC_GAMEPAD_REPORT` and `START_BRIDGE` have real ESP32-S3 +
+  macOS/browser witnesses for USB-derived Generic Gamepad BLE publication.
+  Evidence is checked in at
+  `docs/milestone-evidence/FLIGHT_PACK_DEMO_BLE_BROWSER_WITNESS_2026-05-08.md`,
+  `docs/milestone-evidence/ASAP_DEMO_REHEARSAL_WITNESS_2026-05-08.md`, and
+  `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`.
+- Treat the current state as a witnessed demo bridge / pre-product-hardening
+  slice, not broad M6 product completion. Broad game/app compatibility,
+  reconnect recovery, Generic long-duration soak, and final HOTAS/TWCS/TFRP
+  calibration still need checked-in evidence.
 
 ### Scope
 - device signature selection
@@ -438,6 +463,19 @@ Support more than one Generic BLE Gamepad output schema without rewriting core a
 
 ### Goal
 Add BLE Xbox Wireless controller output as a formal target persona.
+
+### Current evidence status
+- **Xbox persona slice witnessed:** Xbox mapping/report encoding is implemented
+  and host-tested, `START_BLE_XBOX_CONTROLLER` starts the persona on ESP32-S3,
+  macOS 12.7.5 sees `Xbox Wireless Controller`, synthetic and USB-derived
+  16-byte reports publish over BLE, browser evidence shows Xbox VID/PID support,
+  and explicit live bridge plus a 300-second Xbox soak are checked in.
+  Evidence lives in `docs/milestone-evidence/XBOX_BLE_WITNESS_2026-05-09.md`,
+  `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`, and
+  `docs/milestone-evidence/LIVE_BRIDGE_SOAK_WITNESS_2026-05-10.md`.
+- **Still not broad Xbox compatibility:** no checked-in real game/app witness
+  exists, browser Gamepad API naming was not fully stable across runs, and
+  host/platform breadth beyond the macOS witness is not claimed.
 
 ### Scope
 - Xbox persona contract

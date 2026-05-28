@@ -38,8 +38,8 @@
 - BLE Xbox Wireless Controller output as a separate persona, with real host compatibility proven only by captured pairing/input evidence.
 - the BLE transport is intentionally persona-driven so Generic Gamepad and Xbox Wireless Controller output stay explicit and diagnosable.
 
-## Current milestone: M4
-- target scope is HID report decoding and normalized live-input diagnostics.
+## Current project phase: post-M4 demo bridge / pre-product-hardening
+- M4 target scope was HID report decoding and normalized live-input diagnostics.
 - descriptor/report/summary/normalized-input control-plane fulfillment is proven for the THRUSTMASTER T.16000 FCS HOTAS through the HooToo powered hub.
 - expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, and simultaneous normalized input for the recommended two-USB topology: pedals connected to TWCS by RJ12, with TWCS USB plus stick USB through the HooToo hub.
 - explicit calibrated TWCS/TFRP axis targets, exact RJ12 pedal axis labels, and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4 completion.
@@ -56,7 +56,7 @@
 - `GET_LAST_USB_REPORT <device>:<interface>` returns the most recent raw input report after a report is received.
 - `GET_HID_SUMMARY <device>:<interface>` returns parsed axes/buttons/hats/report IDs for descriptors that parse successfully.
 - `GET_NORMALIZED_INPUT <device>:<interface>` returns a normalized control frame decoded from the latest input report for descriptors that parse successfully.
-- `GET_GENERIC_GAMEPAD_REPORT` returns an encoded Generic Gamepad report from the latest normalized input frames, ready for the future BLE publish layer.
+- `GET_GENERIC_GAMEPAD_REPORT` returns an encoded Generic Gamepad report from the latest normalized input frames for diagnostics and BLE publishing.
 - `GET_GENERIC_GAMEPAD_MAPPING` explains each selected Generic Gamepad mapping decision, including source VID/PID/interface, source control, target control, value, and reason.
 - `GET_XBOX_GAMEPAD_REPORT` returns an encoded Xbox Wireless Controller BLE input report from the latest normalized input frames.
 - `GET_XBOX_GAMEPAD_MAPPING` explains the selected Xbox Wireless Controller mapping decision path.
@@ -102,6 +102,7 @@
 - game/application compatibility beyond the browser Gamepad API witness.
 - broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
 - checked-in Generic long-duration live bridge soak evidence.
+- checked-in durable runtime config persistence evidence.
 - real hardware live bridge evidence from an actual game/app; the checked-in
   live bridge witness uses serial counters and browser Gamepad API evidence,
   which is useful but is not a substitute for game compatibility.
@@ -122,13 +123,13 @@
 
 ## Cloud validation
 ```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo build --workspace --locked
-cargo test --workspace --locked
-bash -n scripts/*.sh
+./scripts/validate_no_hardware.sh
 ./scripts/check_target_build.sh
 ```
+
+The no-hardware helper runs host Rust checks, shell syntax checks, and web app
+checks. The ESP32-S3 target preflight is separate because it depends on the
+local Xtensa/ESP-IDF toolchain.
 
 ## ESP-IDF toolchain pin
 The firmware root crate pins ESP-IDF through `crates/usb2ble-fw/Cargo.toml`:
@@ -183,6 +184,9 @@ See: `docs/XBOX_BLE_DEMO_RUNBOOK.md`
 
 ## Game/app compatibility witness
 See: `docs/GAME_COMPATIBILITY_WITNESS.md`
+
+## Project status handoff
+See: `docs/PROJECT_STATUS_HANDOFF.md`
 
 ## Integrity rules for agents
 * code and checked-in evidence are the source of truth.

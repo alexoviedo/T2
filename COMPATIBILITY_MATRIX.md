@@ -13,8 +13,9 @@ This matrix tracks the support status for devices, personas, and milestones.
 | M2B.2 | Hardware evidence captured | HID report descriptor and raw input report capture via control-plane works for the T.16000 FCS HOTAS through the hub | `docs/milestone-evidence/M2B2_DESCRIPTOR_WITNESS_2026-04-29.md` |
 | M3 | Summary hardware evidence captured | HID parser and capability summary work for the T.16000 FCS HOTAS descriptor on host and target | `docs/milestone-evidence/M3_HID_SUMMARY_WITNESS_2026-04-29.md` |
 | M4 | Expanded hardware evidence captured | Normalized live-input diagnostics work for the T.16000 stick, TFRP pedals, TWCS throttle, and the RJ12 two-USB Flight Pack topology; button/detach and simultaneous three-separate-USB streaming remain open | `docs/milestone-evidence/M4_NORMALIZED_INPUT_WITNESS_2026-04-29.md`; `docs/milestone-evidence/M4_FLIGHT_PACK_NORMALIZED_WITNESS_2026-04-29.md`; `docs/milestone-evidence/M4_RJ12_TWO_USB_FLIGHT_PACK_WITNESS_2026-04-29.md` |
-| M5 | Planned | BLE self-test | |
-| M6 | Planned | E2E usable slice | |
+| M5 | Generic BLE self-test witnessed | Generic Gamepad BLE advertising, macOS pairing/input, and synthetic self-test input are witnessed. `FORGET_BLE_BONDS` exists as a command path, but bond-clear recovery and durable bond persistence are not proven. | `docs/milestone-evidence/BLE_HID_DEMO_CODEPATH_BUILD_WITNESS_2026-04-30.md`; `docs/milestone-evidence/BLE_HID_GENERIC_GAMEPAD_ADVERTISING_WITNESS_2026-04-30.md`; `docs/milestone-evidence/BLE_HID_MAC_PAIRING_INPUT_WITNESS_2026-04-30.md`; `docs/milestone-evidence/BROWSER_GAMEPAD_API_WITNESS_2026-04-30.md` |
+| M6 | Demo bridge slice witnessed; formal hardening open | Generic Gamepad USB-derived BLE publish and explicit live bridge are witnessed through macOS/browser evidence; broad game/app compatibility, reconnect hardening, Generic long soak, and final calibration are not proven | `docs/milestone-evidence/FLIGHT_PACK_DEMO_BLE_BROWSER_WITNESS_2026-05-08.md`; `docs/milestone-evidence/ASAP_DEMO_REHEARSAL_WITNESS_2026-05-08.md`; `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md` |
+| M11 | Xbox persona slice witnessed; broad compatibility open | Xbox report encoding, BLE identity/report publishing, macOS pairing/input, browser VID/PID support, and Xbox live bridge/soak evidence exist; app/game compatibility and host breadth are not claimed | `docs/milestone-evidence/XBOX_BLE_WITNESS_2026-05-09.md`; `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`; `docs/milestone-evidence/LIVE_BRIDGE_SOAK_WITNESS_2026-05-10.md` |
 
 ## Toolchain
 
@@ -40,5 +41,18 @@ This matrix tracks the support status for devices, personas, and milestones.
 
 | Persona | ID | Status | Note |
 |---------|----|--------|------|
-| Generic Gamepad | `generic_gamepad` | Planned | Not in M2B scope |
-| Xbox Wireless | `xbox_wireless` | Planned | Not in M2B scope |
+| Generic Gamepad | `generic_gamepad` | Witnessed demo bridge path | Starts on ESP32-S3, pairs/connects to macOS, publishes synthetic and live USB-derived reports, appears in browser Gamepad API, and works with `START_BRIDGE`. This is not broad game/app compatibility, not final Flight Pack calibration, and not durable bond persistence. |
+| Xbox Wireless Controller | `xbox_wireless_controller` | Witnessed compatibility persona slice | Starts on ESP32-S3 with Xbox model 1914 / Series X\|S BLE identity, pairs/connects on macOS as `Xbox Wireless Controller`, publishes synthetic and USB-derived 16-byte reports, exposes Xbox VID/PID in browser evidence, and works with `START_BRIDGE`. Broad Xbox/game/app compatibility is not claimed. |
+
+## Compatibility Claim Boundaries
+
+- Browser Gamepad API evidence is host-visible HID support, not a real game/app
+  witness.
+- Broad game/app compatibility remains unclaimed until evidence following
+  `docs/GAME_COMPATIBILITY_WITNESS.md` is checked in.
+- Xbox support is limited to the checked-in macOS/browser compatibility evidence
+  and live bridge/soak transcripts; it is not a claim of console, Windows,
+  Steam, or arbitrary app compatibility.
+- Runtime configuration APIs and Web Serial tooling exist, but checked-in
+  evidence does not yet prove durable config persistence, calibration quality,
+  or product-ready recovery behavior.
