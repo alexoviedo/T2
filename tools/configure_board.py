@@ -100,6 +100,14 @@ def preset_config(name: str) -> dict[str, Any]:
                 thrustmaster_rule(0xB10A, "button_2", "b"),
                 thrustmaster_rule(0xB10A, "button_3", "x"),
                 thrustmaster_rule(0xB10A, "button_4", "y"),
+                thrustmaster_rule(0xB10A, "button_5", "lb"),
+                thrustmaster_rule(0xB10A, "button_6", "rb"),
+                thrustmaster_rule(0xB10A, "button_7", "view"),
+                thrustmaster_rule(0xB10A, "button_8", "menu"),
+                thrustmaster_rule(0xB10A, "button_9", "nexus"),
+                thrustmaster_rule(0xB10A, "button_10", "left_stick_press"),
+                thrustmaster_rule(0xB10A, "button_11", "right_stick_press"),
+                thrustmaster_rule(0xB10A, "button_12", "share"),
             ],
         }
     raise ValueError(f"unknown preset: {name}")

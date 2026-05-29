@@ -48,6 +48,7 @@ def builtin_profile(variant: str) -> dict[str, Any]:
                 "hid_control_point": "unknown",
                 "protocol_mode": "unknown",
                 "input_reports": 1,
+                "output_reports": 0,
                 "report_reference_descriptors": "unknown",
                 "cccd_notify": "unknown",
             },
@@ -100,8 +101,32 @@ def builtin_profile(variant: str) -> dict[str, Any]:
                 "manufacturer": "Microsoft",
                 "vendor_id": 0x045E,
                 "product_id": 0x0B13,
-                "report_map_len": 226,
+                "report_map_len": 283,
                 "report_ids": [1, 3],
+                "hids": {
+                    **profile["hids"],
+                    "output_reports": 1,
+                },
+                "xbox_reference": {
+                    "reference_model": "Xbox Wireless Controller model 1914 / Series X|S BLE",
+                    "vid": "0x045e",
+                    "pid": "0x0b13",
+                    "input_report_id": 1,
+                    "input_payload_len": 16,
+                    "output_report_id": 3,
+                    "output_payload_len": 8,
+                    "report_map_len_expected": 283,
+                    "stick_logical_min": 0,
+                    "stick_logical_max": 65535,
+                    "trigger_logical_min": 0,
+                    "trigger_logical_max": 1023,
+                    "hat_logical_min": 1,
+                    "hat_logical_max": 8,
+                    "hat_null": 0,
+                    "button_count": 15,
+                    "share_usage": "consumer_record",
+                    "rumble_output_behavior": "safe_noop",
+                },
             }
         )
         return profile
@@ -246,6 +271,11 @@ def check_profile(profile: dict[str, Any]) -> dict[str, Any]:
         add_check(checks, "hids", item, status_for_presence(hids.get(item)), hids.get(item))
     input_reports = hids.get("input_reports")
     add_check(checks, "hids", "input_report_characteristics", "pass" if isinstance(input_reports, int) and input_reports > 0 else "unknown", input_reports)
+    output_reports = hids.get("output_reports")
+    if variant == "xbox_compatibility":
+        add_check(checks, "hids", "output_report_characteristics", "pass" if output_reports == 1 else "fail", output_reports, 1)
+    else:
+        add_check(checks, "hids", "output_report_characteristics", "pass" if output_reports == 0 else "unknown", output_reports, 0)
     add_check(checks, "gatt", "device_information_service", status_for_presence(profile.get("device_information_service")), profile.get("device_information_service"))
     add_check(checks, "gatt", "battery_service", status_for_presence(profile.get("battery_service")), profile.get("battery_service"))
     add_check(checks, "report_map", "length", "pass" if int(profile.get("report_map_len") or 0) > 0 else ("unknown" if not implemented else "fail"), profile.get("report_map_len"))

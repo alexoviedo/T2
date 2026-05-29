@@ -13,6 +13,7 @@ python3 tools/check_evidence_docs.py
 python3 tools/check_launch_readiness.py
 python3 tools/check_release_candidate.py
 python3 tools/check_ble_hid_profile.py --variant generic_default --variant generic_hogp_strict --quiet
+python3 tools/check_xbox_ble_profile.py --quiet
 
 if [[ -d tools/tests ]]; then
     python3 -m unittest discover -s tools/tests -p 'test_*.py'

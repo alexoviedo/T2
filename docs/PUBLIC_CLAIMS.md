@@ -19,6 +19,8 @@ These claims are supported by checked-in evidence:
   profile.
 - Xbox BLE identity/report publishing has a macOS pairing/input witness for the
   existing Xbox slice.
+- Xbox BLE Profile v1 has target-side model-1914 profile/report-map diagnostics
+  and checker evidence; this is not host-visible refined mapping evidence.
 
 ## Forbidden Overclaims
 

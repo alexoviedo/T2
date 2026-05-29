@@ -1354,6 +1354,78 @@ mod tests {
     }
 
     #[test]
+    fn xbox_flight_pack_toe_brakes_cover_released_and_pressed_extremes() {
+        let twcs = source(2, 0x044f, 0xb687);
+        let stick = source(3, 0x044f, 0xb10a);
+        let profile = xbox_flight_pack_demo_profile();
+
+        let released = CompositeInputFrame {
+            sources: vec![twcs.clone(), stick.clone()],
+            controls: vec![
+                value(
+                    twcs.clone(),
+                    "axis_01_34",
+                    NormalizedControlValue::Axis(i32::from(i16::MAX)),
+                ),
+                value(
+                    twcs.clone(),
+                    "axis_01_33",
+                    NormalizedControlValue::Axis(i32::from(i16::MAX)),
+                ),
+                value(twcs.clone(), "axis_01_32", NormalizedControlValue::Axis(0)),
+                value(stick, "axis_01_30", NormalizedControlValue::Axis(0)),
+            ],
+            timestamp_micros: 29,
+        };
+        let pressed = CompositeInputFrame {
+            sources: vec![twcs.clone()],
+            controls: vec![
+                value(
+                    twcs.clone(),
+                    "axis_01_34",
+                    NormalizedControlValue::Axis(i32::from(i16::MIN)),
+                ),
+                value(
+                    twcs.clone(),
+                    "axis_01_33",
+                    NormalizedControlValue::Axis(i32::from(i16::MIN)),
+                ),
+                value(twcs, "axis_01_32", NormalizedControlValue::Axis(12_345)),
+            ],
+            timestamp_micros: 30,
+        };
+
+        let released_frame =
+            map_composite_to_xbox_wireless_controller_with_profile(&profile, &released);
+        let pressed_frame =
+            map_composite_to_xbox_wireless_controller_with_profile(&profile, &pressed);
+        let released_diag =
+            diagnose_xbox_wireless_controller_mapping_with_profile(&profile, &released);
+
+        assert_eq!(
+            control(&released_frame, "left_trigger"),
+            Some(NormalizedControlValue::Trigger(0))
+        );
+        assert_eq!(
+            control(&released_frame, "right_trigger"),
+            Some(NormalizedControlValue::Trigger(0))
+        );
+        assert_eq!(
+            control(&pressed_frame, "left_trigger"),
+            Some(NormalizedControlValue::Trigger(1_023))
+        );
+        assert_eq!(
+            control(&pressed_frame, "right_trigger"),
+            Some(NormalizedControlValue::Trigger(1_023))
+        );
+        assert!(released_diag.entries.iter().any(|entry| {
+            entry.source_control_id == "axis_01_32"
+                && entry.target_control_id.is_none()
+                && entry.reason == "profile_unmapped"
+        }));
+    }
+
+    #[test]
     fn profile_rule_supports_interface_deadzone_and_axis_to_trigger() {
         let iface0 = source_with_interface(1, 0x1234, 0x5678, 0);
         let iface1 = source_with_interface(1, 0x1234, 0x5678, 1);

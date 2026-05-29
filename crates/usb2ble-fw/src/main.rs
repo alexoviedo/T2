@@ -18,8 +18,10 @@ use usb2ble_contracts::{
 };
 use usb2ble_control::SerialControlPlane;
 use usb2ble_personas::{
-    GENERIC_GAMEPAD_PERSONA_ID, GenericGamepadEncoder, XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
-    XboxWirelessControllerEncoder,
+    GENERIC_GAMEPAD_PERSONA_ID, GenericGamepadEncoder, XBOX_INPUT_REPORT_ID,
+    XBOX_INPUT_REPORT_PAYLOAD_LEN, XBOX_MODEL_1914_REPORT_MAP_LEN, XBOX_RUMBLE_OUTPUT_PAYLOAD_LEN,
+    XBOX_RUMBLE_REPORT_ID, XBOX_STICK_LOGICAL_MAX, XBOX_TRIGGER_LOGICAL_MAX,
+    XBOX_WIRELESS_CONTROLLER_PERSONA_ID, XboxWirelessControllerEncoder,
 };
 use usb2ble_platform_esp32::{
     self as platform, EspUsbIngress, PlatformStore, Uart, UartReadResult, ble_hid::BleHidTransport,
@@ -914,6 +916,37 @@ where
         .as_ref()
         .map(|descriptor| descriptor.report_map.len())
         .unwrap_or(0);
+    let report_ids = if active_persona == Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID) {
+        vec![XBOX_INPUT_REPORT_ID.0, XBOX_RUMBLE_REPORT_ID.0]
+    } else if report_map_len > 0 {
+        vec![1]
+    } else {
+        Vec::<u8>::new()
+    };
+    let xbox_reference = (active_persona == Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID)).then(|| {
+        serde_json::json!({
+            "reference_model": "Xbox Wireless Controller model 1914 / Series X|S BLE",
+            "vid": "0x045e",
+            "pid": "0x0b13",
+            "descriptor_reference": "xpadneo captured 0005:045E:0B13 BLE HID report descriptor",
+            "input_report_id": XBOX_INPUT_REPORT_ID.0,
+            "input_payload_len": XBOX_INPUT_REPORT_PAYLOAD_LEN,
+            "output_report_id": XBOX_RUMBLE_REPORT_ID.0,
+            "output_payload_len": XBOX_RUMBLE_OUTPUT_PAYLOAD_LEN,
+            "report_map_len_expected": XBOX_MODEL_1914_REPORT_MAP_LEN,
+            "stick_logical_min": 0,
+            "stick_logical_max": XBOX_STICK_LOGICAL_MAX,
+            "trigger_logical_min": 0,
+            "trigger_logical_max": XBOX_TRIGGER_LOGICAL_MAX,
+            "hat_logical_min": 1,
+            "hat_logical_max": 8,
+            "hat_null": 0,
+            "button_count": 15,
+            "share_usage": "consumer_record",
+            "rumble_output_behavior": "descriptor_exposes_report_id_3; firmware parses as safe no-op only if surfaced by host stack",
+            "claim_boundary": "BLE HID profile target, not Xbox console or proprietary Xbox Wireless compatibility"
+        })
+    });
     let device_name = descriptor
         .as_ref()
         .map(|descriptor| nul_terminated_bytes_to_string(descriptor.identity.device_name));
@@ -959,6 +992,7 @@ where
             "input_reports": if report_map_len > 0 { 1 } else { 0 },
             "report_reference_descriptors": "unknown",
             "cccd_notify": "unknown",
+            "output_reports": if active_persona == Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID) { 1 } else { 0 },
             "service_changed": "unknown"
         },
         "device_information_service": "unknown",
@@ -966,7 +1000,8 @@ where
         "services_present_intended": ["hid_service_via_esp_hidd_dev_init"],
         "services_not_verified_by_command": ["device_information_service", "battery_service", "cccd_notify", "service_changed"],
         "report_map_len": report_map_len,
-        "report_ids": if report_map_len > 0 { vec![1] } else { Vec::<u8>::new() },
+        "report_ids": report_ids,
+        "xbox_reference": xbox_reference,
         "security": {
             "mode": "bond",
             "pairing_policy": "just_works",
@@ -1401,6 +1436,23 @@ mod tests {
             }
             other => panic!("expected profile JSON, got {other:?}"),
         }
+
+        let mut runtime = Runtime::new();
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        match runtime.run(ControlCommand::GetBleCompatProfile) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "BLE_COMPAT_PROFILE_JSON");
+                assert!(resp.json.contains("xbox_compatibility"));
+                assert!(resp.json.contains("0x0b13"));
+                assert!(resp.json.contains("\"report_ids\":[1,3]"));
+                assert!(resp.json.contains("consumer_record"));
+                assert!(resp.json.contains("safe no-op"));
+            }
+            other => panic!("expected Xbox profile JSON, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1769,7 +1821,7 @@ mod tests {
         assert_eq!(pressed.bytes.len(), 16);
         assert_eq!(released.bytes.len(), 16);
         assert_ne!(pressed.bytes, released.bytes);
-        assert_eq!(&pressed.bytes[0..2], &65_534_u16.to_le_bytes());
+        assert_eq!(&pressed.bytes[0..2], &65_535_u16.to_le_bytes());
         assert_eq!(&released.bytes[0..2], &0_u16.to_le_bytes());
         assert_eq!(&pressed.bytes[13..15], &1_u16.to_le_bytes());
         assert_eq!(&released.bytes[13..15], &0_u16.to_le_bytes());

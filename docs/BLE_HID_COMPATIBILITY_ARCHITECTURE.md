@@ -33,7 +33,7 @@ The proven default must remain unchanged:
 - `generic_unsigned_axes`: planned descriptor/report-map variant for hosts that dislike signed axes.
 - `generic_android_sim_controls`: planned descriptor variant for simulation-control-style throttle/brake/accelerator semantics.
 - `ios_keyboard_icade_fallback`: planned keyboard/iCade-style fallback, not a true Gamepad API path.
-- `xbox_compatibility`: existing Xbox persona slice, with broad compatibility still unclaimed.
+- `xbox_compatibility`: Xbox Wireless Controller model 1914 / Series X|S BLE profile target, with profile diagnostics/checker evidence and broad compatibility still unclaimed.
 
 Variant promotion rules:
 
@@ -58,6 +58,7 @@ Variant promotion rules:
 - `tools/ble_advertising_probe.py` captures best-effort macOS Bluetooth summaries and can ingest manual scanner exports.
 - `tools/ble_compatibility_variant_witness.py` runs variants one boot at a time and saves target-side and host-discovery artifacts.
 - `tools/check_ble_hid_profile.py` checks profile snapshots for HOGP/HIDS-adjacent structure while marking stack-hidden GATT details as `unknown`.
+- `tools/check_xbox_ble_profile.py` checks the Xbox model-1914 BLE profile shape, including VID/PID, Report ID 1 input, Report ID 3 output, trigger/stick ranges, button/share layout, and source report-map features.
 - `tools/ble_compat_reset.py` runs a conservative reset workflow: stop bridge, clear bonds, reboot, start a selected variant, and dump the active profile.
 - `tools/ble_profile_snapshot.py` writes source-defined profile snapshots for supported/planned variants.
 
@@ -90,4 +91,5 @@ Promotion from experimental to supported requires:
 - Espressif: [Bluetooth HID Device API](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/bluetooth/esp_hidd.html)
 - Zephyr Project: [Bluetooth: Peripheral HIDS sample](https://docs.zephyrproject.org/latest/samples/bluetooth/peripheral_hids/README.html)
 - ESP32-BLE-Gamepad: [Project documentation](https://github.com/lemmingDev/ESP32-BLE-Gamepad)
+- xpadneo: [Xbox Series X|S BLE descriptor notes](https://github.com/atar-axis/xpadneo/blob/master/docs/descriptors/xbxs.md)
 - Bluetooth SIG: [Assigned Numbers](https://www.bluetooth.com/specifications/assigned-numbers/)

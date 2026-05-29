@@ -24,6 +24,24 @@ pub const XBOX_INPUT_REPORT_ID: ReportId = ReportId(1);
 /// HID report ID used by the Xbox Wireless Controller rumble output report.
 pub const XBOX_RUMBLE_REPORT_ID: ReportId = ReportId(3);
 
+/// Xbox Series X|S BLE input report payload length, excluding report ID.
+pub const XBOX_INPUT_REPORT_PAYLOAD_LEN: usize = 16;
+
+/// Xbox Series X|S BLE rumble output report payload length, excluding report ID.
+pub const XBOX_RUMBLE_OUTPUT_PAYLOAD_LEN: usize = 8;
+
+/// Xbox Series X|S BLE report-map length for the model 1914 reference shape.
+pub const XBOX_MODEL_1914_REPORT_MAP_LEN: usize = 283;
+
+/// Xbox Series X|S BLE stick logical minimum.
+pub const XBOX_STICK_LOGICAL_MIN: u16 = 0;
+
+/// Xbox Series X|S BLE stick logical maximum.
+pub const XBOX_STICK_LOGICAL_MAX: u16 = u16::MAX;
+
+/// Xbox Series X|S BLE trigger logical maximum.
+pub const XBOX_TRIGGER_LOGICAL_MAX: u16 = 1_023;
+
 const BLE_HID_APPEARANCE_GAMEPAD: u16 = 0x03c4;
 
 static GENERIC_GAMEPAD_DEVICE_NAME: &[u8] = b"USB2BLE Gamepad\0";
@@ -143,6 +161,59 @@ const XBOX_BUTTON_IDS: [&str; 15] = [
     "paddle_3",
     "paddle_4",
 ];
+
+/// Parsed Xbox Wireless Controller report ID 3 rumble output payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XboxRumbleOutputReport {
+    /// Four-bit motor enable mask.
+    pub motor_enable_mask: u8,
+    /// Strong left motor magnitude, 0..100.
+    pub strong_magnitude: u8,
+    /// Weak right motor magnitude, 0..100.
+    pub weak_magnitude: u8,
+    /// Left trigger motor magnitude, 0..100.
+    pub left_trigger_magnitude: u8,
+    /// Right trigger motor magnitude, 0..100.
+    pub right_trigger_magnitude: u8,
+    /// Effect duration in centiseconds.
+    pub duration: u8,
+    /// Effect start delay in centiseconds.
+    pub start_delay: u8,
+    /// Effect loop count.
+    pub loop_count: u8,
+}
+
+/// Parse an Xbox Wireless Controller report ID 3 rumble output report.
+///
+/// The input may include the leading report ID byte or only the 8-byte payload.
+/// USB2BLE currently treats parsed rumble as a safe no-op; this parser exists so
+/// host output reports can be accepted and inspected without panicking.
+///
+/// # Errors
+///
+/// Returns `PersonaError::Generic` if the buffer length is not 8 payload bytes
+/// or 9 bytes including report ID 3.
+pub fn parse_xbox_rumble_output_report(
+    bytes: &[u8],
+) -> Result<XboxRumbleOutputReport, PersonaError> {
+    let payload = match bytes {
+        [report_id, rest @ ..] if *report_id == XBOX_RUMBLE_REPORT_ID.0 => rest,
+        rest => rest,
+    };
+    if payload.len() != XBOX_RUMBLE_OUTPUT_PAYLOAD_LEN {
+        return Err(PersonaError::Generic);
+    }
+    Ok(XboxRumbleOutputReport {
+        motor_enable_mask: payload[0] & 0x0f,
+        strong_magnitude: payload[1].min(100),
+        weak_magnitude: payload[2].min(100),
+        left_trigger_magnitude: payload[3].min(100),
+        right_trigger_magnitude: payload[4].min(100),
+        duration: payload[5],
+        start_delay: payload[6],
+        loop_count: payload[7],
+    })
+}
 
 /// Encoder for the fixed Generic Gamepad demo persona.
 #[derive(Debug, Default, Clone, Copy)]
@@ -335,8 +406,8 @@ fn xbox_wireless_controller_schema() -> PersonaInputSchema {
         controls.push(PersonaControlDescriptor {
             control_id: axis.to_string(),
             kind: PersonaControlKind::Axis,
-            logical_min: 0,
-            logical_max: 65_534,
+            logical_min: i32::from(XBOX_STICK_LOGICAL_MIN),
+            logical_max: i32::from(XBOX_STICK_LOGICAL_MAX),
         });
     }
     for trigger in XBOX_TRIGGER_IDS {
@@ -344,7 +415,7 @@ fn xbox_wireless_controller_schema() -> PersonaInputSchema {
             control_id: trigger.to_string(),
             kind: PersonaControlKind::Trigger,
             logical_min: 0,
-            logical_max: 1_023,
+            logical_max: i32::from(XBOX_TRIGGER_LOGICAL_MAX),
         });
     }
     controls.push(PersonaControlDescriptor {
@@ -430,21 +501,22 @@ fn scale_axis_to_xbox(value: NormalizedControlValue) -> u16 {
     };
     let clamped = i64::from(raw.clamp(i32::from(i16::MIN), i32::from(i16::MAX)));
     let shifted = clamped + 32_768;
-    u16::try_from((shifted * 65_534) / 65_535).unwrap_or(0)
+    u16::try_from(shifted.clamp(0, i64::from(u16::MAX))).unwrap_or(0)
 }
 
 fn scale_trigger_to_xbox(value: NormalizedControlValue) -> u16 {
     match value {
         NormalizedControlValue::Trigger(value) | NormalizedControlValue::Unknown(value) => {
-            u16::try_from(value.clamp(0, 1_023)).unwrap_or(0)
+            u16::try_from(value.clamp(0, i32::from(XBOX_TRIGGER_LOGICAL_MAX))).unwrap_or(0)
         }
         NormalizedControlValue::Axis(_) => {
             let scaled = u32::from(scale_axis_to_xbox(value));
-            u16::try_from((scaled * 1_023) / 65_534).unwrap_or(0)
+            u16::try_from((scaled * u32::from(XBOX_TRIGGER_LOGICAL_MAX)) / u32::from(u16::MAX))
+                .unwrap_or(0)
         }
         NormalizedControlValue::Button(value) => {
             if value {
-                1_023
+                XBOX_TRIGGER_LOGICAL_MAX
             } else {
                 0
             }
@@ -541,7 +613,7 @@ mod tests {
         assert_eq!(descriptor.identity.product_id, 0x0b13);
         assert_eq!(descriptor.identity.version, 0x0515);
         assert_nul_terminated_static_identity(descriptor.identity);
-        assert_eq!(descriptor.report_map.len(), 283);
+        assert_eq!(descriptor.report_map.len(), XBOX_MODEL_1914_REPORT_MAP_LEN);
         assert!(
             descriptor
                 .report_map
@@ -561,11 +633,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(report.report_id, XBOX_INPUT_REPORT_ID);
-        assert_eq!(report.bytes.len(), 16);
-        assert_eq!(&report.bytes[0..2], &32_767_u16.to_le_bytes());
-        assert_eq!(&report.bytes[2..4], &32_767_u16.to_le_bytes());
-        assert_eq!(&report.bytes[4..6], &32_767_u16.to_le_bytes());
-        assert_eq!(&report.bytes[6..8], &32_767_u16.to_le_bytes());
+        assert_eq!(report.bytes.len(), XBOX_INPUT_REPORT_PAYLOAD_LEN);
+        assert_eq!(&report.bytes[0..2], &32_768_u16.to_le_bytes());
+        assert_eq!(&report.bytes[2..4], &32_768_u16.to_le_bytes());
+        assert_eq!(&report.bytes[4..6], &32_768_u16.to_le_bytes());
+        assert_eq!(&report.bytes[6..8], &32_768_u16.to_le_bytes());
         assert_eq!(&report.bytes[8..10], &0_u16.to_le_bytes());
         assert_eq!(&report.bytes[10..12], &0_u16.to_le_bytes());
         assert_eq!(report.bytes[12], 0);
@@ -616,12 +688,91 @@ mod tests {
             .unwrap();
 
         assert_eq!(&report.bytes[0..2], &0_u16.to_le_bytes());
-        assert_eq!(&report.bytes[2..4], &65_534_u16.to_le_bytes());
-        assert_eq!(&report.bytes[4..6], &32_767_u16.to_le_bytes());
-        assert_eq!(&report.bytes[10..12], &1_023_u16.to_le_bytes());
+        assert_eq!(&report.bytes[2..4], &XBOX_STICK_LOGICAL_MAX.to_le_bytes());
+        assert_eq!(&report.bytes[4..6], &32_768_u16.to_le_bytes());
+        assert_eq!(
+            &report.bytes[10..12],
+            &XBOX_TRIGGER_LOGICAL_MAX.to_le_bytes()
+        );
         assert_eq!(report.bytes[12], 1);
         assert_eq!(&report.bytes[13..15], &(0b100_0000_0001_u16).to_le_bytes());
         assert_eq!(report.bytes[15], 1);
+    }
+
+    #[test]
+    fn xbox_encodes_all_stick_extremes_and_trigger_bounds() {
+        let report = XboxWirelessControllerEncoder
+            .encode(&PersonaInputFrame {
+                persona_id: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+                logical_controls: vec![
+                    PersonaLogicalControlValue {
+                        control_id: "left_x".to_string(),
+                        value: NormalizedControlValue::Axis(i32::from(i16::MIN)),
+                    },
+                    PersonaLogicalControlValue {
+                        control_id: "left_y".to_string(),
+                        value: NormalizedControlValue::Axis(i32::from(i16::MAX)),
+                    },
+                    PersonaLogicalControlValue {
+                        control_id: "right_x".to_string(),
+                        value: NormalizedControlValue::Axis(i32::from(i16::MIN)),
+                    },
+                    PersonaLogicalControlValue {
+                        control_id: "right_y".to_string(),
+                        value: NormalizedControlValue::Axis(i32::from(i16::MAX)),
+                    },
+                    PersonaLogicalControlValue {
+                        control_id: "left_trigger".to_string(),
+                        value: NormalizedControlValue::Trigger(-1),
+                    },
+                    PersonaLogicalControlValue {
+                        control_id: "right_trigger".to_string(),
+                        value: NormalizedControlValue::Trigger(2_000),
+                    },
+                ],
+            })
+            .unwrap();
+
+        assert_eq!(&report.bytes[0..2], &XBOX_STICK_LOGICAL_MIN.to_le_bytes());
+        assert_eq!(&report.bytes[2..4], &XBOX_STICK_LOGICAL_MAX.to_le_bytes());
+        assert_eq!(&report.bytes[4..6], &XBOX_STICK_LOGICAL_MIN.to_le_bytes());
+        assert_eq!(&report.bytes[6..8], &XBOX_STICK_LOGICAL_MAX.to_le_bytes());
+        assert_eq!(&report.bytes[8..10], &0_u16.to_le_bytes());
+        assert_eq!(
+            &report.bytes[10..12],
+            &XBOX_TRIGGER_LOGICAL_MAX.to_le_bytes()
+        );
+    }
+
+    #[test]
+    fn xbox_hat_uses_one_to_eight_with_zero_neutral() {
+        for (input, expected) in [(-1, 0), (0, 1), (3, 4), (7, 8), (8, 0), (9, 0)] {
+            let report = XboxWirelessControllerEncoder
+                .encode(&PersonaInputFrame {
+                    persona_id: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+                    logical_controls: vec![PersonaLogicalControlValue {
+                        control_id: "hat".to_string(),
+                        value: NormalizedControlValue::Hat(input),
+                    }],
+                })
+                .unwrap();
+            assert_eq!(report.bytes[12], expected);
+        }
+    }
+
+    #[test]
+    fn parses_xbox_rumble_output_report_as_safe_noop_payload() {
+        let parsed = parse_xbox_rumble_output_report(&[3, 0x0f, 100, 64, 32, 1, 20, 3, 2]).unwrap();
+
+        assert_eq!(parsed.motor_enable_mask, 0x0f);
+        assert_eq!(parsed.strong_magnitude, 100);
+        assert_eq!(parsed.weak_magnitude, 64);
+        assert_eq!(parsed.left_trigger_magnitude, 32);
+        assert_eq!(parsed.right_trigger_magnitude, 1);
+        assert_eq!(parsed.duration, 20);
+        assert_eq!(parsed.start_delay, 3);
+        assert_eq!(parsed.loop_count, 2);
+        assert!(parse_xbox_rumble_output_report(&[3, 1, 2]).is_err());
     }
 
     fn assert_nul_terminated_static_identity(identity: BlePersonaIdentity) {

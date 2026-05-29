@@ -72,5 +72,13 @@ export const flightPackXbox: RuntimeConfig = {
     thrustmasterRule(0xb10a, 'button_2', 'b'),
     thrustmasterRule(0xb10a, 'button_3', 'x'),
     thrustmasterRule(0xb10a, 'button_4', 'y'),
+    thrustmasterRule(0xb10a, 'button_5', 'lb'),
+    thrustmasterRule(0xb10a, 'button_6', 'rb'),
+    thrustmasterRule(0xb10a, 'button_7', 'view'),
+    thrustmasterRule(0xb10a, 'button_8', 'menu'),
+    thrustmasterRule(0xb10a, 'button_9', 'nexus'),
+    thrustmasterRule(0xb10a, 'button_10', 'left_stick_press'),
+    thrustmasterRule(0xb10a, 'button_11', 'right_stick_press'),
+    thrustmasterRule(0xb10a, 'button_12', 'share'),
   ],
 };

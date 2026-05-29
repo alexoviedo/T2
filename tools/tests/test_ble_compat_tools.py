@@ -13,6 +13,7 @@ sys.path.insert(0, str(TOOLS))
 
 import ble_advertising_probe  # noqa: E402
 import check_ble_hid_profile  # noqa: E402
+import check_xbox_ble_profile  # noqa: E402
 
 
 class BleAdvertisingProbeTests(unittest.TestCase):
@@ -61,6 +62,26 @@ class BleHidProfileCheckerTests(unittest.TestCase):
             loaded = check_ble_hid_profile.load_profile_file(pathlib.Path(handle.name))
 
         self.assertEqual(loaded["active_variant"], "generic_hogp_strict")
+
+
+class XboxBleProfileCheckerTests(unittest.TestCase):
+    def test_builtin_xbox_profile_matches_reference_shape(self) -> None:
+        report_map = check_xbox_ble_profile.extract_xbox_report_map()
+        summary = check_xbox_ble_profile.check_profile(
+            check_ble_hid_profile.builtin_profile("xbox_compatibility"),
+            report_map,
+        )
+
+        self.assertEqual(summary["fail_count"], 0)
+        self.assertEqual(summary["warn_count"], 0)
+
+    def test_xbox_checker_detects_missing_output_report_id(self) -> None:
+        profile = check_ble_hid_profile.builtin_profile("xbox_compatibility")
+        profile["report_ids"] = [1]
+
+        summary = check_xbox_ble_profile.check_profile(profile, [])
+
+        self.assertGreater(summary["fail_count"], 0)
 
 
 if __name__ == "__main__":

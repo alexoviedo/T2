@@ -20,7 +20,9 @@ before status docs should change.
 ## 2. Xbox Host-Visible Refined Mapping Witness
 
 - Why it matters: the refined Xbox mapping is target-side proven, but host-visible
-  refined Flight Pack behavior is not yet proven.
+  refined Flight Pack behavior is not yet proven. Xbox BLE Profile v1 now gives
+  the target-side model-1914 profile/report-map checker and diagnostic baseline
+  needed before a host witness.
 - Evidence needed: persisted Xbox config, BLE identity, host-visible trigger and
   stick movement, serial report bytes, bridge counters, browser or OS-visible
   samples, and limitations.
