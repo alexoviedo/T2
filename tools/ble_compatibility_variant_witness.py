@@ -165,6 +165,28 @@ def run_variant(
     probe_dir = run_dir / f"mac_ble_probe_{variant}"
     probe_dir.mkdir(parents=True, exist_ok=True)
     mac_probe = run_ble_probe(probe_dir, probe_seconds, device_name)
+    profile_line = response_with_prefix(records, "BLE_COMPAT_PROFILE_JSON:")
+    profile_json_path = run_dir / f"profile_{variant}.json"
+    profile_check_path = run_dir / f"profile_check_{variant}.json"
+    checker_returncode: int | None = None
+    if profile_line.startswith("BLE_COMPAT_PROFILE_JSON:"):
+        profile_json_path.write_text(profile_line.split(":", 1)[1] + "\n", encoding="utf-8")
+        checker = subprocess.run(
+            [
+                sys.executable,
+                "tools/check_ble_hid_profile.py",
+                "--profile-json",
+                str(profile_json_path),
+                "--out-json",
+                str(profile_check_path),
+                "--quiet",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        checker_returncode = checker.returncode
 
     manual_result = iphone_result
     displayed_name = iphone_displayed_name
@@ -176,7 +198,10 @@ def run_variant(
         "implemented": True,
         "start_command": start_command,
         "target_advertising_info": advertising,
-        "compat_profile_json": response_with_prefix(records, "BLE_COMPAT_PROFILE_JSON:"),
+        "compat_profile_json": profile_line,
+        "compat_profile_path": str(profile_json_path) if profile_json_path.exists() else None,
+        "profile_check_path": str(profile_check_path) if profile_check_path.exists() else None,
+        "profile_check_returncode": checker_returncode,
         "target_reported_advertising_active": advertising.get("state") == "Advertising",
         "target_reported_variant": advertising.get("variant"),
         "mac_probe_run_dir": str(probe_dir),
@@ -238,6 +263,11 @@ def main() -> int:
         and result.get("target_reported_variant")
         and result.get("target_reported_variant") != result.get("variant")
     ]
+    errors.extend(
+        f"{result['variant']}: profile checker reported structural failures"
+        for result in variant_results
+        if result.get("profile_check_returncode") not in (None, 0)
+    )
     summary = {
         "captured_at": stamp,
         "run_dir": str(run_dir),

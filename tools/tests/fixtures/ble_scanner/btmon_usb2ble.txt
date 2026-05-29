@@ -1,0 +1,8 @@
+> HCI Event: LE Meta Event
+      Address: 90:70:69:07:0D:7C (Public)
+      RSSI: -51 dBm
+      Flags: 0x06
+      Complete Local Name: USB2BLE Gamepad
+      16-bit Service UUIDs: 0x1812
+      Appearance: 0x03c4
+      Advertisement Data: 020106030312180311c403

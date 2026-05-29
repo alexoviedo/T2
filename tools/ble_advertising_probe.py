@@ -12,6 +12,7 @@ import argparse
 import datetime as dt
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 from typing import Any
@@ -66,6 +67,78 @@ def available_command(name: str) -> bool:
 
 def find_names(text: str, names: tuple[str, ...]) -> list[str]:
     return sorted({name for name in names if name.lower() in text.lower()})
+
+
+def normalize_uuid(value: str) -> str:
+    cleaned = value.lower().replace("0x", "").strip("{} ")
+    if len(cleaned) == 4:
+        return cleaned
+    if "0000" in cleaned and "-0000-1000-8000-00805f9b34fb" in cleaned:
+        return cleaned[4:8]
+    return cleaned
+
+
+def normalize_manual_scan_text(text: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    stripped = text.strip()
+    if not stripped:
+        return records
+
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError:
+        value = None
+    if value is not None:
+        items = value if isinstance(value, list) else [value]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            record = {
+                "device_name": item.get("name") or item.get("localName") or item.get("deviceName"),
+                "address": item.get("address") or item.get("mac") or item.get("id"),
+                "rssi": item.get("rssi"),
+                "flags": item.get("flags"),
+                "service_uuids": [
+                    normalize_uuid(str(uuid))
+                    for uuid in item.get("serviceUuids", item.get("service_uuids", []))
+                    if uuid
+                ],
+                "appearance": item.get("appearance"),
+                "manufacturer_data": item.get("manufacturerData") or item.get("manufacturer_data"),
+                "service_data": item.get("serviceData") or item.get("service_data"),
+                "raw_bytes": item.get("rawBytes") or item.get("raw_bytes"),
+                "source_format": "json",
+            }
+            records.append({key: val for key, val in record.items() if val not in (None, "", [])})
+        return records
+
+    name_match = re.search(
+        r"(?:Complete Local Name|Local Name|Device Name|Name)\s*[:=]\s*([^\n\r]+)",
+        text,
+        re.IGNORECASE,
+    )
+    address_match = re.search(r"\b([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})\b", text)
+    rssi_match = re.search(r"\bRSSI\s*[:=]\s*(-?\d+)", text, re.IGNORECASE)
+    flags_match = re.search(r"\bFlags\s*[:=]\s*(0x[0-9a-fA-F]+|\d+)", text, re.IGNORECASE)
+    appearance_match = re.search(r"\bAppearance\s*[:=]\s*(0x[0-9a-fA-F]+|\d+)", text, re.IGNORECASE)
+    raw_match = re.search(r"\b(?:Raw Bytes|Raw Data|Advertisement Data)\s*[:=]\s*([0-9a-fA-F ]{8,})", text, re.IGNORECASE)
+    uuid_candidates = {
+        normalize_uuid(match)
+        for match in re.findall(r"(?:0x)?([0-9a-fA-F]{4})(?:\b|,)", text)
+        if match.lower() not in {"0000", "ffff"}
+    }
+    record = {
+        "device_name": name_match.group(1).strip() if name_match else None,
+        "address": address_match.group(1) if address_match else None,
+        "rssi": int(rssi_match.group(1)) if rssi_match else None,
+        "flags": flags_match.group(1) if flags_match else None,
+        "service_uuids": sorted(uuid_candidates),
+        "appearance": appearance_match.group(1) if appearance_match else None,
+        "raw_bytes": raw_match.group(1).replace(" ", "") if raw_match else None,
+        "source_format": "text",
+    }
+    cleaned = {key: val for key, val in record.items() if val not in (None, "", [])}
+    return [cleaned] if len(cleaned) > 1 else []
 
 
 def main() -> int:
@@ -135,6 +208,12 @@ def main() -> int:
         else:
             manual_outputs.append({"path": str(manual_path), "output": "", "error": "file not found"})
 
+    normalized_manual = [
+        {**record, "source_path": value["path"]}
+        for value in manual_outputs
+        for record in normalize_manual_scan_text(value.get("output", ""))
+    ]
+
     combined_output = "\n\n".join(
         [
             "$ " + " ".join(result["command"]) + "\n" + (result.get("output") or "")
@@ -146,13 +225,21 @@ def main() -> int:
         ]
     )
     observed_names = find_names(combined_output, names)
+    observed_names.extend(
+        name
+        for record in normalized_manual
+        for name in [record.get("device_name")]
+        if isinstance(name, str) and any(target.lower() in name.lower() for target in names)
+    )
+    observed_names = sorted(set(observed_names))
     summary = {
         "captured_at": utc_stamp(),
         "run_dir": str(run_dir),
         "searched_names": list(names),
         "observed_names": observed_names,
         "usb2ble_name_observed": any("usb2ble" in name.lower() for name in observed_names),
-        "raw_advertisement_fields_available": False,
+        "raw_advertisement_fields_available": any(record.get("raw_bytes") for record in normalized_manual),
+        "normalized_advertisements": normalized_manual,
         "tool_availability": {
             "system_profiler": available_command("system_profiler"),
             "blueutil": available_command("blueutil"),
@@ -172,6 +259,7 @@ def main() -> int:
                 "path": value["path"],
                 "error": value.get("error"),
                 "matched_names": find_names(value.get("output", ""), names),
+                "normalized_records": normalize_manual_scan_text(value.get("output", "")),
             }
             for value in manual_outputs
         ],

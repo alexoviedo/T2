@@ -1,0 +1,10 @@
+{
+  "name": "USB2BLE Gamepad",
+  "address": "90:70:69:07:0D:7C",
+  "rssi": -48,
+  "flags": "0x06",
+  "serviceUuids": ["00001812-0000-1000-8000-00805f9b34fb"],
+  "appearance": "0x03c4",
+  "manufacturerData": "5442",
+  "rawBytes": "0201060303c4031107554232424c452047616d65706164"
+}

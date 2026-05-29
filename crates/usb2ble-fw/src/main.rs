@@ -776,6 +776,69 @@ fn scan_response_uuids_for_variant(variant: Option<BleCompatibilityVariant>) -> 
     }
 }
 
+fn variant_profile_family(variant: Option<BleCompatibilityVariant>) -> &'static str {
+    match variant {
+        Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => "keyboard_fallback",
+        _ => "hogp_hids",
+    }
+}
+
+fn variant_intended_host_target(variant: Option<BleCompatibilityVariant>) -> &'static str {
+    match variant {
+        Some(BleCompatibilityVariant::GenericDefault) => "macos_chrome_proven_default",
+        Some(BleCompatibilityVariant::GenericHogpStrict) => "apple_ios_discovery_experiment",
+        Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => "ios_keyboard_fallback_planned",
+        Some(BleCompatibilityVariant::XboxCompatibility) => "xbox_like_hosts_experimental",
+        None => "none",
+    }
+}
+
+fn primary_advertisement_fields(variant: Option<BleCompatibilityVariant>) -> Vec<&'static str> {
+    match variant {
+        Some(BleCompatibilityVariant::GenericHogpStrict) => {
+            vec!["flags", "appearance", "complete_local_name"]
+        }
+        Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => vec!["flags", "appearance"],
+        _ => vec!["flags", "appearance", "complete_128bit_service_uuid"],
+    }
+}
+
+fn scan_response_fields(variant: Option<BleCompatibilityVariant>) -> Vec<&'static str> {
+    match variant {
+        Some(BleCompatibilityVariant::GenericHogpStrict) => vec!["complete_128bit_service_uuid"],
+        Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => Vec::new(),
+        _ => vec!["complete_local_name"],
+    }
+}
+
+fn estimated_primary_adv_len(
+    variant: Option<BleCompatibilityVariant>,
+    device_name: Option<&str>,
+) -> usize {
+    let flags_len = 3;
+    let appearance_len = 4;
+    let name_len = device_name.map_or(0, |name| 2 + name.len());
+    let uuid_128_len = 18;
+    match variant {
+        Some(BleCompatibilityVariant::GenericHogpStrict) => flags_len + appearance_len + name_len,
+        Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => flags_len + appearance_len,
+        _ => flags_len + appearance_len + uuid_128_len,
+    }
+}
+
+fn estimated_scan_rsp_len(
+    variant: Option<BleCompatibilityVariant>,
+    device_name: Option<&str>,
+) -> usize {
+    let name_len = device_name.map_or(0, |name| 2 + name.len());
+    let uuid_128_len = 18;
+    match variant {
+        Some(BleCompatibilityVariant::GenericHogpStrict) => uuid_128_len,
+        Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => 0,
+        _ => name_len,
+    }
+}
+
 fn ble_compatibility_variants_json() -> JsonResponse {
     let json = serde_json::json!({
         "variants": [
@@ -851,38 +914,69 @@ where
         .as_ref()
         .map(|descriptor| descriptor.report_map.len())
         .unwrap_or(0);
+    let device_name = descriptor
+        .as_ref()
+        .map(|descriptor| nul_terminated_bytes_to_string(descriptor.identity.device_name));
+    let device_name_for_json = device_name.clone();
     let json = serde_json::json!({
         "active_persona": active_persona.map(|persona| persona.0).unwrap_or("none"),
         "active_variant": active_variant.map(BleCompatibilityVariant::id).unwrap_or("none"),
+        "profile_family": variant_profile_family(active_variant),
+        "intended_host_target": variant_intended_host_target(active_variant),
         "connection_state": format!("{:?}", ble.current_state()),
         "advertising_active": ble.current_state() == usb2ble_contracts::BleLinkState::Advertising,
-        "device_name": descriptor.as_ref().map(|descriptor| nul_terminated_bytes_to_string(descriptor.identity.device_name)),
+        "device_name": device_name_for_json,
         "manufacturer": descriptor.as_ref().map(|descriptor| nul_terminated_bytes_to_string(descriptor.identity.manufacturer_name)),
         "vendor_id": descriptor.as_ref().map(|descriptor| descriptor.identity.vendor_id),
         "product_id": descriptor.as_ref().map(|descriptor| descriptor.identity.product_id),
         "appearance": descriptor.as_ref().map(|descriptor| format!("0x{:04x}", descriptor.identity.appearance)),
+        "address_type": "public",
+        "ble_address": "unavailable",
+        "raw_advertisement_bytes_available": false,
         "primary_advertisement": {
             "flags": "0x06",
+            "fields": primary_advertisement_fields(active_variant),
             "complete_local_name": active_variant == Some(BleCompatibilityVariant::GenericHogpStrict),
             "uuids": advertised_uuids_for_variant(active_variant),
             "appearance": true,
+            "estimated_payload_len": estimated_primary_adv_len(active_variant, device_name.as_deref()),
             "raw_bytes": "unavailable"
         },
         "scan_response": {
+            "fields": scan_response_fields(active_variant),
             "complete_local_name": active_variant != Some(BleCompatibilityVariant::GenericHogpStrict),
             "uuids": scan_response_uuids_for_variant(active_variant),
+            "estimated_payload_len": estimated_scan_rsp_len(active_variant, device_name.as_deref()),
             "raw_bytes": "unavailable"
         },
+        "hids": {
+            "service_uuid": "1812",
+            "service_present": "intended_by_esp_hidd_dev_init",
+            "hid_information": "unknown",
+            "report_map": if report_map_len > 0 { "intended" } else { "unknown" },
+            "hid_control_point": "unknown",
+            "protocol_mode": "unknown",
+            "input_reports": if report_map_len > 0 { 1 } else { 0 },
+            "report_reference_descriptors": "unknown",
+            "cccd_notify": "unknown",
+            "service_changed": "unknown"
+        },
+        "device_information_service": "unknown",
+        "battery_service": "unknown",
         "services_present_intended": ["hid_service_via_esp_hidd_dev_init"],
-        "services_not_verified_by_command": ["device_information_service", "battery_service"],
+        "services_not_verified_by_command": ["device_information_service", "battery_service", "cccd_notify", "service_changed"],
         "report_map_len": report_map_len,
         "report_ids": if report_map_len > 0 { vec![1] } else { Vec::<u8>::new() },
         "security": {
             "mode": "bond",
+            "pairing_policy": "just_works",
             "io_capability": "none",
             "encryption_keys": true,
             "identity_keys": true,
-            "bonds_present": bonds_present
+            "bond_storage_enabled": true,
+            "bonds_present": bonds_present,
+            "bond_count": if bonds_present { "present_count_unknown" } else { "0" },
+            "last_bonded_host": "unavailable"
         },
         "claim_boundary": "intended target-side profile diagnostics only; not raw over-the-air advertisement capture"
     })

@@ -57,6 +57,9 @@ Variant promotion rules:
 - `LIST_BLE_COMPAT_VARIANTS` reports implemented/planned variants as JSON.
 - `tools/ble_advertising_probe.py` captures best-effort macOS Bluetooth summaries and can ingest manual scanner exports.
 - `tools/ble_compatibility_variant_witness.py` runs variants one boot at a time and saves target-side and host-discovery artifacts.
+- `tools/check_ble_hid_profile.py` checks profile snapshots for HOGP/HIDS-adjacent structure while marking stack-hidden GATT details as `unknown`.
+- `tools/ble_compat_reset.py` runs a conservative reset workflow: stop bridge, clear bonds, reboot, start a selected variant, and dump the active profile.
+- `tools/ble_profile_snapshot.py` writes source-defined profile snapshots for supported/planned variants.
 
 ## Evidence Needed To Promote A Variant
 
@@ -68,6 +71,16 @@ At minimum:
 - App/API exposure result if the claim reaches beyond Bluetooth visibility.
 - Movement/input witness for any mapping claim.
 - Explicit limitations and non-claims.
+
+Promotion from experimental to supported requires:
+
+1. the target host discovers the advertised variant,
+2. the host pairs/connects,
+3. the intended GATT/HIDS shape is exposed or any stack-hidden pieces are independently captured,
+4. input reports are sent over BLE,
+5. the host app/API sees the intended input,
+6. reconnect or bond behavior is tested,
+7. evidence is checked in and linked from the evidence index.
 
 ## References
 

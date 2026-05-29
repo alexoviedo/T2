@@ -65,11 +65,13 @@ before status docs should change.
 
 - Why it matters: current host-visible evidence is narrow, mostly Chrome on
   macOS.
-- Evidence needed: host OS/browser versions, BLE identity, Gamepad/API or app
-  visibility, bridge counters, screenshots/logs, and explicit limitations for
-  each host.
+- Evidence needed: host OS/browser versions, active BLE compatibility variant,
+  profile checker output, raw advertisement or scanner import when possible,
+  BLE identity, Gamepad/API or app visibility, bridge counters,
+  screenshots/logs, and explicit limitations for each host.
 - Hardware/user action: likely required for pairing and permission prompts.
-- Recommended next prompt type: one-host-at-a-time compatibility matrix witness.
+- Recommended next prompt type: BLE Compatibility Lab profile/scanner reset
+  workflow, then one-host-at-a-time compatibility matrix witness.
 - Risk: medium, because host stacks differ.
 
 ## 7. iPhone And iPad Compatibility Exploration
