@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible USB2BLE bug.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please keep compatibility claims evidence-backed.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit SHA or release artifact
+      placeholder: c284b03 or latest release artifact name
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host OS and version
+      placeholder: macOS 12.7.5, Ubuntu 24.04, Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware topology
+      description: ESP32-S3 board, hub, controllers, cables, VID/PID list if available.
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands and output
+      description: Include serial commands, validation commands, and relevant output.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Target artifacts or evidence
+      description: Include target artifact directory paths or checked-in evidence docs.
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Claim boundaries
+      options:
+        - label: I am not claiming broad game/app, iPhone, bond persistence, or final calibration support without evidence.
+          required: true

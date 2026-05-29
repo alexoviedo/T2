@@ -38,7 +38,9 @@ jobs:
         python3 -m unittest discover -s tools/tests -p 'test_*.py'
 
     - name: Evidence reference checks
-      run: python3 tools/check_evidence_docs.py
+      run: |
+        python3 tools/check_evidence_docs.py
+        python3 tools/check_launch_readiness.py
 
     - name: Check formatting
       run: cargo fmt --all -- --check

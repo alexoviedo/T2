@@ -1,230 +1,165 @@
 # USB2BLE
 
-## Current status
-- `main` is at demo-bridge code-path status after M4 normalized-input evidence.
-- ESP32-S3 target-build preflight is expected to pass in CI.
-- Real powered-hub hardware witness transcripts are checked in for attach/detach identity, HID descriptor capture, raw input-report capture, HID capability summary, baseline normalized input, and the practical RJ12 Flight Pack topology.
-- Host-tested demo bridge code now encodes current normalized USB state into a Generic Gamepad report via `GET_GENERIC_GAMEPAD_REPORT`.
-- Host-tested mapping diagnostics now explain how normalized source controls map into the Generic Gamepad persona via `GET_GENERIC_GAMEPAD_MAPPING`.
-- Real target smoke evidence for `GET_GENERIC_GAMEPAD_REPORT` is checked in for the RJ12 Flight Pack topology.
-- Real target smoke evidence for `GET_GENERIC_GAMEPAD_MAPPING` is checked in for the TWCS plus T.16000M topology.
-- Real target operator movement evidence now shows T.16000M stick movement changing raw USB reports and mapped Generic Gamepad diagnostics after a USB host session reset.
-- Real target delta evidence now covers TWCS throttle movement, TFRP pedal movement through TWCS/RJ12, and a mapped T.16000M trigger press.
-- Real target detach cleanup evidence now shows a detached downstream HID device removed from USB status, descriptors, and cached reports while the hub remains attached.
-- A curated `flight_pack_demo` profile is implemented, host-tested, target-build verified, and target-witnessed for the T.16000M + TWCS/RJ12 demo path.
-- Target BLE HID demo firmware now starts the Generic Gamepad persona, reaches `ble=Advertising`, connects to a Mac host, and publishes both synthetic and live USB-derived Generic Gamepad reports over BLE.
-- Browser Gamepad API witness evidence is checked in for the BLE Generic Gamepad path, including synthetic self-test changes, one live USB-derived publish, and one `flight_pack_demo` T.16000M stick movement.
-- The hosted `latest` GitHub Release firmware image has been downloaded, flashed to the ESP32-S3, and smoke-verified through the serial control plane.
-- The ASAP demo rehearsal helper has a successful target + browser witness run for T.16000M stick-right movement through the full Generic Gamepad BLE path.
-- Generic BLE Gamepad: known working hardware path.
-- Xbox mapping/report encoding: implemented and host-tested.
-- Xbox BLE identity/report publishing: implemented and target-witnessed on ESP32-S3.
-- Xbox macOS pairing/input compatibility: real witness captured for macOS 12.7.5; broader game/app compatibility is not claimed.
-- Explicit live bridge mode is implemented, host-tested, and target-witnessed
-  for both Generic and Xbox personas. It is the intended path for real
-  games/apps because it continuously publishes USB-derived reports for the
-  active BLE persona while connected. Manual publish commands remain diagnostic
-  one-shot commands.
-- Repeatable soak and calibration witness tooling is available for the next
-  demo-hardening pass. Xbox live bridge now has a checked-in 300-second soak
-  witness; practical RJ12 Flight Pack axis labels and refined target-side
-  mapping evidence are checked in; refined Generic host-visible browser
-  Gamepad API axis exposure and a refined Generic 300-second live bridge soak
-  are checked in for the practical RJ12 topology; a self-hosted browser
-  game/app smoke is checked in; final Flight Pack calibration/deadzone
-  semantics still need separate evidence.
-- Browser Web Serial configurator smoke is checked in for Google Chrome:
-  connect, config/status/schema/catalog load, Flight Pack Generic import,
-  save, load, and `START_CONFIGURED`.
+USB2BLE is experimental ESP32-S3 firmware that bridges USB HID controllers to
+Bluetooth LE gamepad personas, with a Web Serial configurator for runtime
+mapping profiles.
 
-## What this project is building toward
-- ESP32-S3 USB HID to BLE bridge.
-- eventual powered USB-C hub support.
-- eventual multiple USB HID inputs.
-- mapping to BLE Generic Gamepad is now started with a pure auto-mapping and persona-encoding path.
-- BLE Xbox Wireless Controller output as a separate persona, with real host compatibility proven only by captured pairing/input evidence.
-- the BLE transport is intentionally persona-driven so Generic Gamepad and Xbox Wireless Controller output stay explicit and diagnosable.
+The current launch candidate is focused on a practical Thrustmaster Flight Pack
+demo path: T.16000M stick over USB, TWCS throttle over USB, and TFRP pedals
+through the TWCS RJ12 port via a powered HooToo USB hub.
 
-## Current project phase: post-M4 demo bridge / pre-product-hardening
-- M4 target scope was HID report decoding and normalized live-input diagnostics.
-- descriptor/report/summary/normalized-input control-plane fulfillment is proven for the THRUSTMASTER T.16000 FCS HOTAS through the HooToo powered hub.
-- expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, simultaneous normalized input for the recommended two-USB topology, and practical RJ12 labels for TWCS throttle plus TFRP rudder/toe axes.
-- final deadzone/calibration semantics and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4/product hardening.
-- BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses, including refined practical RJ12 `z/rx/ry/rz` axis exposure, a 300-second refined Generic live bridge soak in Chrome, and a self-hosted browser game/app smoke; external/native app/game compatibility and product-quality HOTAS calibration remain open.
+## What It Does
 
-## What works today
-- serial control plane.
-- `GET_INFO`
-- `GET_STATUS`
-- `GET_PROFILE`
-- `GET_USB_STATUS`
-- `LIST_USB_DEVICES`
-- `GET_USB_DESCRIPTOR <device>:<interface>` returns captured HID report descriptor bytes for discovered HID interfaces.
-- `GET_LAST_USB_REPORT <device>:<interface>` returns the most recent raw input report after a report is received.
-- `GET_HID_SUMMARY <device>:<interface>` returns parsed axes/buttons/hats/report IDs for descriptors that parse successfully.
-- `GET_NORMALIZED_INPUT <device>:<interface>` returns a normalized control frame decoded from the latest input report for descriptors that parse successfully.
-- `GET_GENERIC_GAMEPAD_REPORT` returns an encoded Generic Gamepad report from the latest normalized input frames for diagnostics and BLE publishing.
-- `GET_GENERIC_GAMEPAD_MAPPING` explains each selected Generic Gamepad mapping decision, including source VID/PID/interface, source control, target control, value, and reason.
-- `GET_XBOX_GAMEPAD_REPORT` returns an encoded Xbox Wireless Controller BLE input report from the latest normalized input frames.
-- `GET_XBOX_GAMEPAD_MAPPING` explains the selected Xbox Wireless Controller mapping decision path.
-- `flight_pack_demo` selects an explicit T.16000M + TWCS/RJ12 profile when both known devices are present, while `generic_auto` remains the fallback for other HID combinations.
-- `START_BLE_GENERIC_GAMEPAD` starts the target BLE HID Generic Gamepad persona.
-- `SEND_BLE_SELF_TEST_REPORT` publishes an explicit synthetic Generic Gamepad report when a BLE host is connected.
-- `PUBLISH_GENERIC_GAMEPAD_REPORT` publishes the latest encoded USB-derived Generic Gamepad report when a BLE host is connected.
-- `START_BLE_XBOX_CONTROLLER` starts the Xbox Wireless Controller BLE persona using the model 1914 / Series X|S BLE compatibility identity.
-- `SEND_XBOX_SELF_TEST_REPORT` publishes an explicit synthetic Xbox report when a BLE host is connected.
-- `PUBLISH_XBOX_GAMEPAD_REPORT` publishes the latest encoded USB-derived Xbox Wireless Controller report when a BLE host is connected.
-- `START_BRIDGE` enables explicit live bridge mode after a BLE persona has been started.
-- `GET_BRIDGE_STATUS` reports live bridge state, counters, publish rate, and last error.
-- `STOP_BRIDGE` disables live bridge mode and is safe to run repeatedly.
-- `SET_BRIDGE_RATE_HZ <hz>` changes the live bridge max publish rate within the supported range.
-- `GET_CONFIG_STATUS`, `GET_CONFIG_SCHEMA`, `GET_PERSONA_SCHEMA <generic|xbox>`,
-  `GET_INPUT_CATALOG`, and `GET_CONFIG_JSON` expose the first
-  Web-Serial-ready runtime configuration API.
-- `BEGIN_CONFIG_JSON <chunks> <sha256|none>`, `CONFIG_JSON_CHUNK <index>
-  <base64url>`, and `COMMIT_CONFIG_JSON` import validated runtime config JSON
-  without depending on long serial lines.
-- `RESET_CONFIG`, `SAVE_CONFIG`, `LOAD_CONFIG`, and `START_CONFIGURED` manage
-  the active runtime config and start the configured persona/bridge behavior.
-- `FORGET_BLE_BONDS` clears BLE bonds through the BLE transport.
-- `tools/gamepad_witness/server.py` serves a repo-local browser Gamepad API witness page and captures snapshots under `target/gamepad-witness/`.
-- `tools/asap_demo_rehearsal.py` runs the operator-friendly Generic Gamepad demo rehearsal, auto-detects the T.16000M source by VID/PID, supports `--live-bridge`, and saves a timestamped transcript.
-- `tools/xbox_demo_rehearsal.py` runs the Xbox BLE compatibility rehearsal, supports `--live-bridge`, and saves serial proof plus optional browser witness evidence.
-- `tools/live_bridge_soak.py` runs a timed Generic or Xbox live bridge soak and saves bridge status samples.
-- `tools/refined_generic_live_bridge_soak.py` runs a 300-second refined Generic Flight Pack live bridge soak with serial bridge counters and continuous browser Gamepad API samples.
-- `tools/browser_game_compat_witness.py` runs the self-hosted `USB2BLE Sky Run`
-  browser game/app smoke and saves serial plus browser game-state artifacts.
-- `tools/flight_pack_calibration_witness.py` guides named Flight Pack movements and drafts calibration/axis-label evidence.
-- Practical Flight Pack axis-label evidence exists in
-  `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md`.
-- Practical Flight Pack mapping-refinement evidence exists in
-  `docs/milestone-evidence/FLIGHT_PACK_MAPPING_REFINEMENT_WITNESS_2026-05-28.md`.
-- Practical Flight Pack refined Generic host-visible axis exposure evidence
-  exists in
-  `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`.
-- Practical Flight Pack refined Generic live bridge soak evidence exists in
-  `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md`.
-- Self-hosted browser game/app smoke evidence exists in
-  `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md`.
-- `tools/configure_board.py` exercises the runtime configuration protocol over
-  USB serial for Web Serial/webapp smoke testing.
-- Browser Web Serial configurator smoke evidence exists in
-  `docs/milestone-evidence/WEB_SERIAL_CONFIGURATOR_SMOKE_2026-05-28.md`.
-- `tools/config_persistence_witness.py` captures target-side runtime config
-  import/save/reset/load/start evidence under `target/`; checked-in reboot
-  persistence evidence exists in
-  `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
-- `tools/mapping_delta_witness.py` captures clean before/after or timed-watch `GET_GENERIC_GAMEPAD_MAPPING` deltas for one physical control.
-- `tools/usb_report_delta_witness.py` captures lower-level `GET_LAST_USB_REPORT` byte deltas so raw USB movement can be proven before debugging normalization or mapping.
-- `tools/detach_cleanup_witness.py` captures before/detach/after cleanup evidence for one downstream USB HID device.
-- CI packages a flashable ESP32-S3 merged firmware image with `scripts/package_firmware.sh`, uploads it as the `usb2ble-fw-esp32s3-flashable` GitHub Actions artifact, and refreshes a `latest` GitHub Release on `main` pushes after host and target jobs both pass.
-- ESP32-S3 target preflight build.
-- host simulation for app/control-plane testing only.
+- Enumerates USB HID devices on the ESP32-S3 USB host path.
+- Captures HID descriptors, raw reports, parsed summaries, and normalized input.
+- Maps normalized input to BLE Generic Gamepad and Xbox-style report personas.
+- Runs an explicit live bridge mode that publishes USB-derived BLE reports.
+- Imports, saves, loads, and starts runtime JSON configs over the serial/Web
+  Serial-compatible protocol.
+- Provides a Vite/TypeScript Web Serial configurator and ESP Web Tools flashing
+  surface.
 
-## What is not implemented yet
-- direct-attach hardware transcript remains blocked by available cabling/port geometry.
-- full target IR diagnostic dump.
-- calibrated TWCS/TFRP deadzone semantics and product-quality mapping feel
-  beyond the current refined demo rules and Chrome Gamepad API axis exposure.
-- external/native game/application compatibility beyond the self-hosted browser
-  game/app smoke and browser Gamepad API witnesses.
-- broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
-- real hardware live bridge evidence from an actual game/app; the checked-in
-  live bridge witness uses serial counters and browser Gamepad API evidence,
-  which is useful but is not a substitute for game compatibility.
-- stable browser Gamepad API display name; macOS Bluetooth reports `Xbox Wireless Controller`, while the browser witness reported `USB2BLE Gamepad` with Xbox VID/PID.
-- powered hub all-device Flight Pack simultaneous report merge for three separate USB Flight Pack devices.
+## Current Status
 
-## Repository layout
+This project is in **alpha / public launch candidate** status. It has real
+target, host, browser, soak, and self-hosted browser-game smoke evidence for
+the refined Generic Flight Pack path, but it is not a polished consumer product.
 
-- `.cargo/config.toml` — ESP-IDF target build configuration for `xtensa-esp32s3-espidf`.
-- `.github/workflows/ci.yml` — host checks and ESP32-S3 target preflight build.
-- `crates/usb2ble-contracts` — shared contract types, DTOs, and protocol-facing identifiers.
-- `crates/usb2ble-control` — serial command decoding and response encoding.
-- `crates/usb2ble-app` — application state and command/event handling.
-- `crates/usb2ble-platform-esp32` — ESP32/ESP-IDF platform adapters, including USB host witness plumbing.
-- `crates/usb2ble-fw` — firmware binary entrypoint and ESP-IDF root crate.
-- `scripts/` — build, flash, monitor, and validation helpers.
-- `docs/HARDWARE_M2B1_VERIFICATION.md` — local hardware verification playbook.
+Evidence is the source of truth. Start with [docs/EVIDENCE_INDEX.md](docs/EVIDENCE_INDEX.md).
 
-## Cloud validation
+## Proven
+
+- ESP32-S3 target build and flashable firmware packaging in CI.
+- Powered hub attach/detach identity, HID descriptor capture, raw report
+  capture, HID summary, and normalized input.
+- Practical RJ12 Flight Pack axis labels for TWCS throttle, TFRP rudder, and
+  both toe brakes.
+- Runtime config import/save/load across an actual board reset.
+- Chrome Web Serial configurator smoke: connect, load schemas/catalog/config,
+  import Flight Pack Generic, save, load, and `START_CONFIGURED`.
+- Refined target-side Generic and Xbox mapping/report encoding for the practical
+  RJ12 topology.
+- Refined Generic BLE live bridge host visibility in Chrome Gamepad API:
+  Generic `z/rx/ry/rz` appear as browser axes `A2/A3/A4/A5`.
+- Refined Generic 300-second live bridge soak in Chrome.
+- Narrow self-hosted browser game/app smoke using the refined Generic profile.
+- Xbox BLE identity/report publishing and macOS pairing/input witness for the
+  existing Xbox slice.
+
+## Not Yet Proven
+
+- Broad game/app compatibility.
+- External or native game compatibility.
+- iPhone compatibility.
+- Xbox host-visible refined Flight Pack mapping.
+- BLE bond persistence and reconnect hardening.
+- Final product-quality deadzone/calibration feel.
+- Broad host/browser support beyond the checked-in witnesses.
+- Simultaneous three-separate-USB Flight Pack streaming.
+
+## Tested Hardware Context
+
+| Area | Evidence-backed status |
+| --- | --- |
+| ESP32-S3 target | Target build, flash packaging, serial control plane, BLE witnesses |
+| HooToo SHUTTLE HT-UC001 powered hub | Powered-hub topology witnessed |
+| Thrustmaster T.16000M stick | USB input, mapping, BLE Generic path witnessed |
+| Thrustmaster TWCS throttle | USB input, RJ12 pedal host path, refined Generic mapping witnessed |
+| Thrustmaster TFRP pedals via TWCS RJ12 | Rudder and toe-brake labels plus refined Generic mapping witnessed |
+| Other hubs/controllers/hosts | Not broadly claimed |
+
+## Quickstart
+
+### No-Hardware Validation
+
 ```bash
 ./scripts/validate_no_hardware.sh
 ./scripts/check_target_build.sh
 ```
 
-The no-hardware helper runs host Rust checks, shell syntax checks, and web app
-checks. The ESP32-S3 target preflight is separate because it depends on the
-local Xtensa/ESP-IDF toolchain.
+The no-hardware validation is safe without an ESP32-S3, HOTAS, browser chooser,
+Bluetooth pairing, or physical controls. The target preflight requires the
+Xtensa/ESP-IDF toolchain.
 
-## ESP-IDF toolchain pin
-The firmware root crate pins ESP-IDF through `crates/usb2ble-fw/Cargo.toml`:
+### Build And Flash Locally
 
-```toml
-[package.metadata.esp-idf-sys]
-esp_idf_version = "v5.5.3"
-esp_idf_tools_install_dir = "workspace"
-```
-
-The checked-in Cargo config must not set `IDF_PATH`; local `IDF_PATH` or
-`ESP_IDF_VERSION` environment variables are developer overrides and bypass the
-repo default.
-
-## Local ESP32-S3 build
-The authoritative command is:
 ```bash
 ./scripts/check_target_build.sh
-```
-
-Equivalent direct command:
-```bash
-cargo +esp build -Z build-std=std,panic_abort --locked --package usb2ble-fw --target xtensa-esp32s3-espidf
-```
-
-## Flash and monitor
-```bash
 ./scripts/build.sh
-./scripts/flash.sh --monitor
+./scripts/flash.sh --port <PORT>
 ```
-`--port <PORT>` may be passed through to `scripts/flash.sh` and `scripts/monitor.sh`.
 
-## Firmware artifact
+### Flash From GitHub Pages
+
+The Pages build publishes the Web Serial configurator and ESP Web Tools manifest
+for the latest CI firmware artifact. Until the public repository URL is final,
+use the Pages URL from the repository settings or GitHub Actions deployment
+summary.
+
+### Configure The Refined Generic Flight Pack Profile
+
 ```bash
-./scripts/check_target_build.sh
-./scripts/package_firmware.sh
-espflash write-bin --chip esp32s3 --port <PORT> 0x0 target/firmware/usb2ble-fw-esp32s3-merged.bin
+python3 tools/configure_board.py --port <PORT> preset flight-pack-generic
+python3 tools/serial_command.py --port <PORT> GET_CONFIG_STATUS START_CONFIGURED GET_BRIDGE_STATUS
 ```
-GitHub Actions uploads the same merged image plus a manifest and ELF as the
-`usb2ble-fw-esp32s3-flashable` artifact. On `main` pushes, the release job
-publishes those files to the `latest` GitHub Release after host checks and
-ESP32-S3 target packaging both pass.
 
-## Hardware verification
-See: `docs/HARDWARE_M2B1_VERIFICATION.md`
+The Web Serial configurator can perform the same config import/save/load/start
+flow in Chrome or Edge on desktop.
 
-## ASAP demo runbook
-See: `docs/ASAP_DEMO_RUNBOOK.md`
+## Useful Commands
 
-## Xbox BLE demo runbook
-See: `docs/XBOX_BLE_DEMO_RUNBOOK.md`
+```bash
+# Serial discovery/probe
+python3 tools/serial_command.py --port <PORT> GET_INFO GET_STATUS GET_USB_STATUS LIST_USB_DEVICES
 
-## Game/app compatibility witness
-See: `docs/GAME_COMPATIBILITY_WITNESS.md`
+# Config persistence witness
+python3 tools/config_persistence_witness.py --port <PORT> --reboot-after-save
 
-## Config persistence witness
-See: `docs/CONFIG_PERSISTENCE_WITNESS.md`
+# Browser Gamepad API witness server
+python3 tools/gamepad_witness/server.py
 
-## Evidence index
-See: `docs/EVIDENCE_INDEX.md`
+# Refined Generic live bridge soak
+python3 tools/refined_generic_live_bridge_soak.py --port <PORT>
 
-## Development workflow
-See: `docs/DEVELOPMENT.md`
+# Self-hosted browser game/app smoke
+python3 tools/browser_game_compat_witness.py --port <PORT>
+```
 
-## Project status handoff
-See: `docs/PROJECT_STATUS_HANDOFF.md`
+Generated witness artifacts go under `target/`. Only concise reviewed evidence
+summaries should be committed under `docs/milestone-evidence/`.
 
-## Integrity rules for agents
-* code and checked-in evidence are the source of truth.
-* do not claim hardware verification without real transcript evidence.
-* do not present host simulation as target proof.
-* do not advance a future milestone before its prerequisite hardware evidence is checked in.
+## Repository Map
+
+- `crates/usb2ble-*` - Rust firmware, protocol, mapping, HID, persona, and
+  storage crates.
+- `scripts/` - build, flash, package, and validation helpers.
+- `tools/` - serial, config, calibration, soak, browser witness, and evidence
+  validation helpers.
+- `web/` - Web Serial configurator and firmware flashing UI.
+- `docs/` - runbooks, evidence, release notes, public claims, and handoff docs.
+- `.github/workflows/ci.yml` - host checks, target preflight, firmware artifact
+  packaging, release upload, and Pages deployment.
+
+## Developer Docs
+
+- [Development workflow](docs/DEVELOPMENT.md)
+- [Configuration](docs/CONFIGURATION.md)
+- [Project status handoff](docs/PROJECT_STATUS_HANDOFF.md)
+- [Compatibility matrix](COMPATIBILITY_MATRIX.md)
+- [Game/app compatibility witness standard](docs/GAME_COMPATIBILITY_WITNESS.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Public claims guide](docs/PUBLIC_CLAIMS.md)
+
+## Safety And Limitations
+
+USB2BLE is experimental firmware. BLE HID behavior can vary by host OS, browser,
+Bluetooth cache state, game engine, and controller profile. Do not infer broad
+compatibility from a single witness. Do not use this project where input loss,
+unexpected controls, or firmware faults could create safety risk.
+
+## License
+
+A root open-source license has not been selected yet. This is tracked as a
+launch blocker in [docs/LAUNCH_BLOCKERS.md](docs/LAUNCH_BLOCKERS.md). Do not
+redistribute or reuse the project as open-source until Alex explicitly adds a
+license.

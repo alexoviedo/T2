@@ -1,0 +1,51 @@
+name: Hardware compatibility witness
+description: Share a focused hardware compatibility result.
+title: "[Hardware]: "
+labels: ["hardware", "evidence"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please distinguish target evidence, browser evidence, and real app/game evidence.
+  - type: input
+    id: device
+    attributes:
+      label: Device or topology
+      placeholder: T.16000M + TWCS + TFRP via RJ12 through HooToo hub
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware commit or release artifact
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host OS/browser/app version
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence captured
+      description: Commands, transcripts, screenshots, app/game name, target artifact paths.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Result and limitations
+      description: What worked, what failed, and what should not be inferred.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Evidence scope
+      options:
+        - label: I included enough detail for another operator to reproduce the run.
+          required: true
+        - label: I stated limitations and did not generalize beyond the captured setup.
+          required: true

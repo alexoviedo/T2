@@ -17,7 +17,8 @@ evidence references:
 The helper is safe without an ESP32-S3, HOTAS, hub, serial device, Bluetooth
 pairing, browser chooser, or physical controls. It runs Rust formatting,
 clippy, host build/tests, shell syntax checks, Python compile checks, evidence
-reference validation, Python unit tests, and web checks when `web/` exists.
+reference validation, launch-readiness validation, Python unit tests, and web
+checks when `web/` exists.
 
 The web build expects Node `20.19+`. CI pins Node `20.19`; local older Node 20
 builds may fail even when the app code is fine.
@@ -46,6 +47,18 @@ or document exactly why it cannot run.
 - Do not claim BLE bond persistence, broad host/browser support, final Flight
   Pack calibration quality, Xbox host-visible refined mapping, or real
   game/app compatibility without matching checked-in evidence.
+
+## Public Launch Checks
+
+Run the launch checker before public announcements or release tags:
+
+```bash
+python3 tools/check_launch_readiness.py --verbose
+```
+
+It verifies required public files, README links, issue templates, the evidence
+index, and the root license state. If no root license is present, the checker
+requires `docs/LAUNCH_BLOCKERS.md` to record the unresolved license decision.
 
 ## Human-Only Steps
 
