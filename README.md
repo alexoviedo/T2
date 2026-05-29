@@ -159,7 +159,5 @@ unexpected controls, or firmware faults could create safety risk.
 
 ## License
 
-A root open-source license has not been selected yet. This is tracked as a
-launch blocker in [docs/LAUNCH_BLOCKERS.md](docs/LAUNCH_BLOCKERS.md). Do not
-redistribute or reuse the project as open-source until Alex explicitly adds a
-license.
+USB2BLE is licensed under the Apache License 2.0 (`Apache-2.0`). See
+[LICENSE](LICENSE).

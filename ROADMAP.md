@@ -11,7 +11,6 @@ only when checked-in evidence supports them.
 - BLE reconnect and bond persistence hardening.
 - Product-quality deadzone and calibration tuning.
 - Three-separate-USB Flight Pack streaming investigation.
-- Public release license decision.
 
 ## Mid Term
 

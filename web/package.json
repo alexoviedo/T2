@@ -12,7 +12,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "type": "module",
   "devDependencies": {
     "@types/w3c-web-serial": "^1.0.8",

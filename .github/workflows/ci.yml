@@ -41,6 +41,7 @@ jobs:
       run: |
         python3 tools/check_evidence_docs.py
         python3 tools/check_launch_readiness.py
+        python3 tools/check_release_candidate.py
 
     - name: Check formatting
       run: cargo fmt --all -- --check

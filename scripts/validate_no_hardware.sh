@@ -11,6 +11,7 @@ bash -n scripts/*.sh
 python3 -m py_compile tools/*.py tools/gamepad_witness/*.py
 python3 tools/check_evidence_docs.py
 python3 tools/check_launch_readiness.py
+python3 tools/check_release_candidate.py
 
 if [[ -d tools/tests ]]; then
     python3 -m unittest discover -s tools/tests -p 'test_*.py'

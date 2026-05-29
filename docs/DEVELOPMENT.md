@@ -57,8 +57,7 @@ python3 tools/check_launch_readiness.py --verbose
 ```
 
 It verifies required public files, README links, issue templates, the evidence
-index, and the root license state. If no root license is present, the checker
-requires `docs/LAUNCH_BLOCKERS.md` to record the unresolved license decision.
+index, and root license presence.
 
 ## Human-Only Steps
 

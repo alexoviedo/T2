@@ -4,14 +4,15 @@ Use this before public announcements, tags, or GitHub releases.
 
 ## Required Before Public Launch
 
-- [ ] Root `LICENSE` selected and committed.
-- [ ] `docs/LAUNCH_BLOCKERS.md` has no unresolved launch-blocking items.
+- [x] Root `LICENSE` selected and committed as Apache-2.0.
+- [ ] `docs/LAUNCH_BLOCKERS.md` has no unresolved pre-publication actions.
 - [ ] `./scripts/validate_no_hardware.sh` passes.
 - [ ] `./scripts/check_target_build.sh` passes.
 - [ ] CI passes on the public branch.
 - [ ] README current status matches `docs/EVIDENCE_INDEX.md`.
 - [ ] `python3 tools/check_evidence_docs.py --verbose` passes.
 - [ ] `python3 tools/check_launch_readiness.py --verbose` passes.
+- [ ] `python3 tools/check_release_candidate.py --verbose` passes.
 
 ## Evidence
 
