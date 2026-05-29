@@ -41,6 +41,8 @@ Checked-in evidence supports:
 - A refined practical RJ12 Generic 300-second live bridge soak in Google
   Chrome, with serial bridge counters and continuous browser Gamepad API
   samples.
+- A self-hosted browser game/app smoke in Google Chrome where the refined
+  Generic profile controls `USB2BLE Sky Run` game state and completes a mission.
 - CI host checks, ESP32-S3 target preflight, firmware packaging, latest GitHub
   Release refresh, and Pages deployment.
 
@@ -64,6 +66,8 @@ Checked-in evidence supports:
   `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`.
 - Refined Generic Flight Pack 300-second live bridge soak evidence through
   `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md`.
+- Self-hosted browser game/app smoke evidence through
+  `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md`.
 - Generic BLE demo rehearsal through `tools/asap_demo_rehearsal.py` when
   hardware is connected.
 - Xbox BLE compatibility rehearsal through `tools/xbox_demo_rehearsal.py` when
@@ -73,7 +77,7 @@ Checked-in evidence supports:
 
 ## Not Yet Proven
 
-- Broad game/app compatibility for either Generic or Xbox personas.
+- Broad external/native game/app compatibility for either Generic or Xbox personas.
 - Any console compatibility.
 - Host breadth beyond the checked-in macOS/browser witnesses.
 - Durable BLE bond persistence.
@@ -158,7 +162,7 @@ Recommended order:
   especially recovery/error UX under live target report chatter.
 - Runtime config recovery/error-path hardening using
   `docs/CONFIG_PERSISTENCE_WITNESS.md` as the target-side protocol baseline.
-- First real game/app compatibility witness using
+- First external/native app compatibility witness using
   `docs/GAME_COMPATIBILITY_WITNESS.md`.
 - Reconnect/bond recovery hardening with checked-in transcripts.
 

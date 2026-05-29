@@ -157,6 +157,7 @@ bash -n scripts/*.sh
 - [x] Practical RJ12 Flight Pack mapping refinement target witness captured for TWCS throttle, TFRP/RJ12 rudder, and both toe brakes.
 - [x] Practical RJ12 Flight Pack refined Generic host-visible browser Gamepad API axis exposure captured for TWCS throttle, TFRP/RJ12 rudder, and both toe brakes.
 - [x] Refined practical RJ12 Generic 300-second live bridge soak captured with serial bridge counters and continuous browser Gamepad API samples.
+- [x] Self-hosted browser game/app compatibility smoke captured for the refined practical RJ12 Generic profile.
 - [ ] Broad game/app compatibility witness captured for the Generic Gamepad path.
 - [ ] Final Flight Pack calibration/deadzone semantics evidenced. Axis-label, target-side mapping-refinement, and host-visible Generic axis exposure evidence exists for the practical RJ12 topology, but final product-quality calibration remains open.
 
@@ -172,6 +173,7 @@ bash -n scripts/*.sh
 - **Flight Pack mapping evidence:** `docs/milestone-evidence/FLIGHT_PACK_MAPPING_REFINEMENT_WITNESS_2026-05-28.md`
 - **Flight Pack host-visible Generic axis exposure evidence:** `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`
 - **Refined Generic live bridge soak evidence:** `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md`
+- **Self-hosted browser game/app smoke evidence:** `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md`
 
 ## Xbox Persona Slice — compatibility persona, not broad app support
 

@@ -30,8 +30,9 @@
   witness; practical RJ12 Flight Pack axis labels and refined target-side
   mapping evidence are checked in; refined Generic host-visible browser
   Gamepad API axis exposure and a refined Generic 300-second live bridge soak
-  are checked in for the practical RJ12 topology; final Flight Pack
-  calibration/deadzone semantics still need separate evidence.
+  are checked in for the practical RJ12 topology; a self-hosted browser
+  game/app smoke is checked in; final Flight Pack calibration/deadzone
+  semantics still need separate evidence.
 - Browser Web Serial configurator smoke is checked in for Google Chrome:
   connect, config/status/schema/catalog load, Flight Pack Generic import,
   save, load, and `START_CONFIGURED`.
@@ -49,7 +50,7 @@
 - descriptor/report/summary/normalized-input control-plane fulfillment is proven for the THRUSTMASTER T.16000 FCS HOTAS through the HooToo powered hub.
 - expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, simultaneous normalized input for the recommended two-USB topology, and practical RJ12 labels for TWCS throttle plus TFRP rudder/toe axes.
 - final deadzone/calibration semantics and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4/product hardening.
-- BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses, including refined practical RJ12 `z/rx/ry/rz` axis exposure and a 300-second refined Generic live bridge soak in Chrome; final app/game compatibility and product-quality HOTAS calibration remain open.
+- BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses, including refined practical RJ12 `z/rx/ry/rz` axis exposure, a 300-second refined Generic live bridge soak in Chrome, and a self-hosted browser game/app smoke; external/native app/game compatibility and product-quality HOTAS calibration remain open.
 
 ## What works today
 - serial control plane.
@@ -91,6 +92,8 @@
 - `tools/xbox_demo_rehearsal.py` runs the Xbox BLE compatibility rehearsal, supports `--live-bridge`, and saves serial proof plus optional browser witness evidence.
 - `tools/live_bridge_soak.py` runs a timed Generic or Xbox live bridge soak and saves bridge status samples.
 - `tools/refined_generic_live_bridge_soak.py` runs a 300-second refined Generic Flight Pack live bridge soak with serial bridge counters and continuous browser Gamepad API samples.
+- `tools/browser_game_compat_witness.py` runs the self-hosted `USB2BLE Sky Run`
+  browser game/app smoke and saves serial plus browser game-state artifacts.
 - `tools/flight_pack_calibration_witness.py` guides named Flight Pack movements and drafts calibration/axis-label evidence.
 - Practical Flight Pack axis-label evidence exists in
   `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md`.
@@ -101,6 +104,8 @@
   `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`.
 - Practical Flight Pack refined Generic live bridge soak evidence exists in
   `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md`.
+- Self-hosted browser game/app smoke evidence exists in
+  `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md`.
 - `tools/configure_board.py` exercises the runtime configuration protocol over
   USB serial for Web Serial/webapp smoke testing.
 - Browser Web Serial configurator smoke evidence exists in
@@ -121,7 +126,8 @@
 - full target IR diagnostic dump.
 - calibrated TWCS/TFRP deadzone semantics and product-quality mapping feel
   beyond the current refined demo rules and Chrome Gamepad API axis exposure.
-- game/application compatibility beyond the browser Gamepad API witness.
+- external/native game/application compatibility beyond the self-hosted browser
+  game/app smoke and browser Gamepad API witnesses.
 - broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
 - real hardware live bridge evidence from an actual game/app; the checked-in
   live bridge witness uses serial counters and browser Gamepad API evidence,

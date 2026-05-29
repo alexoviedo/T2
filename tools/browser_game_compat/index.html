@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>USB2BLE Sky Run</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #10130f;
+        --panel: #f8f5ec;
+        --ink: #17201d;
+        --muted: #657066;
+        --line: #d2d8cf;
+        --sky: #8fd0ff;
+        --field: #5c944c;
+        --ship: #f4f1d0;
+        --gate: #d83f31;
+        --good: #147c4a;
+        --warn: #a55a16;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      main {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 16px;
+        padding: 16px;
+      }
+
+      canvas {
+        width: 100%;
+        height: calc(100vh - 32px);
+        min-height: 520px;
+        background: linear-gradient(var(--sky), #d8f0ff 58%, var(--field) 58%);
+        border: 1px solid #273229;
+        display: block;
+      }
+
+      aside {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        overflow: auto;
+        max-height: calc(100vh - 32px);
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 22px;
+        line-height: 1.1;
+      }
+
+      .subtle {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin: 16px 0;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px;
+        min-height: 62px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .value {
+        margin-top: 6px;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+
+      .good {
+        color: var(--good);
+      }
+
+      .warn {
+        color: var(--warn);
+      }
+
+      .bar {
+        height: 14px;
+        border-radius: 4px;
+        border: 1px solid var(--line);
+        background: #e4e8df;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+
+      .fill {
+        height: 100%;
+        width: 0;
+        background: #2267b3;
+      }
+
+      ol {
+        margin: 10px 0 0;
+        padding-left: 20px;
+        font-size: 13px;
+      }
+
+      li {
+        margin: 5px 0;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <canvas id="game" width="1280" height="720"></canvas>
+      <aside>
+        <h1>USB2BLE Sky Run</h1>
+        <div class="subtle">Self-hosted browser game/app compatibility smoke. This is not a raw Gamepad API tester.</div>
+        <div class="grid">
+          <div class="metric">
+            <div class="label">Controller</div>
+            <div id="controller" class="value warn">waiting</div>
+          </div>
+          <div class="metric">
+            <div class="label">Mission</div>
+            <div id="mission" class="value warn">arming</div>
+          </div>
+          <div class="metric">
+            <div class="label">Score</div>
+            <div id="score" class="value">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Frames</div>
+            <div id="frames" class="value">0</div>
+          </div>
+        </div>
+        <div>
+          <div class="label">Throttle A2</div>
+          <div class="bar"><div id="bar-z" class="fill"></div></div>
+        </div>
+        <div>
+          <div class="label">Rudder A3</div>
+          <div class="bar"><div id="bar-rx" class="fill"></div></div>
+        </div>
+        <div>
+          <div class="label">Left toe A4</div>
+          <div class="bar"><div id="bar-ry" class="fill"></div></div>
+        </div>
+        <div>
+          <div class="label">Right toe A5</div>
+          <div class="bar"><div id="bar-rz" class="fill"></div></div>
+        </div>
+        <ol id="events"></ol>
+      </aside>
+    </main>
+
+    <script>
+      const canvas = document.querySelector("#game");
+      const ctx = canvas.getContext("2d");
+      const el = {
+        controller: document.querySelector("#controller"),
+        mission: document.querySelector("#mission"),
+        score: document.querySelector("#score"),
+        frames: document.querySelector("#frames"),
+        events: document.querySelector("#events"),
+        z: document.querySelector("#bar-z"),
+        rx: document.querySelector("#bar-rx"),
+        ry: document.querySelector("#bar-ry"),
+        rz: document.querySelector("#bar-rz"),
+      };
+
+      const state = {
+        frame: 0,
+        connected: false,
+        gamepadId: null,
+        ship: { x: 160, y: 360, vx: 0, vy: 0 },
+        score: 0,
+        gates: [
+          { x: 380, y: 220, hit: false },
+          { x: 610, y: 420, hit: false },
+          { x: 870, y: 280, hit: false },
+        ],
+        axisEngagedFrames: 0,
+        firstInputFrame: null,
+        missionCompleted: false,
+        lastPostFrame: -999,
+        eventCount: 0,
+        axes: [],
+      };
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function axis(axes, index) {
+        return Number.isFinite(axes[index]) ? axes[index] : 0;
+      }
+
+      function logEvent(kind, details = {}) {
+        state.eventCount += 1;
+        const li = document.createElement("li");
+        li.textContent = `${state.frame}: ${kind} ${JSON.stringify(details)}`;
+        el.events.prepend(li);
+        while (el.events.children.length > 10) {
+          el.events.lastChild.remove();
+        }
+        postEvent(kind, details);
+      }
+
+      function postEvent(kind, details = {}) {
+        const payload = {
+          kind,
+          details,
+          frame: state.frame,
+          connected: state.connected,
+          gamepad_id: state.gamepadId,
+          axes: state.axes,
+          ship: state.ship,
+          score: state.score,
+          mission_completed: state.missionCompleted,
+          axis_engaged_frames: state.axisEngagedFrames,
+          timestamp_ms: Math.round(performance.now()),
+        };
+        fetch("/capture", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        }).catch(() => {});
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#7fc8ff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#4f8b45";
+        ctx.fillRect(0, 420, canvas.width, 300);
+
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        for (let i = 0; i < 8; i += 1) {
+          ctx.beginPath();
+          ctx.ellipse((i * 190 + state.frame * 0.5) % 1400 - 80, 90 + (i % 3) * 40, 54, 18, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        for (const gate of state.gates) {
+          ctx.strokeStyle = gate.hit ? "#167c4a" : "#d83f31";
+          ctx.lineWidth = 8;
+          ctx.beginPath();
+          ctx.arc(gate.x, gate.y, 46, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.save();
+        ctx.translate(state.ship.x, state.ship.y);
+        ctx.rotate(clamp(state.ship.vy / 18, -0.5, 0.5));
+        ctx.fillStyle = "#f8f1c9";
+        ctx.beginPath();
+        ctx.moveTo(32, 0);
+        ctx.lineTo(-26, -18);
+        ctx.lineTo(-14, 0);
+        ctx.lineTo(-26, 18);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "#252d2a";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function updateUi() {
+        el.controller.textContent = state.connected ? "connected" : "waiting";
+        el.controller.className = `value ${state.connected ? "good" : "warn"}`;
+        el.mission.textContent = state.missionCompleted ? "complete" : "running";
+        el.mission.className = `value ${state.missionCompleted ? "good" : "warn"}`;
+        el.score.textContent = String(state.score);
+        el.frames.textContent = String(state.frame);
+        el.z.style.width = `${Math.round(((axis(state.axes, 2) + 1) / 2) * 100)}%`;
+        el.rx.style.width = `${Math.round(((axis(state.axes, 3) + 1) / 2) * 100)}%`;
+        el.ry.style.width = `${Math.round(((axis(state.axes, 4) + 1) / 2) * 100)}%`;
+        el.rz.style.width = `${Math.round(((axis(state.axes, 5) + 1) / 2) * 100)}%`;
+      }
+
+      function tick() {
+        state.frame += 1;
+        const pads = navigator.getGamepads ? Array.from(navigator.getGamepads()).filter(Boolean) : [];
+        const pad = pads[0];
+        state.connected = Boolean(pad);
+        if (pad) {
+          if (state.gamepadId !== pad.id) {
+            state.gamepadId = pad.id;
+            logEvent("controller_connected", { id: pad.id, axes: pad.axes.length, buttons: pad.buttons.length });
+          }
+          state.axes = pad.axes.map((value) => Number(value.toFixed(3)));
+          const stickX = axis(pad.axes, 0);
+          const stickY = axis(pad.axes, 1);
+          const throttle = axis(pad.axes, 2);
+          const rudder = axis(pad.axes, 3);
+          const leftToe = axis(pad.axes, 4);
+          const rightToe = axis(pad.axes, 5);
+          const thrust = Math.max(0.15, (throttle + 1) / 2);
+          state.ship.vx = 1.2 + thrust * 5.0 + (rightToe - leftToe) * 0.7;
+          state.ship.vy = stickY * 3.0 + rudder * 4.0;
+          state.ship.x = (state.ship.x + state.ship.vx) % canvas.width;
+          state.ship.y = clamp(state.ship.y + state.ship.vy, 70, 620);
+          const engaged = Math.max(Math.abs(stickX), Math.abs(stickY), Math.abs(throttle), Math.abs(rudder), Math.abs(leftToe), Math.abs(rightToe));
+          if (engaged > 0.2) {
+            state.axisEngagedFrames += 1;
+            if (state.firstInputFrame === null) {
+              state.firstInputFrame = state.frame;
+              logEvent("first_controller_input", { axes: state.axes });
+            }
+          }
+          for (const gate of state.gates) {
+            if (!gate.hit && Math.hypot(state.ship.x - gate.x, state.ship.y - gate.y) < 58) {
+              gate.hit = true;
+              state.score += 100;
+              logEvent("gate_scored", { score: state.score, gate: { x: gate.x, y: gate.y } });
+            }
+          }
+          if (!state.missionCompleted && state.axisEngagedFrames > 90 && (state.score > 0 || state.ship.x > 500)) {
+            state.missionCompleted = true;
+            logEvent("mission_complete", { score: state.score, axes: state.axes });
+          }
+        }
+
+        draw();
+        updateUi();
+        if (state.frame - state.lastPostFrame >= 30) {
+          state.lastPostFrame = state.frame;
+          postEvent("game_state");
+        }
+        requestAnimationFrame(tick);
+      }
+
+      window.addEventListener("gamepadconnected", (event) => {
+        logEvent("gamepadconnected_event", { id: event.gamepad.id, index: event.gamepad.index });
+      });
+
+      window.addEventListener("gamepaddisconnected", () => {
+        logEvent("gamepaddisconnected_event");
+      });
+
+      tick();
+    </script>
+  </body>
+</html>
