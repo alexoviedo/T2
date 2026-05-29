@@ -177,6 +177,7 @@ where
             | ControlCommand::PublishXboxGamepadReport
             | ControlCommand::SendXboxSelfTestReport
             | ControlCommand::ForgetBleBonds
+            | ControlCommand::GetBleAdvertisingInfo
             | ControlCommand::StartBridge
             | ControlCommand::StopBridge
             | ControlCommand::GetBridgeStatus

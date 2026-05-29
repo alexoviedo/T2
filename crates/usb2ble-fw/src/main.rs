@@ -9,11 +9,11 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 use usb2ble_app::App;
 use usb2ble_contracts::{
-    BleActionResponse, BleTransport, BleTransportError, BridgeStatusResponse, CONTRACT_VERSION,
-    ConfigActionResponse, ConfigImportResponse, ControlCommand, ControlError, ControlPlane,
-    ControlResponse, DescriptorKey, EncodedBleReport, MAX_RUNTIME_CONFIG_JSON_BYTES,
-    NormalizedControlValue, PersonaEncoder, PersonaId, PersonaInputFrame,
-    PersonaLogicalControlValue, RuntimeConfig, UsbIngress,
+    BleActionResponse, BleAdvertisingInfoResponse, BleTransport, BleTransportError,
+    BridgeStatusResponse, CONTRACT_VERSION, ConfigActionResponse, ConfigImportResponse,
+    ControlCommand, ControlError, ControlPlane, ControlResponse, DescriptorKey, EncodedBleReport,
+    MAX_RUNTIME_CONFIG_JSON_BYTES, NormalizedControlValue, PersonaEncoder, PersonaId,
+    PersonaInputFrame, PersonaLogicalControlValue, RuntimeConfig, UsbIngress,
 };
 use usb2ble_control::SerialControlPlane;
 use usb2ble_personas::{
@@ -617,6 +617,9 @@ where
             }),
             Err(_) => ControlResponse::Error(ControlError::Generic),
         },
+        ControlCommand::GetBleAdvertisingInfo => {
+            ble_advertising_info(app, ble, generic_encoder, xbox_encoder)
+        }
         ControlCommand::StartBridge => match bridge.start(app.state().active_persona) {
             Ok(()) => ControlResponse::BridgeStatus(bridge.status(app.state().active_persona)),
             Err(err) => ControlResponse::Error(err),
@@ -674,6 +677,69 @@ where
 
     app.set_ble_state(ble.current_state());
     resp
+}
+
+fn ble_advertising_info<S>(
+    app: &mut App<S>,
+    ble: &impl BleTransport,
+    generic_encoder: &impl PersonaEncoder,
+    xbox_encoder: &impl PersonaEncoder,
+) -> ControlResponse
+where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    let active_persona = app.state().active_persona;
+    let descriptor = active_persona.and_then(|persona| {
+        let encoder: &dyn PersonaEncoder = if persona == GENERIC_GAMEPAD_PERSONA_ID {
+            generic_encoder
+        } else if persona == XBOX_WIRELESS_CONTROLLER_PERSONA_ID {
+            xbox_encoder
+        } else {
+            return None;
+        };
+        encoder.descriptor(persona).ok()
+    });
+    let (device_name, appearance) = descriptor
+        .as_ref()
+        .map(|descriptor| {
+            (
+                Some(nul_terminated_bytes_to_string(
+                    descriptor.identity.device_name,
+                )),
+                Some(descriptor.identity.appearance),
+            )
+        })
+        .unwrap_or((None, None));
+    let bonds_present = match app.handle_control_command(&ControlCommand::GetStatus) {
+        ControlResponse::Status(status) => status.bonds_present,
+        _ => false,
+    };
+
+    ControlResponse::BleAdvertisingInfo(BleAdvertisingInfoResponse {
+        active_persona,
+        state: ble.current_state(),
+        device_name,
+        appearance,
+        advertised_uuids: vec!["1812".to_string()],
+        advertisement_includes_name: false,
+        scan_response_includes_name: true,
+        flags: 0x06,
+        advertising_type: "ADV_TYPE_IND",
+        own_address_type: "public",
+        security: "bond",
+        io_capability: "none",
+        bonds_present,
+    })
+}
+
+fn nul_terminated_bytes_to_string(bytes: &[u8]) -> String {
+    let end = bytes
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(bytes.len());
+    String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
 fn parse_runtime_config_json(pending: PendingConfigJson) -> Result<RuntimeConfig, ControlError> {
@@ -967,6 +1033,31 @@ mod tests {
             runtime.app.state().active_persona,
             Some(GENERIC_GAMEPAD_PERSONA_ID)
         );
+    }
+
+    #[test]
+    fn ble_advertising_info_reports_generic_identity() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepad),
+            "start_generic_gamepad",
+        );
+        match runtime.run(ControlCommand::GetBleAdvertisingInfo) {
+            ControlResponse::BleAdvertisingInfo(info) => {
+                assert_eq!(info.active_persona, Some(GENERIC_GAMEPAD_PERSONA_ID));
+                assert_eq!(info.state, usb2ble_contracts::BleLinkState::Advertising);
+                assert_eq!(info.device_name.as_deref(), Some("USB2BLE Gamepad"));
+                assert_eq!(info.appearance, Some(0x03c4));
+                assert_eq!(info.advertised_uuids, vec!["1812".to_string()]);
+                assert!(!info.advertisement_includes_name);
+                assert!(info.scan_response_includes_name);
+                assert_eq!(info.flags, 0x06);
+                assert_eq!(info.security, "bond");
+                assert_eq!(info.io_capability, "none");
+            }
+            other => panic!("expected BLE advertising info, got {other:?}"),
+        }
     }
 
     #[test]

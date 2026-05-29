@@ -77,6 +77,9 @@ impl ControlPlane for SerialControlPlane {
         if s == "FORGET_BLE_BONDS" {
             return Ok(ControlCommand::ForgetBleBonds);
         }
+        if s == "GET_BLE_ADVERTISING_INFO" {
+            return Ok(ControlCommand::GetBleAdvertisingInfo);
+        }
         if s == "START_BRIDGE" {
             return Ok(ControlCommand::StartBridge);
         }
@@ -268,6 +271,34 @@ impl ControlPlane for SerialControlPlane {
                     out.push_str(&hex::encode(&report.bytes));
                     out.push(';');
                 }
+            }
+            ControlResponse::BleAdvertisingInfo(resp) => {
+                out.push_str("BLE_ADVERTISING_INFO:");
+                if let Some(persona) = resp.active_persona {
+                    let _ = write!(out, "persona={};", persona.0);
+                } else {
+                    out.push_str("persona=none;");
+                }
+                let _ = write!(out, "state={:?};", resp.state);
+                if let Some(name) = &resp.device_name {
+                    let _ = write!(out, "device_name={name};");
+                } else {
+                    out.push_str("device_name=none;");
+                }
+                if let Some(appearance) = resp.appearance {
+                    let _ = write!(out, "appearance=0x{appearance:04x};");
+                } else {
+                    out.push_str("appearance=none;");
+                }
+                let _ = write!(out, "advertised_uuids={};", resp.advertised_uuids.join(","));
+                let _ = write!(out, "adv_name={};", resp.advertisement_includes_name);
+                let _ = write!(out, "scan_rsp_name={};", resp.scan_response_includes_name);
+                let _ = write!(out, "flags=0x{:02x};", resp.flags);
+                let _ = write!(out, "adv_type={};", resp.advertising_type);
+                let _ = write!(out, "own_addr_type={};", resp.own_address_type);
+                let _ = write!(out, "security={};", resp.security);
+                let _ = write!(out, "io_capability={};", resp.io_capability);
+                let _ = write!(out, "bonds={};", resp.bonds_present);
             }
             ControlResponse::BridgeStatus(resp) => encode_bridge_status(&mut out, resp),
             ControlResponse::ConfigStatus(resp) => encode_config_status(&mut out, resp),
@@ -621,6 +652,10 @@ mod tests {
             cp.decode_command(b"FORGET_BLE_BONDS").unwrap(),
             ControlCommand::ForgetBleBonds
         );
+        assert_eq!(
+            cp.decode_command(b"GET_BLE_ADVERTISING_INFO").unwrap(),
+            ControlCommand::GetBleAdvertisingInfo
+        );
     }
 
     #[test]
@@ -840,6 +875,28 @@ mod tests {
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
             "BLE_ACTION:action=self_test;state=Connected;persona=generic_gamepad;report_id=1;bytes=010008;\n"
+        );
+
+        let resp =
+            ControlResponse::BleAdvertisingInfo(usb2ble_contracts::BleAdvertisingInfoResponse {
+                active_persona: Some(PersonaId("generic_gamepad")),
+                state: BleLinkState::Advertising,
+                device_name: Some("USB2BLE Gamepad".to_string()),
+                appearance: Some(0x03c4),
+                advertised_uuids: vec!["1812".to_string()],
+                advertisement_includes_name: false,
+                scan_response_includes_name: true,
+                flags: 0x06,
+                advertising_type: "ADV_TYPE_IND",
+                own_address_type: "public",
+                security: "bond",
+                io_capability: "none",
+                bonds_present: false,
+            });
+        let bytes = cp.encode_response(&resp).unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            "BLE_ADVERTISING_INFO:persona=generic_gamepad;state=Advertising;device_name=USB2BLE Gamepad;appearance=0x03c4;advertised_uuids=1812;adv_name=false;scan_rsp_name=true;flags=0x06;adv_type=ADV_TYPE_IND;own_addr_type=public;security=bond;io_capability=none;bonds=false;\n"
         );
 
         let resp = ControlResponse::BridgeStatus(BridgeStatusResponse {

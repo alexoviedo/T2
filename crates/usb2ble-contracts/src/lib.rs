@@ -1032,6 +1032,37 @@ pub struct BleActionResponse {
     pub report: Option<EncodedBleReport>,
 }
 
+/// Response payload for BLE advertising diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BleAdvertisingInfoResponse {
+    /// Active BLE persona, if one has been started.
+    pub active_persona: Option<PersonaId>,
+    /// Current BLE link state.
+    pub state: BleLinkState,
+    /// GAP/HID device name for the active persona.
+    pub device_name: Option<String>,
+    /// GAP appearance for the active persona.
+    pub appearance: Option<u16>,
+    /// Primary advertisement UUIDs as 16-bit lowercase hexadecimal strings.
+    pub advertised_uuids: Vec<String>,
+    /// Whether the primary advertisement includes the complete local name.
+    pub advertisement_includes_name: bool,
+    /// Whether the scan response includes the complete local name.
+    pub scan_response_includes_name: bool,
+    /// Primary advertisement flags byte.
+    pub flags: u8,
+    /// Advertising type used by the target BLE transport.
+    pub advertising_type: &'static str,
+    /// Address type used by the target BLE transport.
+    pub own_address_type: &'static str,
+    /// Security/bonding policy used by the target BLE transport.
+    pub security: &'static str,
+    /// IO capability used for pairing.
+    pub io_capability: &'static str,
+    /// Whether the target store reports any BLE bond data.
+    pub bonds_present: bool,
+}
+
 /// Response payload for live bridge mode status.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BridgeStatusResponse {
@@ -1182,6 +1213,8 @@ pub enum ControlCommand {
     SendXboxSelfTestReport,
     /// Clear BLE bond data.
     ForgetBleBonds,
+    /// Request intended BLE advertising/security configuration.
+    GetBleAdvertisingInfo,
     /// Start automatic USB-to-BLE bridge publication.
     StartBridge,
     /// Stop automatic USB-to-BLE bridge publication.
@@ -1253,6 +1286,8 @@ pub enum ControlResponse {
     MappingDiagnostics(MappingDiagnosticsResponse),
     /// Response to a BLE transport action.
     BleAction(BleActionResponse),
+    /// Response to BLE advertising diagnostics.
+    BleAdvertisingInfo(BleAdvertisingInfoResponse),
     /// Response to live bridge mode commands.
     BridgeStatus(BridgeStatusResponse),
     /// Response to runtime configuration status.

@@ -47,6 +47,10 @@ Checked-in evidence supports:
   advertising, but the iPhone did not discover `USB2BLE Gamepad` in Bluetooth
   settings. This is diagnostic evidence only; iPhone compatibility remains
   unproven.
+- A follow-up iPhone BLE advertising diagnostic that captures target-side
+  advertising intent (`name=USB2BLE Gamepad`, appearance `0x03c4`, HID UUID
+  `1812`, name in scan response, bonding enabled) and confirms the iPhone still
+  did not discover the current Generic advertisement.
 - CI host checks, ESP32-S3 target preflight, firmware packaging, latest GitHub
   Release refresh, and Pages deployment.
 
@@ -74,6 +78,8 @@ Checked-in evidence supports:
   `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md`.
 - iPhone diagnostic failure evidence through
   `docs/milestone-evidence/IPHONE_SAFARI_GENERIC_GAMEPAD_FAILURE_2026-05-29.md`.
+- iPhone BLE advertising diagnostic evidence through
+  `docs/milestone-evidence/IPHONE_BLE_ADVERTISING_DIAGNOSTIC_2026-05-29.md`.
 - Generic BLE demo rehearsal through `tools/asap_demo_rehearsal.py` when
   hardware is connected.
 - Xbox BLE compatibility rehearsal through `tools/xbox_demo_rehearsal.py` when

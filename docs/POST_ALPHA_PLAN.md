@@ -76,13 +76,16 @@ before status docs should change.
 
 - Why it matters: mobile support is useful, but the first iPhone exploration
   failed at Bluetooth discovery while the target reported Generic BLE HID
-  advertising.
+  advertising. A follow-up diagnostic captured the target's intended Generic
+  advertisement fields, and iPhone discovery still failed.
 - Evidence needed: raw BLE advertisement capture from an independent scanner,
-  iOS/iPadOS version, pairing steps, browser/app target, visible input behavior
-  if pairing succeeds, reconnect behavior if tested, and limitations.
+  an explicit experimental advertisement-layout variant, iOS/iPadOS version,
+  pairing steps, browser/app target, visible input behavior if pairing
+  succeeds, reconnect behavior if tested, and limitations.
 - Hardware/user action: required for iPhone/iPad UI and pairing.
-- Recommended next prompt type: BLE advertising compatibility diagnostic, then
-  manual iPhone Safari witness retry.
+- Recommended next prompt type: add/test Apple/iOS experimental advertising
+  variants after raw advertisement capture, then retry manual iPhone Safari
+  witness only if the iPhone discovers a variant.
 - Risk: high, because automation and BLE/gamepad visibility are constrained.
 
 ## 8. Witness Helper Library Refactor

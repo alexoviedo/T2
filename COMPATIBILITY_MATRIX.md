@@ -76,4 +76,6 @@ This matrix tracks the support status for devices, personas, and milestones.
 - iPhone compatibility remains unproven. The first iPhone exploration is checked
   in as a useful failure: the target reported Generic BLE HID advertising, but
   the iPhone did not discover `USB2BLE Gamepad` in Settings > Bluetooth. See
-  `docs/milestone-evidence/IPHONE_SAFARI_GENERIC_GAMEPAD_FAILURE_2026-05-29.md`.
+  `docs/milestone-evidence/IPHONE_SAFARI_GENERIC_GAMEPAD_FAILURE_2026-05-29.md`
+  and the follow-up target-side advertising diagnostic in
+  `docs/milestone-evidence/IPHONE_BLE_ADVERTISING_DIAGNOSTIC_2026-05-29.md`.
