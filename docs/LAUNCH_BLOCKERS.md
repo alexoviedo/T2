@@ -1,7 +1,8 @@
 # Launch Blockers
 
-These items should be resolved before presenting USB2BLE as a fully open-source
-public release.
+These items track public-launch blockers. For `v0.1.0-alpha`, no repository
+blockers remain after the Apache-2.0 license, public URLs, and release checklist
+were added.
 
 ## Resolved
 
@@ -12,21 +13,18 @@ Apache-2.0 is a permissive license suitable for broad adoption, includes an
 explicit patent grant and termination language, and avoids copyleft obligations
 that could discourage firmware, device, or app integration.
 
-## 1. Public URLs
+## Resolved Public Targets
 
-Status: pre-publication action.
+Status: resolved for `v0.1.0-alpha`.
 
-Before launch, confirm:
+- Public repository: <https://github.com/alexoviedo/T2>
+- GitHub Pages web app: <https://alexoviedo.github.io/T2/>
+- Firmware manifest: <https://alexoviedo.github.io/T2/firmware/manifest.json>
+- Support destination: GitHub Issues in `alexoviedo/T2`.
 
-- public GitHub repository URL,
-- GitHub Pages URL,
-- where users should file issues,
-- whether GitHub Discussions is enabled.
+## Release Checklist
 
-Docs currently avoid hard-coded public URLs until those destinations are final.
+Status: use [docs/RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
-## 2. Final CI Pass
-
-Status: pending public branch.
-
-Run one final clean CI pass on the branch/tag that will be announced publicly.
+Run the release checklist before publishing tags or announcements. Do not add
+new compatibility claims unless matching checked-in evidence exists.

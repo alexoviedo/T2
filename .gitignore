@@ -2,6 +2,10 @@
 /target/
 **/*.rs.bk
 
+# Python generated files
+__pycache__/
+*.py[cod]
+
 # embuild / ESP-IDF generated toolchains, downloads, and build state
 /.embuild/
 /.idf_tools/
