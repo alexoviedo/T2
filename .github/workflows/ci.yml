@@ -32,6 +32,14 @@ jobs:
     - name: Shell syntax check
       run: bash -n scripts/*.sh
 
+    - name: Python tool checks
+      run: |
+        python3 -m py_compile tools/*.py tools/gamepad_witness/*.py
+        python3 -m unittest discover -s tools/tests -p 'test_*.py'
+
+    - name: Evidence reference checks
+      run: python3 tools/check_evidence_docs.py
+
     - name: Check formatting
       run: cargo fmt --all -- --check
 
@@ -108,7 +116,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20.19
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -160,7 +168,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20.19
           cache: npm
           cache-dependency-path: web/package-lock.json
 

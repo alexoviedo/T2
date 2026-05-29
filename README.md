@@ -208,6 +208,12 @@ See: `docs/GAME_COMPATIBILITY_WITNESS.md`
 ## Config persistence witness
 See: `docs/CONFIG_PERSISTENCE_WITNESS.md`
 
+## Evidence index
+See: `docs/EVIDENCE_INDEX.md`
+
+## Development workflow
+See: `docs/DEVELOPMENT.md`
+
 ## Project status handoff
 See: `docs/PROJECT_STATUS_HANDOFF.md`
 
