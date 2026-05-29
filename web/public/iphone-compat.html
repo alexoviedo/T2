@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>USB2BLE iPhone Compatibility Check</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f8fb;
+        --panel: #ffffff;
+        --ink: #13202a;
+        --muted: #617080;
+        --line: #d7dfe7;
+        --accent: #145da0;
+        --ok: #126c43;
+        --warn: #9a520f;
+        --bad: #9d1c1c;
+        --track: #e8eef4;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      main {
+        width: min(100%, 960px);
+        margin: 0 auto;
+        padding: max(16px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        line-height: 1.1;
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        font-size: 18px;
+      }
+
+      p,
+      li {
+        line-height: 1.42;
+      }
+
+      .subtle {
+        color: var(--muted);
+      }
+
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        margin: 12px 0;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 8px;
+        padding: 13px 14px;
+        min-height: 48px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+      }
+
+      button.secondary {
+        background: #2e3b46;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        min-height: 72px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .value {
+        margin-top: 6px;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+      }
+
+      .ok {
+        color: var(--ok);
+      }
+
+      .warn {
+        color: var(--warn);
+      }
+
+      .bad {
+        color: var(--bad);
+      }
+
+      .axis-row,
+      .button-row {
+        display: grid;
+        grid-template-columns: 64px 1fr 72px;
+        gap: 8px;
+        align-items: center;
+        margin: 9px 0;
+      }
+
+      .track {
+        height: 14px;
+        background: var(--track);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .fill {
+        height: 100%;
+        width: 0%;
+        background: var(--accent);
+      }
+
+      .centerline {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: rgba(0, 0, 0, 0.26);
+      }
+
+      .mission {
+        min-height: 160px;
+        background: linear-gradient(#c9ecff 0 58%, #64a762 58%);
+        border: 1px solid #b4c4cf;
+        border-radius: 8px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .ship {
+        position: absolute;
+        width: 28px;
+        height: 18px;
+        left: 48%;
+        top: 44%;
+        border-radius: 60% 40% 40% 60%;
+        background: #fff4a8;
+        border: 2px solid #2f4048;
+        transform: translate(-50%, -50%);
+      }
+
+      .mission-note {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: 8px;
+        font-size: 12px;
+        color: #13202a;
+        background: rgba(255, 255, 255, 0.78);
+        border-radius: 6px;
+        padding: 6px;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        background: #101820;
+        color: #d7f7e7;
+        padding: 10px;
+        border-radius: 8px;
+        max-height: 220px;
+        overflow: auto;
+      }
+
+      a {
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      @media (max-width: 620px) {
+        h1 {
+          font-size: 24px;
+        }
+
+        .controls,
+        .status-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .axis-row,
+        .button-row {
+          grid-template-columns: 52px 1fr 62px;
+          font-size: 13px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>USB2BLE iPhone Compatibility Check</h1>
+        <p class="subtle">
+          A Safari Gamepad API smoke page for the USB2BLE Generic BLE HID path.
+          It does not use Web Serial and does not prove broad iOS or game compatibility by itself.
+        </p>
+      </header>
+
+      <section>
+        <h2>Steps</h2>
+        <ol>
+          <li>Pair <strong>USB2BLE Gamepad</strong> in iPhone Bluetooth settings.</li>
+          <li>Open this page in Safari.</li>
+          <li>Tap <strong>Start/Arm</strong>.</li>
+          <li>Move throttle, rudder, and toe brakes while this page is open.</li>
+          <li>Tap <strong>Copy Evidence JSON</strong> or <strong>Download Evidence JSON</strong>.</li>
+        </ol>
+      </section>
+
+      <section>
+        <div class="controls">
+          <button id="arm">Start/Arm</button>
+          <button id="copy" class="secondary">Copy Evidence JSON</button>
+          <button id="download" class="secondary">Download Evidence JSON</button>
+          <button id="share" class="secondary">Share Evidence</button>
+        </div>
+      </section>
+
+      <section>
+        <div class="status-grid">
+          <div class="metric">
+            <div class="label">Gamepad API</div>
+            <div id="support" class="value warn">checking</div>
+          </div>
+          <div class="metric">
+            <div class="label">Connection</div>
+            <div id="connection" class="value warn">not armed</div>
+          </div>
+          <div class="metric">
+            <div class="label">Gamepad ID</div>
+            <div id="gamepad-id" class="value">none</div>
+          </div>
+          <div class="metric">
+            <div class="label">Samples</div>
+            <div id="samples" class="value">0</div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Mini App Surface</h2>
+        <div class="mission">
+          <div id="ship" class="ship"></div>
+          <div id="mission-note" class="mission-note">Waiting for controller input.</div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Refined Generic Axes</h2>
+        <div id="axes"></div>
+      </section>
+
+      <section>
+        <h2>Buttons</h2>
+        <div id="buttons"></div>
+      </section>
+
+      <section>
+        <h2>Evidence JSON</h2>
+        <pre id="evidence"></pre>
+      </section>
+
+      <section>
+        <h2>Open This Page</h2>
+        <p class="subtle">
+          Public URL: <a id="self-link" href=""></a>
+        </p>
+      </section>
+    </main>
+
+    <script>
+      const axisLabels = {
+        0: "A0 stick x",
+        1: "A1 stick y",
+        2: "A2 throttle / Generic z",
+        3: "A3 rudder / Generic rx",
+        4: "A4 left toe / Generic ry",
+        5: "A5 right toe / Generic rz",
+      };
+
+      const els = {
+        arm: document.querySelector("#arm"),
+        copy: document.querySelector("#copy"),
+        download: document.querySelector("#download"),
+        share: document.querySelector("#share"),
+        support: document.querySelector("#support"),
+        connection: document.querySelector("#connection"),
+        gamepadId: document.querySelector("#gamepad-id"),
+        samples: document.querySelector("#samples"),
+        axes: document.querySelector("#axes"),
+        buttons: document.querySelector("#buttons"),
+        evidence: document.querySelector("#evidence"),
+        ship: document.querySelector("#ship"),
+        missionNote: document.querySelector("#mission-note"),
+        selfLink: document.querySelector("#self-link"),
+      };
+
+      const state = {
+        armed: false,
+        startedAt: null,
+        lastUpdatedAt: null,
+        support: "getGamepads" in navigator,
+        gamepadId: null,
+        connected: false,
+        axes: [],
+        buttons: [],
+        samples: 0,
+        events: [],
+        axisStats: {},
+        buttonStats: {},
+        miniApp: {
+          throttleMoved: false,
+          rudderMoved: false,
+          leftToeMoved: false,
+          rightToeMoved: false,
+          missionComplete: false,
+          shipX: 50,
+          shipY: 45,
+        },
+      };
+
+      function nowIso() {
+        return new Date().toISOString();
+      }
+
+      function log(kind, details = {}) {
+        state.events.push({ at: nowIso(), kind, details });
+        if (state.events.length > 120) {
+          state.events.shift();
+        }
+      }
+
+      function classNameFor(value) {
+        if (value === "ok") return "value ok";
+        if (value === "bad") return "value bad";
+        return "value warn";
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function normalizeAxisForBar(value) {
+        return clamp(((value + 1) / 2) * 100, 0, 100);
+      }
+
+      function updateStats(values, stats) {
+        values.forEach((value, index) => {
+          if (!Number.isFinite(value)) return;
+          const key = String(index);
+          const current = stats[key] || { min: value, max: value, first: value, last: value, samples: 0 };
+          current.min = Math.min(current.min, value);
+          current.max = Math.max(current.max, value);
+          current.last = value;
+          current.samples += 1;
+          current.delta = current.max - current.min;
+          stats[key] = current;
+        });
+      }
+
+      function readGamepad() {
+        if (!state.support) return null;
+        const pads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []);
+        return pads.find(Boolean) || null;
+      }
+
+      function updateMiniApp(axes) {
+        const a0 = axes[0] || 0;
+        const a1 = axes[1] || 0;
+        const a2 = axes[2] || 0;
+        const a3 = axes[3] || 0;
+        const a4 = axes[4] || 0;
+        const a5 = axes[5] || 0;
+        state.miniApp.shipX = clamp(50 + a0 * 34 + a3 * 10, 8, 92);
+        state.miniApp.shipY = clamp(45 + a1 * 28 - a2 * 10 + (a4 - a5) * 6, 8, 76);
+        state.miniApp.throttleMoved ||= Math.abs(a2) > 0.35;
+        state.miniApp.rudderMoved ||= Math.abs(a3) > 0.35;
+        state.miniApp.leftToeMoved ||= Math.abs(a4) > 0.35;
+        state.miniApp.rightToeMoved ||= Math.abs(a5) > 0.35;
+        state.miniApp.missionComplete =
+          state.miniApp.throttleMoved &&
+          state.miniApp.rudderMoved &&
+          state.miniApp.leftToeMoved &&
+          state.miniApp.rightToeMoved;
+      }
+
+      function renderAxes() {
+        const rows = [];
+        const count = Math.max(6, state.axes.length);
+        for (let index = 0; index < count; index += 1) {
+          const value = Number.isFinite(state.axes[index]) ? state.axes[index] : 0;
+          const label = axisLabels[index] || `A${index}`;
+          rows.push(`
+            <div class="axis-row">
+              <div>${label}</div>
+              <div class="track"><div class="centerline"></div><div class="fill" style="width:${normalizeAxisForBar(value)}%"></div></div>
+              <div>${value.toFixed(3)}</div>
+            </div>
+          `);
+        }
+        els.axes.innerHTML = rows.join("");
+      }
+
+      function renderButtons() {
+        const rows = [];
+        const count = Math.max(4, state.buttons.length);
+        for (let index = 0; index < count; index += 1) {
+          const value = Number.isFinite(state.buttons[index]) ? state.buttons[index] : 0;
+          rows.push(`
+            <div class="button-row">
+              <div>B${index}</div>
+              <div class="track"><div class="fill" style="width:${clamp(value * 100, 0, 100)}%"></div></div>
+              <div>${value.toFixed(3)}</div>
+            </div>
+          `);
+        }
+        els.buttons.innerHTML = rows.join("");
+      }
+
+      function evidenceSummary() {
+        const axisSummary = {};
+        for (const [key, value] of Object.entries(state.axisStats)) {
+          axisSummary[`A${key}`] = value;
+        }
+        const buttonSummary = {};
+        for (const [key, value] of Object.entries(state.buttonStats)) {
+          buttonSummary[`B${key}`] = value;
+        }
+        return {
+          schema: "usb2ble_iphone_safari_gamepad_evidence_v1",
+          page: "USB2BLE iPhone Compatibility Check",
+          page_url: location.href,
+          user_agent: navigator.userAgent,
+          platform: navigator.platform,
+          language: navigator.language,
+          gamepad_api_supported: state.support,
+          armed: state.armed,
+          started_at: state.startedAt,
+          last_updated_at: state.lastUpdatedAt,
+          connected: state.connected,
+          gamepad_id: state.gamepadId,
+          samples: state.samples,
+          axes_length: state.axes.length,
+          buttons_length: state.buttons.length,
+          latest_axes: state.axes,
+          latest_buttons: state.buttons,
+          axis_summary: axisSummary,
+          button_summary: buttonSummary,
+          refined_generic_expected_axes: {
+            A2: "throttle / Generic z",
+            A3: "rudder / Generic rx",
+            A4: "left toe / Generic ry",
+            A5: "right toe / Generic rz",
+          },
+          mini_app: state.miniApp,
+          events: state.events,
+          claim_boundary: [
+            "single iPhone Safari Gamepad API smoke only",
+            "not broad iOS compatibility",
+            "not native App Store game compatibility",
+            "not BLE bond persistence",
+            "not final calibration quality",
+          ],
+        };
+      }
+
+      function render() {
+        els.support.textContent = state.support ? "supported" : "not available";
+        els.support.className = classNameFor(state.support ? "ok" : "bad");
+        els.connection.textContent = state.connected ? "connected" : state.armed ? "waiting" : "not armed";
+        els.connection.className = classNameFor(state.connected ? "ok" : "warn");
+        els.gamepadId.textContent = state.gamepadId || "none";
+        els.samples.textContent = String(state.samples);
+        els.ship.style.left = `${state.miniApp.shipX}%`;
+        els.ship.style.top = `${state.miniApp.shipY}%`;
+        els.missionNote.textContent = state.miniApp.missionComplete
+          ? "Mission complete: A2/A3/A4/A5 all moved past threshold."
+          : "Move throttle, rudder, left toe, and right toe to complete the mini app check.";
+        renderAxes();
+        renderButtons();
+        els.evidence.textContent = JSON.stringify(evidenceSummary(), null, 2);
+      }
+
+      function loop() {
+        if (!state.armed) return;
+        const pad = readGamepad();
+        if (pad) {
+          const axes = pad.axes.map((value) => Number(value.toFixed(6)));
+          const buttons = pad.buttons.map((button) => Number(button.value.toFixed(6)));
+          if (!state.connected) {
+            log("gamepad_detected", { id: pad.id, axes: axes.length, buttons: buttons.length });
+          }
+          state.connected = true;
+          state.gamepadId = pad.id;
+          state.axes = axes;
+          state.buttons = buttons;
+          state.samples += 1;
+          state.lastUpdatedAt = nowIso();
+          updateStats(axes, state.axisStats);
+          updateStats(buttons, state.buttonStats);
+          updateMiniApp(axes);
+        } else {
+          if (state.connected) {
+            log("gamepad_lost");
+          }
+          state.connected = false;
+        }
+        render();
+        requestAnimationFrame(loop);
+      }
+
+      async function copyEvidence() {
+        const text = JSON.stringify(evidenceSummary(), null, 2);
+        try {
+          await navigator.clipboard.writeText(text);
+          log("copy_evidence_json", { ok: true });
+        } catch (error) {
+          log("copy_evidence_json", { ok: false, error: String(error) });
+          window.prompt("Copy Evidence JSON", text);
+        }
+        render();
+      }
+
+      function downloadEvidence() {
+        const text = JSON.stringify(evidenceSummary(), null, 2);
+        const blob = new Blob([text], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `usb2ble-iphone-evidence-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        log("download_evidence_json");
+        render();
+      }
+
+      async function shareEvidence() {
+        const text = JSON.stringify(evidenceSummary(), null, 2);
+        if (!navigator.share) {
+          log("share_evidence", { ok: false, error: "Web Share API unavailable" });
+          render();
+          return;
+        }
+        try {
+          await navigator.share({ title: "USB2BLE iPhone Evidence", text });
+          log("share_evidence", { ok: true });
+        } catch (error) {
+          log("share_evidence", { ok: false, error: String(error) });
+        }
+        render();
+      }
+
+      els.arm.addEventListener("click", () => {
+        if (!state.support) {
+          log("arm_failed", { reason: "Gamepad API unavailable" });
+          render();
+          return;
+        }
+        if (!state.armed) {
+          state.armed = true;
+          state.startedAt = nowIso();
+          log("armed");
+          requestAnimationFrame(loop);
+        }
+        render();
+      });
+
+      els.copy.addEventListener("click", copyEvidence);
+      els.download.addEventListener("click", downloadEvidence);
+      els.share.addEventListener("click", shareEvidence);
+      window.addEventListener("gamepadconnected", (event) => {
+        log("gamepadconnected_event", { id: event.gamepad.id, index: event.gamepad.index });
+      });
+      window.addEventListener("gamepaddisconnected", (event) => {
+        log("gamepaddisconnected_event", { id: event.gamepad.id, index: event.gamepad.index });
+      });
+
+      els.selfLink.href = location.href;
+      els.selfLink.textContent = location.href;
+      if (!navigator.share) {
+        els.share.disabled = true;
+      }
+      render();
+    </script>
+  </body>
+</html>
