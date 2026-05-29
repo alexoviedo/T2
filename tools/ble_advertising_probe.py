@@ -78,6 +78,13 @@ def main() -> int:
         dest="names",
         help="Device name substring to search for. May be repeated.",
     )
+    parser.add_argument(
+        "--manual-scan-file",
+        type=pathlib.Path,
+        action="append",
+        default=[],
+        help="Optional scanner text/JSON export to include and normalize.",
+    )
     args = parser.parse_args()
 
     names = tuple(args.names) if args.names else DEFAULT_NAMES
@@ -116,10 +123,26 @@ def main() -> int:
     else:
         notes.append("ioreg is not available.")
 
+    manual_outputs: list[dict[str, str]] = []
+    for manual_path in args.manual_scan_file:
+        if manual_path.exists():
+            manual_outputs.append(
+                {
+                    "path": str(manual_path),
+                    "output": manual_path.read_text(encoding="utf-8", errors="replace"),
+                }
+            )
+        else:
+            manual_outputs.append({"path": str(manual_path), "output": "", "error": "file not found"})
+
     combined_output = "\n\n".join(
         [
             "$ " + " ".join(result["command"]) + "\n" + (result.get("output") or "")
             for result in command_results
+        ]
+        + [
+            "$ manual " + value["path"] + "\n" + value.get("output", "")
+            for value in manual_outputs
         ]
     )
     observed_names = find_names(combined_output, names)
@@ -143,6 +166,14 @@ def main() -> int:
                 "error": result.get("error"),
             }
             for result in command_results
+        ],
+        "manual_scan_files": [
+            {
+                "path": value["path"],
+                "error": value.get("error"),
+                "matched_names": find_names(value.get("output", ""), names),
+            }
+            for value in manual_outputs
         ],
         "limitations": [
             "No raw advertisement bytes, service UUID list, address, or RSSI are guaranteed from stock macOS CLI tools.",

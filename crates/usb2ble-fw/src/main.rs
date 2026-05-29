@@ -9,11 +9,12 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 use usb2ble_app::App;
 use usb2ble_contracts::{
-    BleActionResponse, BleAdvertisingInfoResponse, BleTransport, BleTransportError,
-    BridgeStatusResponse, CONTRACT_VERSION, ConfigActionResponse, ConfigImportResponse,
-    ControlCommand, ControlError, ControlPlane, ControlResponse, DescriptorKey, EncodedBleReport,
-    MAX_RUNTIME_CONFIG_JSON_BYTES, NormalizedControlValue, PersonaEncoder, PersonaId,
-    PersonaInputFrame, PersonaLogicalControlValue, RuntimeConfig, UsbIngress,
+    BleActionResponse, BleAdvertisingInfoResponse, BleCompatibilityVariant, BleTransport,
+    BleTransportError, BridgeStatusResponse, CONTRACT_VERSION, ConfigActionResponse,
+    ConfigImportResponse, ControlCommand, ControlError, ControlPlane, ControlResponse,
+    DescriptorKey, EncodedBleReport, JsonResponse, MAX_RUNTIME_CONFIG_JSON_BYTES,
+    NormalizedControlValue, PersonaEncoder, PersonaId, PersonaInputFrame,
+    PersonaLogicalControlValue, RuntimeConfig, UsbIngress,
 };
 use usb2ble_control::SerialControlPlane;
 use usb2ble_personas::{
@@ -580,13 +581,18 @@ where
             ble,
             generic_encoder,
             GENERIC_GAMEPAD_PERSONA_ID,
+            None,
             "start_generic_gamepad",
         ),
+        ControlCommand::StartBleGenericGamepadVariant(variant_id) => {
+            start_ble_generic_variant(app, ble, generic_encoder, variant_id)
+        }
         ControlCommand::StartBleXboxController => start_ble_persona(
             app,
             ble,
             xbox_encoder,
             XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+            None,
             "start_xbox_controller",
         ),
         ControlCommand::PublishGenericGamepadReport => match app.generic_gamepad_report() {
@@ -619,6 +625,12 @@ where
         },
         ControlCommand::GetBleAdvertisingInfo => {
             ble_advertising_info(app, ble, generic_encoder, xbox_encoder)
+        }
+        ControlCommand::ListBleCompatibilityVariants => {
+            ControlResponse::Json(ble_compatibility_variants_json())
+        }
+        ControlCommand::GetBleCompatProfile => {
+            ble_compat_profile_json(app, ble, generic_encoder, xbox_encoder)
         }
         ControlCommand::StartBridge => match bridge.start(app.state().active_persona) {
             Ok(()) => ControlResponse::BridgeStatus(bridge.status(app.state().active_persona)),
@@ -691,6 +703,7 @@ where
         + usb2ble_contracts::ConfigStore,
 {
     let active_persona = app.state().active_persona;
+    let active_variant = app.state().active_ble_variant;
     let descriptor = active_persona.and_then(|persona| {
         let encoder: &dyn PersonaEncoder = if persona == GENERIC_GAMEPAD_PERSONA_ID {
             generic_encoder
@@ -720,17 +733,22 @@ where
     ControlResponse::BleAdvertisingInfo(BleAdvertisingInfoResponse {
         active_persona,
         state: ble.current_state(),
+        compatibility_variant: active_variant,
         device_name,
         appearance,
-        advertised_uuids: vec!["1812".to_string()],
-        advertisement_includes_name: false,
-        scan_response_includes_name: true,
+        advertised_uuids: advertised_uuids_for_variant(active_variant),
+        scan_response_uuids: scan_response_uuids_for_variant(active_variant),
+        advertisement_includes_name: active_variant
+            == Some(BleCompatibilityVariant::GenericHogpStrict),
+        scan_response_includes_name: active_variant
+            != Some(BleCompatibilityVariant::GenericHogpStrict),
         flags: 0x06,
         advertising_type: "ADV_TYPE_IND",
         own_address_type: "public",
         security: "bond",
         io_capability: "none",
         bonds_present,
+        raw_advertisement_bytes_available: false,
     })
 }
 
@@ -740,6 +758,139 @@ fn nul_terminated_bytes_to_string(bytes: &[u8]) -> String {
         .position(|byte| *byte == 0)
         .unwrap_or(bytes.len());
     String::from_utf8_lossy(&bytes[..end]).into_owned()
+}
+
+fn advertised_uuids_for_variant(variant: Option<BleCompatibilityVariant>) -> Vec<String> {
+    match variant {
+        Some(BleCompatibilityVariant::GenericHogpStrict)
+        | Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => Vec::new(),
+        _ => vec!["1812".to_string()],
+    }
+}
+
+fn scan_response_uuids_for_variant(variant: Option<BleCompatibilityVariant>) -> Vec<String> {
+    match variant {
+        Some(BleCompatibilityVariant::GenericHogpStrict) => vec!["1812".to_string()],
+        Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => Vec::new(),
+        _ => Vec::new(),
+    }
+}
+
+fn ble_compatibility_variants_json() -> JsonResponse {
+    let json = serde_json::json!({
+        "variants": [
+            {
+                "id": "generic_default",
+                "persona": "generic_gamepad",
+                "implemented": true,
+                "experimental": false,
+                "description": "Current proven Generic Gamepad advertising/report-map path."
+            },
+            {
+                "id": "generic_hogp_strict",
+                "persona": "generic_gamepad",
+                "implemented": true,
+                "experimental": true,
+                "description": "HOGP-conservative advertisement experiment: complete local name in primary advertisement and HID UUID in scan response."
+            },
+            {
+                "id": "ios_keyboard_icade_fallback",
+                "persona": "keyboard_icade",
+                "implemented": false,
+                "experimental": true,
+                "description": "Planned keyboard/iCade-style fallback. Not a true gamepad and not currently implemented."
+            },
+            {
+                "id": "xbox_compatibility",
+                "persona": "xbox_wireless_controller",
+                "implemented": true,
+                "experimental": false,
+                "description": "Existing Xbox compatibility persona; broad Xbox compatibility is not claimed."
+            }
+        ]
+    })
+    .to_string();
+    JsonResponse {
+        prefix: "BLE_COMPAT_VARIANTS_JSON",
+        json,
+    }
+}
+
+fn ble_compat_profile_json<S>(
+    app: &mut App<S>,
+    ble: &impl BleTransport,
+    generic_encoder: &impl PersonaEncoder,
+    xbox_encoder: &impl PersonaEncoder,
+) -> ControlResponse
+where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    let active_persona = app.state().active_persona;
+    let active_variant = app.state().active_ble_variant;
+    let descriptor = active_persona.and_then(|persona| {
+        let encoder: &dyn PersonaEncoder = if persona == GENERIC_GAMEPAD_PERSONA_ID {
+            generic_encoder
+        } else if persona == XBOX_WIRELESS_CONTROLLER_PERSONA_ID {
+            xbox_encoder
+        } else {
+            return None;
+        };
+        let mut descriptor = encoder.descriptor(persona).ok()?;
+        if let Some(variant) = active_variant {
+            descriptor.compatibility_variant = variant;
+        }
+        Some(descriptor)
+    });
+    let bonds_present = match app.handle_control_command(&ControlCommand::GetStatus) {
+        ControlResponse::Status(status) => status.bonds_present,
+        _ => false,
+    };
+    let report_map_len = descriptor
+        .as_ref()
+        .map(|descriptor| descriptor.report_map.len())
+        .unwrap_or(0);
+    let json = serde_json::json!({
+        "active_persona": active_persona.map(|persona| persona.0).unwrap_or("none"),
+        "active_variant": active_variant.map(BleCompatibilityVariant::id).unwrap_or("none"),
+        "connection_state": format!("{:?}", ble.current_state()),
+        "advertising_active": ble.current_state() == usb2ble_contracts::BleLinkState::Advertising,
+        "device_name": descriptor.as_ref().map(|descriptor| nul_terminated_bytes_to_string(descriptor.identity.device_name)),
+        "manufacturer": descriptor.as_ref().map(|descriptor| nul_terminated_bytes_to_string(descriptor.identity.manufacturer_name)),
+        "vendor_id": descriptor.as_ref().map(|descriptor| descriptor.identity.vendor_id),
+        "product_id": descriptor.as_ref().map(|descriptor| descriptor.identity.product_id),
+        "appearance": descriptor.as_ref().map(|descriptor| format!("0x{:04x}", descriptor.identity.appearance)),
+        "primary_advertisement": {
+            "flags": "0x06",
+            "complete_local_name": active_variant == Some(BleCompatibilityVariant::GenericHogpStrict),
+            "uuids": advertised_uuids_for_variant(active_variant),
+            "appearance": true,
+            "raw_bytes": "unavailable"
+        },
+        "scan_response": {
+            "complete_local_name": active_variant != Some(BleCompatibilityVariant::GenericHogpStrict),
+            "uuids": scan_response_uuids_for_variant(active_variant),
+            "raw_bytes": "unavailable"
+        },
+        "services_present_intended": ["hid_service_via_esp_hidd_dev_init"],
+        "services_not_verified_by_command": ["device_information_service", "battery_service"],
+        "report_map_len": report_map_len,
+        "report_ids": if report_map_len > 0 { vec![1] } else { Vec::<u8>::new() },
+        "security": {
+            "mode": "bond",
+            "io_capability": "none",
+            "encryption_keys": true,
+            "identity_keys": true,
+            "bonds_present": bonds_present
+        },
+        "claim_boundary": "intended target-side profile diagnostics only; not raw over-the-air advertisement capture"
+    })
+    .to_string();
+    ControlResponse::Json(JsonResponse {
+        prefix: "BLE_COMPAT_PROFILE_JSON",
+        json,
+    })
 }
 
 fn parse_runtime_config_json(pending: PendingConfigJson) -> Result<RuntimeConfig, ControlError> {
@@ -780,6 +931,7 @@ fn start_ble_persona<S>(
     ble: &mut impl BleTransport,
     encoder: &(impl PersonaEncoder + ?Sized),
     persona_id: PersonaId,
+    variant_override: Option<BleCompatibilityVariant>,
     action: &'static str,
 ) -> ControlResponse
 where
@@ -788,19 +940,55 @@ where
         + usb2ble_contracts::ConfigStore,
 {
     match encoder.descriptor(persona_id) {
-        Ok(descriptor) => match ble.activate_persona(&descriptor) {
-            Ok(()) => {
-                app.set_active_persona(Some(persona_id));
-                ControlResponse::BleAction(BleActionResponse {
-                    action,
-                    state: ble.current_state(),
-                    report: None,
-                })
+        Ok(mut descriptor) => {
+            if let Some(variant) = variant_override {
+                descriptor.compatibility_variant = variant;
             }
-            Err(err) => ControlResponse::Error(control_error_from_ble(err)),
-        },
+            match ble.activate_persona(&descriptor) {
+                Ok(()) => {
+                    app.set_active_persona(Some(persona_id));
+                    app.set_active_ble_variant(Some(descriptor.compatibility_variant));
+                    ControlResponse::BleAction(BleActionResponse {
+                        action,
+                        state: ble.current_state(),
+                        report: None,
+                    })
+                }
+                Err(err) => ControlResponse::Error(control_error_from_ble(err)),
+            }
+        }
         Err(_) => ControlResponse::Error(ControlError::Generic),
     }
+}
+
+fn start_ble_generic_variant<S>(
+    app: &mut App<S>,
+    ble: &mut impl BleTransport,
+    generic_encoder: &impl PersonaEncoder,
+    variant_id: &str,
+) -> ControlResponse
+where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    let Some(variant) = BleCompatibilityVariant::from_id(variant_id) else {
+        return ControlResponse::Error(ControlError::Generic);
+    };
+    if !matches!(
+        variant,
+        BleCompatibilityVariant::GenericDefault | BleCompatibilityVariant::GenericHogpStrict
+    ) {
+        return ControlResponse::Error(ControlError::UnknownPersona);
+    }
+    start_ble_persona(
+        app,
+        ble,
+        generic_encoder,
+        GENERIC_GAMEPAD_PERSONA_ID,
+        Some(variant),
+        "start_generic_gamepad_variant",
+    )
 }
 
 fn start_configured<S>(
@@ -829,7 +1017,7 @@ where
         } else {
             return ControlResponse::Error(ControlError::UnknownPersona);
         };
-        let response = start_ble_persona(app, ble, encoder, persona_id, "start_configured");
+        let response = start_ble_persona(app, ble, encoder, persona_id, None, "start_configured");
         if matches!(response, ControlResponse::Error(_)) {
             return response;
         }
@@ -1047,6 +1235,10 @@ mod tests {
             ControlResponse::BleAdvertisingInfo(info) => {
                 assert_eq!(info.active_persona, Some(GENERIC_GAMEPAD_PERSONA_ID));
                 assert_eq!(info.state, usb2ble_contracts::BleLinkState::Advertising);
+                assert_eq!(
+                    info.compatibility_variant,
+                    Some(BleCompatibilityVariant::GenericDefault)
+                );
                 assert_eq!(info.device_name.as_deref(), Some("USB2BLE Gamepad"));
                 assert_eq!(info.appearance, Some(0x03c4));
                 assert_eq!(info.advertised_uuids, vec!["1812".to_string()]);
@@ -1057,6 +1249,63 @@ mod tests {
                 assert_eq!(info.io_capability, "none");
             }
             other => panic!("expected BLE advertising info, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn generic_hogp_strict_variant_reports_primary_name_layout() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepadVariant(
+                "generic_hogp_strict".to_string(),
+            )),
+            "start_generic_gamepad_variant",
+        );
+        match runtime.run(ControlCommand::GetBleAdvertisingInfo) {
+            ControlResponse::BleAdvertisingInfo(info) => {
+                assert_eq!(
+                    info.compatibility_variant,
+                    Some(BleCompatibilityVariant::GenericHogpStrict)
+                );
+                assert_eq!(info.active_persona, Some(GENERIC_GAMEPAD_PERSONA_ID));
+                assert!(info.advertisement_includes_name);
+                assert!(!info.scan_response_includes_name);
+                assert!(info.advertised_uuids.is_empty());
+                assert_eq!(info.scan_response_uuids, vec!["1812".to_string()]);
+                assert!(!info.raw_advertisement_bytes_available);
+            }
+            other => panic!("expected BLE advertising info, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ble_compatibility_profile_commands_return_json() {
+        let mut runtime = Runtime::new();
+
+        match runtime.run(ControlCommand::ListBleCompatibilityVariants) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "BLE_COMPAT_VARIANTS_JSON");
+                assert!(resp.json.contains("generic_hogp_strict"));
+                assert!(resp.json.contains("ios_keyboard_icade_fallback"));
+            }
+            other => panic!("expected variants JSON, got {other:?}"),
+        }
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepadVariant(
+                "generic_hogp_strict".to_string(),
+            )),
+            "start_generic_gamepad_variant",
+        );
+        match runtime.run(ControlCommand::GetBleCompatProfile) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "BLE_COMPAT_PROFILE_JSON");
+                assert!(resp.json.contains("generic_hogp_strict"));
+                assert!(resp.json.contains("USB2BLE Gamepad"));
+                assert!(resp.json.contains("raw over-the-air advertisement"));
+            }
+            other => panic!("expected profile JSON, got {other:?}"),
         }
     }
 

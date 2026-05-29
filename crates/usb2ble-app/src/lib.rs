@@ -3,18 +3,19 @@
 //! Responsible for orchestration and application state.
 
 use usb2ble_contracts::{
-    AppState, BleLinkState, BondStore, BridgeRuntimeConfig, CONTRACT_VERSION,
-    CUSTOM_RUNTIME_PROFILE_ID_STR, CompositeMerger, ConfigActionResponse, ConfigStatusResponse,
-    ConfigStore, ControlCommand, ControlError, ControlResponse, DescriptorKey, EncodedBleReport,
-    EncodedReportResponse, FLIGHT_PACK_DEMO_PROFILE_ID_STR, GENERIC_AUTO_PROFILE_ID_STR,
-    GENERIC_GAMEPAD_PERSONA_ID_STR, HidDescriptorParser, HidReportDecoder, HidSummaryResponse,
-    InfoResponse, InputCatalog, InputCatalogEntry, InputNormalizer, JsonResponse,
-    MAX_RUNTIME_CONFIG_JSON_BYTES, Mapper, MappingDiagnosticsResponse, MappingProfile,
-    NormalizedControlValue, NormalizedInputFrame, NormalizedInputResponse, PersonaEncoder,
-    PersonaId, ProfileId, ProfileResponse, ProfileStore, RUNTIME_CONFIG_SCHEMA_VERSION,
-    RuntimeConfig, RuntimeTransform, SourceMappingRule, StatusResponse, UsbDescriptorResponse,
-    UsbIngressEvent, UsbReportResponse, UsbStatusResponse, XBOX_AUTO_PROFILE_ID_STR,
-    XBOX_FLIGHT_PACK_DEMO_PROFILE_ID_STR, XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR,
+    AppState, BleCompatibilityVariant, BleLinkState, BondStore, BridgeRuntimeConfig,
+    CONTRACT_VERSION, CUSTOM_RUNTIME_PROFILE_ID_STR, CompositeMerger, ConfigActionResponse,
+    ConfigStatusResponse, ConfigStore, ControlCommand, ControlError, ControlResponse,
+    DescriptorKey, EncodedBleReport, EncodedReportResponse, FLIGHT_PACK_DEMO_PROFILE_ID_STR,
+    GENERIC_AUTO_PROFILE_ID_STR, GENERIC_GAMEPAD_PERSONA_ID_STR, HidDescriptorParser,
+    HidReportDecoder, HidSummaryResponse, InfoResponse, InputCatalog, InputCatalogEntry,
+    InputNormalizer, JsonResponse, MAX_RUNTIME_CONFIG_JSON_BYTES, Mapper,
+    MappingDiagnosticsResponse, MappingProfile, NormalizedControlValue, NormalizedInputFrame,
+    NormalizedInputResponse, PersonaEncoder, PersonaId, ProfileId, ProfileResponse, ProfileStore,
+    RUNTIME_CONFIG_SCHEMA_VERSION, RuntimeConfig, RuntimeTransform, SourceMappingRule,
+    StatusResponse, UsbDescriptorResponse, UsbIngressEvent, UsbReportResponse, UsbStatusResponse,
+    XBOX_AUTO_PROFILE_ID_STR, XBOX_FLIGHT_PACK_DEMO_PROFILE_ID_STR,
+    XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR,
 };
 use usb2ble_hid::{HidParser, summarize_capabilities};
 use usb2ble_input::{LatestInputMerger, StandardInputNormalizer};
@@ -64,6 +65,7 @@ where
                 last_report_packets: Vec::new(),
                 active_profile,
                 active_persona: None,
+                active_ble_variant: None,
                 ble_state: BleLinkState::Idle,
             },
             storage,
@@ -178,6 +180,9 @@ where
             | ControlCommand::SendXboxSelfTestReport
             | ControlCommand::ForgetBleBonds
             | ControlCommand::GetBleAdvertisingInfo
+            | ControlCommand::StartBleGenericGamepadVariant(_)
+            | ControlCommand::ListBleCompatibilityVariants
+            | ControlCommand::GetBleCompatProfile
             | ControlCommand::StartBridge
             | ControlCommand::StopBridge
             | ControlCommand::GetBridgeStatus
@@ -646,6 +651,11 @@ where
     /// Set the active BLE persona (e.g. from platform glue).
     pub const fn set_active_persona(&mut self, persona: Option<PersonaId>) {
         self.state.active_persona = persona;
+    }
+
+    /// Set the active BLE compatibility variant.
+    pub const fn set_active_ble_variant(&mut self, variant: Option<BleCompatibilityVariant>) {
+        self.state.active_ble_variant = variant;
     }
 
     /// Get current app state (read-only).

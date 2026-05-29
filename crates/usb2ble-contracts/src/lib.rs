@@ -581,6 +581,44 @@ pub enum BleTransportFamily {
     Xbox,
 }
 
+/// Explicit host-compatibility variant for a BLE HID persona.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BleCompatibilityVariant {
+    /// Current proven Generic Gamepad advertising/report-map path.
+    GenericDefault,
+    /// Experimental HOGP-conservative Generic variant for Apple/iOS diagnostics.
+    GenericHogpStrict,
+    /// Experimental keyboard/iCade-style fallback stub, not a true gamepad.
+    IosKeyboardIcadeFallback,
+    /// Existing Xbox compatibility persona variant.
+    XboxCompatibility,
+}
+
+impl BleCompatibilityVariant {
+    /// Stable machine-readable variant ID.
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::GenericDefault => "generic_default",
+            Self::GenericHogpStrict => "generic_hogp_strict",
+            Self::IosKeyboardIcadeFallback => "ios_keyboard_icade_fallback",
+            Self::XboxCompatibility => "xbox_compatibility",
+        }
+    }
+
+    /// Parse a stable variant ID.
+    #[must_use]
+    pub fn from_id(value: &str) -> Option<Self> {
+        match value {
+            "generic_default" => Some(Self::GenericDefault),
+            "generic_hogp_strict" => Some(Self::GenericHogpStrict),
+            "ios_keyboard_icade_fallback" => Some(Self::IosKeyboardIcadeFallback),
+            "xbox_compatibility" => Some(Self::XboxCompatibility),
+            _ => None,
+        }
+    }
+}
+
 /// BLE identity metadata for a HID persona.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlePersonaIdentity {
@@ -645,6 +683,8 @@ pub struct PersonaDescriptor {
     pub identity: BlePersonaIdentity,
     /// Transport family.
     pub transport_family: BleTransportFamily,
+    /// Host-compatibility variant represented by this descriptor.
+    pub compatibility_variant: BleCompatibilityVariant,
     /// Raw HID report map for BLE.
     pub report_map: Vec<u8>,
     /// Expected input schema.
@@ -1034,17 +1074,22 @@ pub struct BleActionResponse {
 
 /// Response payload for BLE advertising diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BleAdvertisingInfoResponse {
     /// Active BLE persona, if one has been started.
     pub active_persona: Option<PersonaId>,
     /// Current BLE link state.
     pub state: BleLinkState,
+    /// Active host-compatibility variant, when known.
+    pub compatibility_variant: Option<BleCompatibilityVariant>,
     /// GAP/HID device name for the active persona.
     pub device_name: Option<String>,
     /// GAP appearance for the active persona.
     pub appearance: Option<u16>,
     /// Primary advertisement UUIDs as 16-bit lowercase hexadecimal strings.
     pub advertised_uuids: Vec<String>,
+    /// Scan response UUIDs as 16-bit lowercase hexadecimal strings.
+    pub scan_response_uuids: Vec<String>,
     /// Whether the primary advertisement includes the complete local name.
     pub advertisement_includes_name: bool,
     /// Whether the scan response includes the complete local name.
@@ -1061,6 +1106,8 @@ pub struct BleAdvertisingInfoResponse {
     pub io_capability: &'static str,
     /// Whether the target store reports any BLE bond data.
     pub bonds_present: bool,
+    /// Whether raw advertisement bytes are available through this diagnostic.
+    pub raw_advertisement_bytes_available: bool,
 }
 
 /// Response payload for live bridge mode status.
@@ -1201,6 +1248,8 @@ pub enum ControlCommand {
     GetXboxGamepadMapping,
     /// Start the BLE Generic Gamepad persona.
     StartBleGenericGamepad,
+    /// Start the BLE Generic Gamepad persona with an explicit compatibility variant.
+    StartBleGenericGamepadVariant(String),
     /// Publish the latest Generic Gamepad report over BLE.
     PublishGenericGamepadReport,
     /// Publish an explicit synthetic Generic Gamepad BLE self-test report.
@@ -1215,6 +1264,10 @@ pub enum ControlCommand {
     ForgetBleBonds,
     /// Request intended BLE advertising/security configuration.
     GetBleAdvertisingInfo,
+    /// List BLE compatibility variants known to the firmware.
+    ListBleCompatibilityVariants,
+    /// Request the active BLE compatibility profile as JSON.
+    GetBleCompatProfile,
     /// Start automatic USB-to-BLE bridge publication.
     StartBridge,
     /// Stop automatic USB-to-BLE bridge publication.
@@ -1386,6 +1439,8 @@ pub struct AppState {
     pub active_profile: Option<ProfileId>,
     /// Currently active BLE persona.
     pub active_persona: Option<PersonaId>,
+    /// Currently active BLE compatibility variant.
+    pub active_ble_variant: Option<BleCompatibilityVariant>,
     /// Current BLE link state.
     pub ble_state: BleLinkState,
 }

@@ -1,7 +1,8 @@
 //! BLE HID transport glue.
 
 use usb2ble_contracts::{
-    BleLinkState, BleTransport, BleTransportError, EncodedBleReport, PersonaDescriptor, PersonaId,
+    BleCompatibilityVariant, BleLinkState, BleTransport, BleTransportError, EncodedBleReport,
+    PersonaDescriptor, PersonaId,
 };
 
 #[cfg(not(target_os = "espidf"))]
@@ -10,6 +11,7 @@ use usb2ble_contracts::{
 pub struct BleHidTransport {
     state: BleLinkState,
     active_persona: Option<PersonaId>,
+    active_variant: Option<BleCompatibilityVariant>,
     published_reports: Vec<EncodedBleReport>,
 }
 
@@ -34,6 +36,7 @@ impl Default for BleHidTransport {
         Self {
             state: BleLinkState::Idle,
             active_persona: None,
+            active_variant: None,
             published_reports: Vec::new(),
         }
     }
@@ -57,6 +60,7 @@ impl BleTransport for BleHidTransport {
         }
 
         self.active_persona = Some(descriptor.persona_id);
+        self.active_variant = Some(descriptor.compatibility_variant);
         self.state = BleLinkState::Advertising;
         Ok(())
     }
@@ -199,6 +203,7 @@ mod target {
     /// Target BLE HID transport backed by ESP-IDF Bluedroid + esp_hid.
     pub struct BleHidTransport {
         active_persona: Option<PersonaId>,
+        active_variant: Option<BleCompatibilityVariant>,
         report_map: Vec<u8>,
     }
 
@@ -208,6 +213,7 @@ mod target {
         pub fn new() -> Self {
             Self {
                 active_persona: None,
+                active_variant: None,
                 report_map: Vec::new(),
             }
         }
@@ -246,8 +252,15 @@ mod target {
             }
 
             self.report_map.clone_from(&descriptor.report_map);
-            unsafe { init_hid_device(&self.report_map, descriptor.identity)? };
+            unsafe {
+                init_hid_device(
+                    &self.report_map,
+                    descriptor.identity,
+                    descriptor.compatibility_variant,
+                )?
+            };
             self.active_persona = Some(descriptor.persona_id);
+            self.active_variant = Some(descriptor.compatibility_variant);
             Ok(())
         }
 
@@ -295,9 +308,10 @@ mod target {
     unsafe fn init_hid_device(
         report_map: &[u8],
         identity: BlePersonaIdentity,
+        variant: BleCompatibilityVariant,
     ) -> Result<(), BleTransportError> {
         LINK_STATE.store(STATE_INITIALIZING, Ordering::SeqCst);
-        configure_security_and_advertising(identity)?;
+        configure_security_and_advertising(identity, variant)?;
         esp_result_with_context(
             esp_ble_gatts_register_callback(Some(esp_hidd_gatts_event_handler)),
             b"gatts_register_callback\0",
@@ -372,6 +386,7 @@ mod target {
 
     unsafe fn configure_security_and_advertising(
         identity: BlePersonaIdentity,
+        variant: BleCompatibilityVariant,
     ) -> Result<(), BleTransportError> {
         let mut auth_req: esp_ble_auth_req_t = ESP_LE_AUTH_BOND as esp_ble_auth_req_t;
         set_security_param(
@@ -398,9 +413,27 @@ mod target {
             identity.device_name.as_ptr().cast(),
         ))?;
 
+        let strict_hogp = variant == BleCompatibilityVariant::GenericHogpStrict;
+        let (adv_service_uuid, adv_service_uuid_len, scan_service_uuid, scan_service_uuid_len) =
+            if strict_hogp {
+                (
+                    ptr::null_mut(),
+                    0,
+                    HID_SERVICE_UUID_128.as_ptr().cast_mut(),
+                    HID_SERVICE_UUID_128.len() as u16,
+                )
+            } else {
+                (
+                    HID_SERVICE_UUID_128.as_ptr().cast_mut(),
+                    HID_SERVICE_UUID_128.len() as u16,
+                    ptr::null_mut(),
+                    0,
+                )
+            };
+
         let mut adv_data = esp_ble_adv_data_t {
             set_scan_rsp: false,
-            include_name: false,
+            include_name: strict_hogp,
             include_txpower: false,
             min_interval: 0,
             max_interval: 0,
@@ -409,15 +442,15 @@ mod target {
             p_manufacturer_data: ptr::null_mut(),
             service_data_len: 0,
             p_service_data: ptr::null_mut(),
-            service_uuid_len: HID_SERVICE_UUID_128.len() as u16,
-            p_service_uuid: HID_SERVICE_UUID_128.as_ptr().cast_mut(),
+            service_uuid_len: adv_service_uuid_len,
+            p_service_uuid: adv_service_uuid,
             flag: 0x06,
         };
         esp_result_with_context(esp_ble_gap_config_adv_data(&mut adv_data), b"config_adv\0")?;
 
         let mut scan_rsp_data = esp_ble_adv_data_t {
             set_scan_rsp: true,
-            include_name: true,
+            include_name: !strict_hogp,
             include_txpower: false,
             min_interval: 0,
             max_interval: 0,
@@ -426,8 +459,8 @@ mod target {
             p_manufacturer_data: ptr::null_mut(),
             service_data_len: 0,
             p_service_data: ptr::null_mut(),
-            service_uuid_len: 0,
-            p_service_uuid: ptr::null_mut(),
+            service_uuid_len: scan_service_uuid_len,
+            p_service_uuid: scan_service_uuid,
             flag: 0,
         };
         esp_result_with_context(

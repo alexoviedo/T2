@@ -1,0 +1,15 @@
+# Host Compatibility Matrix
+
+Status: host compatibility ledger. Rows marked proven require checked-in evidence; untested rows are planning targets only.
+
+| Host / Platform | Persona | Variant | Discovery | Pairing | App / API Exposure | Evidence | Limitations |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| macOS + Chrome | Generic Gamepad | `generic_default` | Proven | Proven | Chrome Gamepad API and self-hosted browser game smoke proven | `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`; `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md`; `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md` | Not broad browser/native game compatibility; not final calibration. |
+| macOS + Chrome | Refined practical RJ12 Generic | `generic_default` | Proven | Proven | A2/A3/A4/A5 exposure and 300-second soak proven | `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`; `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md` | Single Mac/Chrome evidence path. |
+| iPhone Bluetooth Settings | Generic Gamepad | `generic_default` | Failed discovery | Not reached | Not reached | `docs/milestone-evidence/IPHONE_SAFARI_GENERIC_GAMEPAD_FAILURE_2026-05-29.md`; `docs/milestone-evidence/IPHONE_BLE_ADVERTISING_DIAGNOSTIC_2026-05-29.md` | Does not prove Safari/Gamepad API behavior because OS discovery failed first. |
+| iPhone Bluetooth Settings | Generic Gamepad | `generic_hogp_strict` | Untested until variant witness runs | Untested | Untested | none yet | Experimental non-default advertisement layout. |
+| Android | Generic Gamepad | `generic_default` / future variants | Untested | Untested | Untested | none yet | Android axis/trigger mapping may differ by app/API. |
+| Windows | Generic Gamepad | `generic_default` / future variants | Untested | Untested | Untested | none yet | Windows game compatibility may require XInput-like semantics. |
+| Linux / BlueZ | Generic Gamepad | `generic_default` / future variants | Untested | Untested | Untested | none yet | Useful diagnostic host for `btmon`/HID logs. |
+| macOS + browser | Xbox Wireless Controller | `xbox_compatibility` | Proven slice | Proven slice | Browser VID/PID and report publish evidence exist | `docs/milestone-evidence/XBOX_BLE_WITNESS_2026-05-09.md`; `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`; `docs/milestone-evidence/LIVE_BRIDGE_SOAK_WITNESS_2026-05-10.md` | Refined Xbox Flight Pack host-visible mapping and broad Xbox compatibility are not proven. |
+| iOS-style keyboard fallback | Keyboard/iCade | `ios_keyboard_icade_fallback` | Not implemented | Untested | Untested | none yet | Would be keyboard fallback, not true gamepad compatibility. |

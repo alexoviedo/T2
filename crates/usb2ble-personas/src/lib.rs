@@ -4,9 +4,9 @@
 #![warn(missing_docs)]
 
 use usb2ble_contracts::{
-    BlePersonaIdentity, BleTransportFamily, EncodedBleReport, NormalizedControlValue,
-    PersonaControlDescriptor, PersonaControlKind, PersonaDescriptor, PersonaEncoder, PersonaError,
-    PersonaId, PersonaInputFrame, PersonaInputSchema, ReportId,
+    BleCompatibilityVariant, BlePersonaIdentity, BleTransportFamily, EncodedBleReport,
+    NormalizedControlValue, PersonaControlDescriptor, PersonaControlKind, PersonaDescriptor,
+    PersonaEncoder, PersonaError, PersonaId, PersonaInputFrame, PersonaInputSchema, ReportId,
 };
 
 /// Stable persona ID for the first Generic Gamepad demo persona.
@@ -159,6 +159,7 @@ impl PersonaEncoder for GenericGamepadEncoder {
             display_name: "USB2BLE Generic Gamepad".to_string(),
             identity: GENERIC_GAMEPAD_BLE_IDENTITY,
             transport_family: BleTransportFamily::Generic,
+            compatibility_variant: BleCompatibilityVariant::GenericDefault,
             report_map: GENERIC_GAMEPAD_REPORT_MAP.to_vec(),
             input_schema: generic_gamepad_schema(),
         })
@@ -226,6 +227,7 @@ impl PersonaEncoder for XboxWirelessControllerEncoder {
             display_name: "Xbox Wireless Controller".to_string(),
             identity: XBOX_MODEL_1914_SERIES_XS_BLE_IDENTITY,
             transport_family: BleTransportFamily::Xbox,
+            compatibility_variant: BleCompatibilityVariant::XboxCompatibility,
             report_map: XBOX_WIRELESS_CONTROLLER_REPORT_MAP.to_vec(),
             input_schema: xbox_wireless_controller_schema(),
         })

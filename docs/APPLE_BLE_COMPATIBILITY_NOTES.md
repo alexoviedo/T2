@@ -9,6 +9,7 @@ Status: diagnostic notes for the post-alpha iPhone discoverability investigation
 - Safari/WebKit exposes a Gamepad API surface, but that layer is downstream of OS-level controller acceptance. If iOS never discovers or pairs the BLE controller, the iPhone compatibility page cannot collect Gamepad API evidence.
 - Bluetooth SIG assigned numbers identify the HID service as `0x1812` and Gamepad GAP appearance as `0x03c4`.
 - ESP-IDF provides a BLE HID Device API and examples for HID over GATT; USB2BLE currently uses ESP-IDF Bluedroid/esp_hid rather than a custom GATT table.
+- ESP32-BLE-Gamepad documents that its generic BLE gamepad path does not support iOS and points users toward XInput-capable alternatives. That does not prove USB2BLE cannot work on iOS, but it raises the likelihood that Apple host acceptance depends on more than a generic HOGP gamepad advertisement.
 
 ## Current USB2BLE Generic Advertisement Facts
 
@@ -25,6 +26,7 @@ Source inspected on 2026-05-29:
 - Security: bonding enabled with Just Works-style IO capability `none`.
 - BLE transport initializes the HID service through ESP-IDF `esp_hidd_dev_init`.
 - The target now exposes intended advertising state through `GET_BLE_ADVERTISING_INFO`.
+- The compatibility model now separates `generic_default` from the experimental `generic_hogp_strict` advertisement variant so Apple/iOS hypotheses can be tested without changing the proven default.
 
 ## Working Hypotheses
 
@@ -36,7 +38,7 @@ Source inspected on 2026-05-29:
 2. Advertisement payload layout may be insufficient for iPhone discovery.
    - Likelihood: medium.
    - Evidence: USB2BLE puts the local name in scan response only. Some hosts behave differently depending on whether name, appearance, and HID UUID appear in primary advertising versus scan response.
-   - Test: add an explicit experimental variant that includes Complete Local Name, Appearance, and HID UUID in the primary advertisement where payload size permits, then run the iPhone advertising witness.
+   - Test: run `generic_hogp_strict`, which includes Complete Local Name in the primary advertisement and moves the HID service UUID to scan response, then run the variant witness.
 
 3. Companion GATT services or characteristics may differ from Apple-accepted game controllers.
    - Likelihood: medium.
@@ -60,6 +62,7 @@ Source inspected on 2026-05-29:
 | `GET_BLE_ADVERTISING_INFO` during `START_CONFIGURED` | Target intends to advertise Generic HID with name, appearance, UUID, security settings | Raw over-the-air advertisement correctness |
 | `tools/ble_advertising_probe.py` on macOS | Whether stock macOS summaries currently expose a USB2BLE-like device name | Raw advertisement bytes, UUIDs, RSSI |
 | iPhone manual Bluetooth discovery per variant | Whether iOS Settings displays that exact variant | Safari/Gamepad API compatibility |
+| `tools/ble_compatibility_variant_witness.py` | Default and experimental variant target diagnostics, Mac scan summaries, and optional iPhone discovery result | Raw advertisement bytes unless a scanner export is ingested |
 | nRF Connect/LightBlue/Android scan | Raw advertised name, UUID, appearance, RSSI, address | Whether iOS accepts it as a game controller |
 | Full GATT table capture | HID service/report-map/service completeness | Advertisement-layer filtering alone |
 | Experimental advertising layout variant | Whether name/appearance/UUID placement affects iPhone visibility | MFi/profile filtering if still invisible |
