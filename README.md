@@ -21,11 +21,13 @@ through the TWCS RJ12 port via a powered HooToo USB hub.
 
 ## Current Status
 
-This project is in **alpha / public launch candidate** status. It has real
+This project is in **public alpha** status. It has real
 target, host, browser, soak, and self-hosted browser-game smoke evidence for
 the refined Generic Flight Pack path, but it is not a polished consumer product.
 
 Evidence is the source of truth. Start with [docs/EVIDENCE_INDEX.md](docs/EVIDENCE_INDEX.md).
+The current public prerelease is
+[v0.1.0-alpha](https://github.com/alexoviedo/T2/releases/tag/v0.1.0-alpha).
 
 ## Proven
 
@@ -92,9 +94,10 @@ Xtensa/ESP-IDF toolchain.
 ### Flash From GitHub Pages
 
 The Pages build publishes the Web Serial configurator and ESP Web Tools manifest
-for the latest CI firmware artifact. Until the public repository URL is final,
-use the Pages URL from the repository settings or GitHub Actions deployment
-summary.
+for the latest CI firmware artifact:
+
+- Web configurator and flasher: <https://alexoviedo.github.io/T2/>
+- Firmware manifest: <https://alexoviedo.github.io/T2/firmware/manifest.json>
 
 ### Configure The Refined Generic Flight Pack Profile
 

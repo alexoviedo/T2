@@ -25,6 +25,8 @@ REQUIRED_FILES = (
     Path(".github/PULL_REQUEST_TEMPLATE.md"),
     Path(".github/ISSUE_TEMPLATE/bug_report.yml"),
     Path(".github/ISSUE_TEMPLATE/hardware_compatibility.yml"),
+    Path(".github/ISSUE_TEMPLATE/hardware_support_request.yml"),
+    Path(".github/ISSUE_TEMPLATE/documentation_issue.yml"),
     Path(".github/ISSUE_TEMPLATE/feature_request.yml"),
 )
 

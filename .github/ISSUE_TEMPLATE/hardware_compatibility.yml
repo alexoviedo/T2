@@ -26,6 +26,27 @@ body:
       label: Host OS/browser/app version
     validations:
       required: true
+  - type: input
+    id: board
+    attributes:
+      label: ESP32-S3 board model
+      placeholder: Manufacturer/model if known
+    validations:
+      required: true
+  - type: input
+    id: persona
+    attributes:
+      label: BLE persona / runtime config
+      placeholder: generic_gamepad custom_runtime, xbox, none
+    validations:
+      required: true
+  - type: textarea
+    id: topology
+    attributes:
+      label: Exact USB topology
+      description: Hub model, direct vs hub path, USB devices, VID/PID list, cables/adapters.
+    validations:
+      required: true
   - type: textarea
     id: evidence
     attributes:

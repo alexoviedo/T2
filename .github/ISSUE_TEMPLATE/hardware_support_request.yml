@@ -1,0 +1,40 @@
+name: Hardware support request
+description: Request investigation of a new board, hub, controller, or host.
+title: "[Support]: "
+labels: ["hardware", "support"]
+body:
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware to support
+      placeholder: Board, hub, controller, host, or topology
+    validations:
+      required: true
+  - type: textarea
+    id: topology
+    attributes:
+      label: Exact topology
+      description: ESP32-S3 board, hub/direct path, USB devices, VID/PID list, host OS/browser/app.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why it matters
+    validations:
+      required: true
+  - type: textarea
+    id: available_evidence
+    attributes:
+      label: Evidence you can capture
+      description: Serial transcript, HID descriptor, browser capture, app/game screen, or target artifact directory.
+  - type: dropdown
+    id: human_action
+    attributes:
+      label: Human/hardware action required?
+      options:
+        - Yes, physical controls or pairing are required
+        - No, no-hardware work only
+        - Unknown
+    validations:
+      required: true

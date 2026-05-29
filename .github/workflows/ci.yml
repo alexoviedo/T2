@@ -16,7 +16,7 @@ jobs:
     name: Host checks
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
@@ -59,7 +59,7 @@ jobs:
     name: ESP32-S3 target preflight
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install native dependencies
       run: |
@@ -103,7 +103,7 @@ jobs:
         cp target/xtensa-esp32s3-espidf/debug/usb2ble-fw target/dist/
 
     - name: Upload flashable firmware artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: usb2ble-fw-esp32s3-flashable
         path: target/dist/
@@ -114,10 +114,10 @@ jobs:
     name: Web app checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20.19
           cache: npm
@@ -139,13 +139,13 @@ jobs:
       contents: write
     steps:
       - name: Download Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: usb2ble-fw-esp32s3-flashable
           path: firmware
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
           name: Latest USB2BLE firmware
@@ -166,17 +166,17 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20.19
           cache: npm
           cache-dependency-path: web/package-lock.json
 
       - name: Download Firmware Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: usb2ble-fw-esp32s3-flashable
           path: firmware-dist
@@ -214,10 +214,10 @@ jobs:
           EOF
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: web/dist
 
@@ -235,4 +235,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

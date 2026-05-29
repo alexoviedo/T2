@@ -34,6 +34,11 @@ body:
       placeholder: macOS 12.7.5, Ubuntu 24.04, Windows 11
     validations:
       required: true
+  - type: input
+    id: persona
+    attributes:
+      label: BLE persona / runtime config
+      placeholder: generic_gamepad custom_runtime, xbox, none
   - type: textarea
     id: hardware
     attributes:
@@ -54,6 +59,11 @@ body:
     attributes:
       label: Target artifacts or evidence
       description: Include target artifact directory paths or checked-in evidence docs.
+  - type: textarea
+    id: assumptions
+    attributes:
+      label: What is proven vs assumed?
+      description: Name the transcript, browser capture, app/game screen, or command output that supports the report.
   - type: checkboxes
     id: boundaries
     attributes:
