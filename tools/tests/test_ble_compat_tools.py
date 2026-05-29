@@ -14,6 +14,7 @@ sys.path.insert(0, str(TOOLS))
 import ble_advertising_probe  # noqa: E402
 import check_ble_hid_profile  # noqa: E402
 import check_xbox_ble_profile  # noqa: E402
+import xbox_host_visible_witness  # noqa: E402
 
 
 class BleAdvertisingProbeTests(unittest.TestCase):
@@ -82,6 +83,68 @@ class XboxBleProfileCheckerTests(unittest.TestCase):
         summary = check_xbox_ble_profile.check_profile(profile, [])
 
         self.assertGreater(summary["fail_count"], 0)
+
+
+class XboxHostVisibleWitnessTests(unittest.TestCase):
+    def test_standard_layout_classifier_accepts_identity_string_mismatch_only(self) -> None:
+        browser = {
+            "id": "USB2BLE Gamepad (STANDARD GAMEPAD)",
+            "mapping": "standard",
+            "axes_count": 4,
+            "buttons_count": 18,
+            "is_standard_mapping": True,
+        }
+        scenario_results = [
+            {
+                "scenario": scenario,
+                "standard_control": {
+                    "expected": xbox_host_visible_witness.STANDARD_EXPECTED_CONTROLS[scenario],
+                    "matched": True,
+                },
+            }
+            for scenario in xbox_host_visible_witness.STANDARD_EXPECTED_CONTROLS
+        ]
+
+        result = xbox_host_visible_witness.classify_standard_layout(
+            browser,
+            scenario_results,
+            xbox_like_identity_observed=False,
+        )
+
+        self.assertEqual(result["classification"], "identity_string_mismatch_only")
+        self.assertTrue(result["required_pass"])
+        self.assertFalse(result["xbox_like_identity_observed"])
+
+    def test_standard_layout_classifier_marks_partial_when_buttons_do_not_match(self) -> None:
+        browser = {
+            "id": "USB2BLE Gamepad (STANDARD GAMEPAD)",
+            "mapping": "standard",
+            "axes_count": 4,
+            "buttons_count": 18,
+            "is_standard_mapping": True,
+        }
+        scenario_results = []
+        for scenario, expected in xbox_host_visible_witness.STANDARD_EXPECTED_CONTROLS.items():
+            scenario_results.append(
+                {
+                    "scenario": scenario,
+                    "standard_control": {
+                        "expected": expected,
+                        "matched": scenario not in {"button_x", "button_rb", "button_view"},
+                    },
+                }
+            )
+
+        result = xbox_host_visible_witness.classify_standard_layout(
+            browser,
+            scenario_results,
+            xbox_like_identity_observed=False,
+        )
+
+        self.assertEqual(result["classification"], "standard_layout_partial")
+        self.assertTrue(result["core_pass"])
+        self.assertFalse(result["required_pass"])
+        self.assertIn("button_x", result["failed_standard_scenarios"])
 
 
 if __name__ == "__main__":

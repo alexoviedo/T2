@@ -17,24 +17,23 @@ before status docs should change.
   `docs/GAME_COMPATIBILITY_WITNESS.md`.
 - Risk: medium, because app input handling varies widely.
 
-## 2. Xbox Host-Visible Refined Mapping Witness
+## 2. Xbox Standard Button Layout And Refined Live Mapping
 
-- Why it matters: the refined Xbox mapping is target-side proven, but host-visible
-  refined Flight Pack behavior is not yet proven. Xbox BLE Profile v1 now gives
-  the target-side model-1914 profile/report-map checker and diagnostic baseline
-  needed before a host witness. A 2026-05-29 deterministic macOS/Chrome
-  diagnostic reached target BLE `Connected` and Chrome saw stick, trigger, and
-  button movement, but exposed the device as `USB2BLE Gamepad (STANDARD GAMEPAD)`
-  rather than an Xbox-like identity.
-- Evidence needed: isolate whether the current blocker is macOS game-controller
-  classification, descriptor/GATT details, advertised identity, or Bluetooth
-  cache state; then capture persisted Xbox config, Xbox-like host identity,
-  host-visible trigger and stick movement, serial report bytes, bridge counters,
-  browser or OS-visible samples, and limitations.
+- Why it matters: the refined Xbox mapping is target-side proven, and a
+  deterministic macOS/Chrome diagnostic now shows `mapping="standard"` with
+  expected standard stick, trigger, D-pad, A, and B movement. Several other
+  button positions did not match, and refined live Flight Pack host movement is
+  still not proven.
+- Evidence needed: determine whether the X/Y/LB/RB/View/Menu mismatch comes from
+  report-map button ordering, macOS/Chrome remapping, or witness expectations;
+  then capture persisted Xbox config, host-visible trigger and stick movement,
+  serial report bytes, bridge counters, browser samples, and limitations. A
+  literal Xbox-like browser `id` is useful context but should not be treated as
+  the sole success criterion.
 - Hardware/user action: likely required for BLE pairing and physical controls.
-- Recommended next prompt type: Xbox macOS host classification diagnostic chunk
-  using system Bluetooth logs, Chrome `chrome://gamepad-internals` if available,
-  and a clean pair/reconnect sequence before any live Flight Pack movement.
+- Recommended next prompt type: Xbox standard button-layout correction chunk,
+  followed by a focused refined Xbox Flight Pack live-bridge witness for rudder
+  and toe brakes.
 - Risk: medium-high, because host Xbox HID handling and pairing state can be
   sticky.
 

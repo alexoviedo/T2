@@ -22,9 +22,9 @@ These claims are supported by checked-in evidence:
 - Xbox BLE Profile v1 has target-side model-1914 profile/report-map diagnostics
   and checker evidence; this is not host-visible refined mapping evidence.
 - A current Xbox macOS/Chrome deterministic diagnostic reached target BLE
-  `Connected` and Chrome saw deterministic stick, trigger, and button movement,
-  but exposed the device as `USB2BLE Gamepad (STANDARD GAMEPAD)` rather than an
-  Xbox-like identity.
+  `Connected`; Chrome exposed `USB2BLE Gamepad (STANDARD GAMEPAD)` with
+  `mapping="standard"` and expected standard stick, trigger, D-pad, A, and B
+  movement, while several other button positions did not match.
 
 ## Forbidden Overclaims
 
@@ -34,6 +34,7 @@ Do not claim any of these until matching checked-in evidence exists:
 - external/native game compatibility,
 - iPhone compatibility,
 - Xbox host-visible refined Flight Pack mapping,
+- complete Xbox standard button layout,
 - BLE bond persistence or reconnect robustness,
 - final product-quality calibration or deadzone feel,
 - broad host/browser support,

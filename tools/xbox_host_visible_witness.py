@@ -62,6 +62,37 @@ SCENARIOS = [
     "button_menu",
     "button_share",
 ]
+STANDARD_EXPECTED_CONTROLS = {
+    "left_stick_left": {"surface": "axis", "index": 0, "direction": "negative", "label": "A0 left stick X"},
+    "left_stick_right": {"surface": "axis", "index": 0, "direction": "positive", "label": "A0 left stick X"},
+    "left_stick_up": {"surface": "axis", "index": 1, "direction": "negative", "label": "A1 left stick Y"},
+    "left_stick_down": {"surface": "axis", "index": 1, "direction": "positive", "label": "A1 left stick Y"},
+    "right_stick_left": {"surface": "axis", "index": 2, "direction": "negative", "label": "A2 right stick X"},
+    "right_stick_right": {"surface": "axis", "index": 2, "direction": "positive", "label": "A2 right stick X"},
+    "right_stick_up": {"surface": "axis", "index": 3, "direction": "negative", "label": "A3 right stick Y"},
+    "right_stick_down": {"surface": "axis", "index": 3, "direction": "positive", "label": "A3 right stick Y"},
+    "left_trigger_max": {"surface": "button", "index": 6, "direction": "positive", "label": "B6 left trigger"},
+    "right_trigger_max": {"surface": "button", "index": 7, "direction": "positive", "label": "B7 right trigger"},
+    "button_a": {"surface": "button", "index": 0, "direction": "positive", "label": "B0 A"},
+    "button_b": {"surface": "button", "index": 1, "direction": "positive", "label": "B1 B"},
+    "button_x": {"surface": "button", "index": 2, "direction": "positive", "label": "B2 X"},
+    "button_y": {"surface": "button", "index": 3, "direction": "positive", "label": "B3 Y"},
+    "button_lb": {"surface": "button", "index": 4, "direction": "positive", "label": "B4 LB"},
+    "button_rb": {"surface": "button", "index": 5, "direction": "positive", "label": "B5 RB"},
+    "button_view": {"surface": "button", "index": 8, "direction": "positive", "label": "B8 View/Back"},
+    "button_menu": {"surface": "button", "index": 9, "direction": "positive", "label": "B9 Menu/Start"},
+    "hat_up": {"surface": "button", "index": 12, "direction": "positive", "label": "B12 D-pad up"},
+    "hat_down": {"surface": "button", "index": 13, "direction": "positive", "label": "B13 D-pad down"},
+    "hat_left": {"surface": "button", "index": 14, "direction": "positive", "label": "B14 D-pad left"},
+    "hat_right": {"surface": "button", "index": 15, "direction": "positive", "label": "B15 D-pad right"},
+}
+STANDARD_CORE_SCENARIOS = (
+    "left_stick_right",
+    "right_stick_right",
+    "left_trigger_max",
+    "right_trigger_max",
+    "button_a",
+)
 
 
 def command_output(command: list[str]) -> str:
@@ -296,6 +327,38 @@ def changed_indices(before: list[float], after: list[float], threshold: float) -
     return rows
 
 
+def find_change(changes: list[dict[str, Any]], index: int, direction: str) -> dict[str, Any] | None:
+    for change in changes:
+        if change.get("index") != index:
+            continue
+        delta = float(change.get("delta", 0.0))
+        if direction == "positive" and delta > 0:
+            return change
+        if direction == "negative" and delta < 0:
+            return change
+        if direction == "any" and abs(delta) > 0:
+            return change
+    return None
+
+
+def standard_control_result(
+    scenario: str,
+    axis_changes: list[dict[str, Any]],
+    button_changes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    expected = STANDARD_EXPECTED_CONTROLS.get(scenario)
+    if expected is None:
+        return {"scenario": scenario, "expected": None, "matched": None, "observed_change": None}
+    changes = axis_changes if expected["surface"] == "axis" else button_changes
+    observed = find_change(changes, int(expected["index"]), str(expected["direction"]))
+    return {
+        "scenario": scenario,
+        "expected": expected,
+        "matched": observed is not None,
+        "observed_change": observed,
+    }
+
+
 def wait_for_capture_count(path: pathlib.Path | None, minimum: int, timeout: float) -> list[dict[str, Any]]:
     deadline = time.monotonic() + timeout
     captures = load_captures(path)
@@ -387,6 +450,61 @@ def classify_scenario(scenario: str, axis_changes: list[dict[str, Any]], button_
     if expected in ("left_trigger", "right_trigger", "button"):
         return bool(button_changes or axis_changes)
     return False
+
+
+def browser_profile(capture: dict[str, Any] | None) -> dict[str, Any]:
+    axes = axis_values(capture)
+    buttons = button_values(capture)
+    mapping = "" if capture is None else str(capture.get("mapping") or "")
+    return {
+        "id": None if capture is None else capture.get("id"),
+        "mapping": mapping,
+        "axes_count": len(axes),
+        "buttons_count": len(buttons),
+        "is_standard_mapping": mapping == "standard",
+    }
+
+
+def classify_standard_layout(
+    browser: dict[str, Any],
+    scenario_results: list[dict[str, Any]],
+    xbox_like_identity_observed: bool,
+) -> dict[str, Any]:
+    checks = {
+        result["scenario"]: result.get("standard_control", {})
+        for result in scenario_results
+        if result.get("standard_control", {}).get("expected") is not None
+    }
+    matched = {
+        scenario: bool(check.get("matched"))
+        for scenario, check in checks.items()
+    }
+    core_pass = all(matched.get(scenario, False) for scenario in STANDARD_CORE_SCENARIOS)
+    required_pass = all(matched.values()) if matched else False
+    any_pass = any(matched.values())
+    standard_mapping = bool(browser.get("is_standard_mapping"))
+
+    if standard_mapping and required_pass and xbox_like_identity_observed:
+        result = "standard_layout_pass"
+    elif standard_mapping and required_pass and not xbox_like_identity_observed:
+        result = "identity_string_mismatch_only"
+    elif standard_mapping and any_pass:
+        result = "standard_layout_partial"
+    else:
+        result = "host_visible_failure"
+
+    return {
+        "classification": result,
+        "standard_mapping": standard_mapping,
+        "xbox_like_identity_observed": xbox_like_identity_observed,
+        "core_scenarios": list(STANDARD_CORE_SCENARIOS),
+        "core_pass": core_pass,
+        "required_pass": required_pass,
+        "matched_count": sum(1 for passed in matched.values() if passed),
+        "required_count": len(matched),
+        "scenario_matches": matched,
+        "failed_standard_scenarios": [scenario for scenario, passed in matched.items() if not passed],
+    }
 
 
 def main() -> int:
@@ -520,6 +638,7 @@ def main() -> int:
                     line = report_line(scenario_records, "publish_xbox_test_report")
                     axis_changes = changed_indices(axis_values(before), axis_values(after), 0.05)
                     button_changes = changed_indices(button_values(before), button_values(after), 0.05)
+                    standard_control = standard_control_result(scenario, axis_changes, button_changes)
                     scenario_results.append(
                         {
                             "scenario": scenario,
@@ -530,6 +649,7 @@ def main() -> int:
                             "browser_after": after,
                             "changed_axis_indices": axis_changes,
                             "changed_button_indices": button_changes,
+                            "standard_control": standard_control,
                             "browser_changed_expected_surface": classify_scenario(
                                 scenario,
                                 axis_changes,
@@ -558,16 +678,21 @@ def main() -> int:
 
         observed_identity = None
         xbox_like_identity_observed = False
+        active_browser_capture: dict[str, Any] | None = None
         all_captures = load_captures(capture_file)
         for capture in reversed(all_captures):
             if is_xbox_capture(capture):
                 observed_identity = capture.get("id")
                 xbox_like_identity_observed = True
+                active_browser_capture = capture
                 break
         if observed_identity is None:
             fallback = fallback_connected_capture(all_captures)
             if fallback is not None:
                 observed_identity = fallback.get("id")
+                active_browser_capture = fallback
+        browser = browser_profile(active_browser_capture)
+        standard_layout = classify_standard_layout(browser, scenario_results, xbox_like_identity_observed)
 
         scenario_passes = {
             result["scenario"]: bool(
@@ -602,7 +727,8 @@ def main() -> int:
             )
         )
         success = bool(
-            xbox_like_identity_observed
+            standard_layout["classification"]
+            in ("standard_layout_pass", "identity_string_mismatch_only")
             and left_stick
             and right_stick
             and left_trigger
@@ -613,8 +739,12 @@ def main() -> int:
         errors: list[str] = []
         if not observed_identity:
             errors.append("Chrome Gamepad API did not expose an Xbox-like controller")
-        elif not xbox_like_identity_observed:
+        elif not xbox_like_identity_observed and not standard_layout["standard_mapping"]:
             errors.append(f"Chrome Gamepad API exposed non-Xbox identity: {observed_identity}")
+        if standard_layout["classification"] == "standard_layout_partial":
+            errors.append(
+                "Chrome Gamepad API exposed a standard mapping but not all expected standard Xbox positions matched"
+            )
         if checker["returncode"] != 0:
             errors.append("Xbox profile checker failed")
         for name, passed in {
@@ -640,6 +770,8 @@ def main() -> int:
             "browser_url": browser_url,
             "browser_identity_observed": observed_identity,
             "browser_identity_matched_xbox": xbox_like_identity_observed,
+            "browser_gamepad": browser,
+            "standard_layout": standard_layout,
             "browser_capture_file": str(browser_copy) if browser_copy.exists() else None,
             "serial_transcript": str(transcript_file),
             "scenario_results": str(scenario_results_file),
