@@ -1268,6 +1268,8 @@ pub enum ControlCommand {
     PublishXboxGamepadReport,
     /// Publish an explicit synthetic Xbox Wireless Controller BLE self-test report.
     SendXboxSelfTestReport,
+    /// Publish a deterministic Xbox Wireless Controller diagnostic report scenario.
+    PublishXboxTestReport(String),
     /// Clear BLE bond data.
     ForgetBleBonds,
     /// Request intended BLE advertising/security configuration.

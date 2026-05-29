@@ -178,6 +178,7 @@ where
             | ControlCommand::StartBleXboxController
             | ControlCommand::PublishXboxGamepadReport
             | ControlCommand::SendXboxSelfTestReport
+            | ControlCommand::PublishXboxTestReport(_)
             | ControlCommand::ForgetBleBonds
             | ControlCommand::GetBleAdvertisingInfo
             | ControlCommand::StartBleGenericGamepadVariant(_)

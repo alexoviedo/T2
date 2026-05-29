@@ -65,15 +65,16 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     WitnessHandler.capture_file = out_dir / f"gamepad_witness_{stamp}.jsonl"
+    WitnessHandler.capture_file.touch()
 
     class ReusableTCPServer(socketserver.TCPServer):
         allow_reuse_address = True
 
     with ReusableTCPServer((args.host, args.port), WitnessHandler) as httpd:
         url = f"http://{args.host}:{args.port}/"
-        print(f"Serving USB2BLE Gamepad Witness at {url}")
-        print(f"Capture file: {WitnessHandler.capture_file}")
-        print("Press Ctrl+C to stop.")
+        print(f"Serving USB2BLE Gamepad Witness at {url}", flush=True)
+        print(f"Capture file: {WitnessHandler.capture_file}", flush=True)
+        print("Press Ctrl+C to stop.", flush=True)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

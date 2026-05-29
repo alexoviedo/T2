@@ -617,6 +617,16 @@ where
                 Err(_) => ControlResponse::Error(ControlError::Generic),
             }
         }
+        ControlCommand::PublishXboxTestReport(scenario) => {
+            if app.state().active_persona != Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID) {
+                ControlResponse::Error(ControlError::PersonaMismatch)
+            } else {
+                match xbox_test_report(xbox_encoder, scenario) {
+                    Ok(report) => publish_ble_report(ble, report, "publish_xbox_test_report"),
+                    Err(_) => ControlResponse::Error(ControlError::Generic),
+                }
+            }
+        }
         ControlCommand::ForgetBleBonds => match ble.forget_bonds() {
             Ok(()) => ControlResponse::BleAction(BleActionResponse {
                 action: "forget_bonds",
@@ -1277,6 +1287,72 @@ fn xbox_self_test_report(
     })
 }
 
+fn xbox_test_report(
+    encoder: &impl PersonaEncoder,
+    scenario: &str,
+) -> Result<usb2ble_contracts::EncodedBleReport, usb2ble_contracts::PersonaError> {
+    let logical_controls = match scenario {
+        "neutral" | "left_trigger_min" | "right_trigger_min" => Vec::new(),
+        "left_stick_left" => xbox_axis("left_x", i32::from(i16::MIN)),
+        "left_stick_right" => xbox_axis("left_x", i32::from(i16::MAX)),
+        "left_stick_up" => xbox_axis("left_y", i32::from(i16::MIN)),
+        "left_stick_down" => xbox_axis("left_y", i32::from(i16::MAX)),
+        "right_stick_left" => xbox_axis("right_x", i32::from(i16::MIN)),
+        "right_stick_right" => xbox_axis("right_x", i32::from(i16::MAX)),
+        "right_stick_up" => xbox_axis("right_y", i32::from(i16::MIN)),
+        "right_stick_down" => xbox_axis("right_y", i32::from(i16::MAX)),
+        "left_trigger_max" => xbox_trigger("left_trigger", 1_023),
+        "right_trigger_max" => xbox_trigger("right_trigger", 1_023),
+        "hat_up" => xbox_hat(0),
+        "hat_right" => xbox_hat(2),
+        "hat_down" => xbox_hat(4),
+        "hat_left" => xbox_hat(6),
+        "button_a" => xbox_button("a"),
+        "button_b" => xbox_button("b"),
+        "button_x" => xbox_button("x"),
+        "button_y" => xbox_button("y"),
+        "button_lb" => xbox_button("lb"),
+        "button_rb" => xbox_button("rb"),
+        "button_view" => xbox_button("view"),
+        "button_menu" => xbox_button("menu"),
+        "button_share" => xbox_button("share"),
+        _ => return Err(usb2ble_contracts::PersonaError::Generic),
+    };
+
+    encoder.encode(&PersonaInputFrame {
+        persona_id: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+        logical_controls,
+    })
+}
+
+fn xbox_axis(control_id: &str, value: i32) -> Vec<PersonaLogicalControlValue> {
+    vec![PersonaLogicalControlValue {
+        control_id: control_id.to_string(),
+        value: NormalizedControlValue::Axis(value),
+    }]
+}
+
+fn xbox_trigger(control_id: &str, value: i32) -> Vec<PersonaLogicalControlValue> {
+    vec![PersonaLogicalControlValue {
+        control_id: control_id.to_string(),
+        value: NormalizedControlValue::Trigger(value),
+    }]
+}
+
+fn xbox_button(control_id: &str) -> Vec<PersonaLogicalControlValue> {
+    vec![PersonaLogicalControlValue {
+        control_id: control_id.to_string(),
+        value: NormalizedControlValue::Button(true),
+    }]
+}
+
+fn xbox_hat(value: i8) -> Vec<PersonaLogicalControlValue> {
+    vec![PersonaLogicalControlValue {
+        control_id: "hat".to_string(),
+        value: NormalizedControlValue::Hat(value),
+    }]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1825,6 +1901,71 @@ mod tests {
         assert_eq!(&released.bytes[0..2], &0_u16.to_le_bytes());
         assert_eq!(&pressed.bytes[13..15], &1_u16.to_le_bytes());
         assert_eq!(&released.bytes[13..15], &0_u16.to_le_bytes());
+    }
+
+    #[test]
+    fn xbox_test_report_requires_active_xbox_persona() {
+        let mut runtime = Runtime::new();
+
+        assert_eq!(
+            runtime.run(ControlCommand::PublishXboxTestReport("neutral".to_string())),
+            ControlResponse::Error(ControlError::PersonaMismatch)
+        );
+    }
+
+    #[test]
+    fn xbox_test_report_scenarios_publish_deterministic_values() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        let neutral = assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxTestReport("neutral".to_string())),
+            "publish_xbox_test_report",
+        );
+        let right = assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxTestReport(
+                "left_stick_right".to_string(),
+            )),
+            "publish_xbox_test_report",
+        );
+        let left_trigger = assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxTestReport(
+                "left_trigger_max".to_string(),
+            )),
+            "publish_xbox_test_report",
+        );
+        let share = assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxTestReport(
+                "button_share".to_string(),
+            )),
+            "publish_xbox_test_report",
+        );
+
+        assert_eq!(neutral.report_id.0, 1);
+        assert_eq!(neutral.bytes.len(), 16);
+        assert_eq!(&neutral.bytes[0..2], &32_768_u16.to_le_bytes());
+        assert_eq!(&right.bytes[0..2], &65_535_u16.to_le_bytes());
+        assert_eq!(&left_trigger.bytes[8..10], &1_023_u16.to_le_bytes());
+        assert_eq!(share.bytes[15], 1);
+    }
+
+    #[test]
+    fn xbox_test_report_rejects_unknown_scenario() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        assert_eq!(
+            runtime.run(ControlCommand::PublishXboxTestReport(
+                "not_a_scenario".to_string()
+            )),
+            ControlResponse::Error(ControlError::Generic)
+        );
     }
 
     #[test]

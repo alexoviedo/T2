@@ -22,12 +22,19 @@ before status docs should change.
 - Why it matters: the refined Xbox mapping is target-side proven, but host-visible
   refined Flight Pack behavior is not yet proven. Xbox BLE Profile v1 now gives
   the target-side model-1914 profile/report-map checker and diagnostic baseline
-  needed before a host witness.
-- Evidence needed: persisted Xbox config, BLE identity, host-visible trigger and
-  stick movement, serial report bytes, bridge counters, browser or OS-visible
-  samples, and limitations.
+  needed before a host witness. A 2026-05-29 deterministic macOS/Chrome
+  diagnostic reached target BLE `Connected` and Chrome saw stick, trigger, and
+  button movement, but exposed the device as `USB2BLE Gamepad (STANDARD GAMEPAD)`
+  rather than an Xbox-like identity.
+- Evidence needed: isolate whether the current blocker is macOS game-controller
+  classification, descriptor/GATT details, advertised identity, or Bluetooth
+  cache state; then capture persisted Xbox config, Xbox-like host identity,
+  host-visible trigger and stick movement, serial report bytes, bridge counters,
+  browser or OS-visible samples, and limitations.
 - Hardware/user action: likely required for BLE pairing and physical controls.
-- Recommended next prompt type: focused Xbox BLE host witness chunk.
+- Recommended next prompt type: Xbox macOS host classification diagnostic chunk
+  using system Bluetooth logs, Chrome `chrome://gamepad-internals` if available,
+  and a clean pair/reconnect sequence before any live Flight Pack movement.
 - Risk: medium-high, because host Xbox HID handling and pairing state can be
   sticky.
 

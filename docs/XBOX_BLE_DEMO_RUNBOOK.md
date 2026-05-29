@@ -101,6 +101,24 @@ The 32 hex chars represent the 16-byte Xbox input payload. The self-test
 alternates A pressed/released and left_x max/min while leaving unrelated
 controls neutral.
 
+For host-visible browser evidence without requiring physical HOTAS movement,
+use deterministic diagnostic reports after the Xbox persona is connected:
+
+```text
+PUBLISH_XBOX_TEST_REPORT neutral
+PUBLISH_XBOX_TEST_REPORT left_stick_right
+PUBLISH_XBOX_TEST_REPORT right_stick_right
+PUBLISH_XBOX_TEST_REPORT left_trigger_max
+PUBLISH_XBOX_TEST_REPORT right_trigger_max
+PUBLISH_XBOX_TEST_REPORT button_a
+```
+
+Supported scenarios are `neutral`, left/right/up/down for both sticks,
+left/right trigger min/max, hat up/right/down/left, and A/B/X/Y/LB/RB/View/Menu/Share
+buttons. This is diagnostic support only: it requires the Xbox persona to be
+active, publishes through the same BLE report path as real input, and does not
+replace live bridge or game/app compatibility evidence.
+
 After moving or pressing one attached USB control, test the USB-derived Xbox
 path:
 
@@ -191,6 +209,19 @@ python3 tools/xbox_demo_rehearsal.py \
   --port /dev/cu.usbmodem5B5E0200881 \
   --skip-live-publish
 ```
+
+Deterministic macOS/Chrome host-visible witness:
+
+```sh
+python3 tools/xbox_host_visible_witness.py \
+  --port /dev/cu.usbmodem5B5E0200881 \
+  --reset-first
+```
+
+This helper starts the browser Gamepad witness, waits for an Xbox-like
+macOS/Chrome identity, publishes the deterministic report scenarios above, and
+saves per-scenario serial/browser diffs under
+`target/xbox-host-visible-witness/`.
 
 The helper saves:
 

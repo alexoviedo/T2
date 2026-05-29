@@ -21,6 +21,10 @@ These claims are supported by checked-in evidence:
   existing Xbox slice.
 - Xbox BLE Profile v1 has target-side model-1914 profile/report-map diagnostics
   and checker evidence; this is not host-visible refined mapping evidence.
+- A current Xbox macOS/Chrome deterministic diagnostic reached target BLE
+  `Connected` and Chrome saw deterministic stick, trigger, and button movement,
+  but exposed the device as `USB2BLE Gamepad (STANDARD GAMEPAD)` rather than an
+  Xbox-like identity.
 
 ## Forbidden Overclaims
 

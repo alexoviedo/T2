@@ -79,6 +79,11 @@ impl ControlPlane for SerialControlPlane {
         if s == "SEND_XBOX_SELF_TEST_REPORT" {
             return Ok(ControlCommand::SendXboxSelfTestReport);
         }
+        if let Some(rest) = s.strip_prefix("PUBLISH_XBOX_TEST_REPORT ") {
+            return Ok(ControlCommand::PublishXboxTestReport(
+                rest.trim().to_string(),
+            ));
+        }
         if s == "FORGET_BLE_BONDS" {
             return Ok(ControlCommand::ForgetBleBonds);
         }
@@ -673,6 +678,11 @@ mod tests {
         assert_eq!(
             cp.decode_command(b"SEND_XBOX_SELF_TEST_REPORT").unwrap(),
             ControlCommand::SendXboxSelfTestReport
+        );
+        assert_eq!(
+            cp.decode_command(b"PUBLISH_XBOX_TEST_REPORT left_trigger_max")
+                .unwrap(),
+            ControlCommand::PublishXboxTestReport("left_trigger_max".to_string())
         );
         assert_eq!(
             cp.decode_command(b"FORGET_BLE_BONDS").unwrap(),
