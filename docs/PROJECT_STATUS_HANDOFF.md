@@ -43,6 +43,10 @@ Checked-in evidence supports:
   samples.
 - A self-hosted browser game/app smoke in Google Chrome where the refined
   Generic profile controls `USB2BLE Sky Run` game state and completes a mission.
+- A first iPhone exploration failure where the target reported Generic BLE HID
+  advertising, but the iPhone did not discover `USB2BLE Gamepad` in Bluetooth
+  settings. This is diagnostic evidence only; iPhone compatibility remains
+  unproven.
 - CI host checks, ESP32-S3 target preflight, firmware packaging, latest GitHub
   Release refresh, and Pages deployment.
 
@@ -68,6 +72,8 @@ Checked-in evidence supports:
   `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md`.
 - Self-hosted browser game/app smoke evidence through
   `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md`.
+- iPhone diagnostic failure evidence through
+  `docs/milestone-evidence/IPHONE_SAFARI_GENERIC_GAMEPAD_FAILURE_2026-05-29.md`.
 - Generic BLE demo rehearsal through `tools/asap_demo_rehearsal.py` when
   hardware is connected.
 - Xbox BLE compatibility rehearsal through `tools/xbox_demo_rehearsal.py` when
@@ -83,6 +89,9 @@ Checked-in evidence supports:
 - Durable BLE bond persistence.
 - Browser breadth beyond the checked-in Google Chrome Web Serial configurator
   smoke.
+- iPhone compatibility. The first checked-in iPhone exploration did not reach
+  pairing or Safari Gamepad API because the iPhone did not discover the target
+  while it reported Generic BLE HID advertising.
 - Final Flight Pack calibration, deadzones, and product-quality mapping feel.
   Practical RJ12 TWCS/TFRP axis labels, target-side refined mapping, and
   host-visible Generic browser axis exposure are now checked in, but final

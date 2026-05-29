@@ -73,3 +73,7 @@ This matrix tracks the support status for devices, personas, and milestones.
   `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md`.
   Final deadzone/calibration quality, real game/app mapping quality, and Xbox
   host-visible refined mapping remain unproven.
+- iPhone compatibility remains unproven. The first iPhone exploration is checked
+  in as a useful failure: the target reported Generic BLE HID advertising, but
+  the iPhone did not discover `USB2BLE Gamepad` in Settings > Bluetooth. See
+  `docs/milestone-evidence/IPHONE_SAFARI_GENERIC_GAMEPAD_FAILURE_2026-05-29.md`.
