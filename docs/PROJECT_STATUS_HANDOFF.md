@@ -32,6 +32,9 @@ Checked-in evidence supports:
   and `START_CONFIGURED`.
 - Practical RJ12 Flight Pack axis labels for TWCS throttle, TFRP rudder, and
   TFRP toe brakes in the two-USB topology.
+- Practical RJ12 Flight Pack target-side mapping refinement for TWCS throttle,
+  TFRP rudder, and both toe brakes, including the documented Xbox profile
+  compromise that leaves TWCS throttle unmapped.
 - CI host checks, ESP32-S3 target preflight, firmware packaging, latest GitHub
   Release refresh, and Pages deployment.
 
@@ -49,6 +52,8 @@ Checked-in evidence supports:
   `docs/milestone-evidence/WEB_SERIAL_CONFIGURATOR_SMOKE_2026-05-28.md`.
 - Flight Pack axis-label evidence through
   `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md`.
+- Flight Pack mapping-refinement evidence through
+  `docs/milestone-evidence/FLIGHT_PACK_MAPPING_REFINEMENT_WITNESS_2026-05-28.md`.
 - Generic BLE demo rehearsal through `tools/asap_demo_rehearsal.py` when
   hardware is connected.
 - Xbox BLE compatibility rehearsal through `tools/xbox_demo_rehearsal.py` when
@@ -64,9 +69,10 @@ Checked-in evidence supports:
 - Durable BLE bond persistence.
 - Browser breadth beyond the checked-in Google Chrome Web Serial configurator
   smoke.
-- Final Flight Pack calibration, deadzones, and product-quality mapping
-  semantics. Practical RJ12 TWCS/TFRP axis labels are now checked in, but final
-  calibration quality is not proven.
+- Final Flight Pack calibration, deadzones, and product-quality mapping feel.
+  Practical RJ12 TWCS/TFRP axis labels and target-side refined mapping are now
+  checked in, but final calibration quality and host-visible/game-app mapping
+  quality are not proven.
 - Generic long-duration live bridge soak.
 - Stable browser Gamepad API display name for Xbox across clean host state.
 - Direct-attach USB witness; current direct attach remains blocked by available
@@ -134,8 +140,9 @@ Recommended order:
 ## Recommended Next Implementation Chunks
 
 - Generic 300-second live bridge soak and checked-in evidence.
-- Flight Pack calibration/deadzone semantics and profile refinement from the
-  checked-in practical RJ12 axis-label baseline.
+- Flight Pack deadzone tuning and host-visible mapping quality from the
+  checked-in practical RJ12 axis-label and target-side mapping-refinement
+  baseline.
 - Web Serial configurator hardening from the checked-in smoke baseline,
   especially recovery/error UX under live target report chatter.
 - Runtime config recovery/error-path hardening using

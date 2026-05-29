@@ -18,6 +18,15 @@ model and chunk protocol instead of inventing a second format.
 If no valid config is stored, firmware keeps the existing built-in behavior.
 Built-in profiles remain available and are not removed by custom runtime config.
 
+## Flight Pack Presets
+
+The practical RJ12 Flight Pack presets use the checked-in axis-label and
+mapping-refinement evidence as their source of truth. Generic maps stick
+`x/y`, TWCS throttle `z`, RJ12 rudder `rx`, and the two RJ12 toe brakes to
+`ry/rz`. Xbox maps stick `left_x/left_y`, RJ12 rudder `right_x`, and the two
+RJ12 toe brakes to `left_trigger/right_trigger`; TWCS throttle is intentionally
+unmapped in the Xbox preset because the trigger slots are used for toe brakes.
+
 ## Serial Protocol
 
 Machine-oriented endpoints:

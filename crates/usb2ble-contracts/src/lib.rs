@@ -816,6 +816,13 @@ impl RuntimeConfig {
     /// Built-in JSON-exportable Flight Pack preset for Generic Gamepad output.
     #[must_use]
     pub fn flight_pack_generic_preset() -> Self {
+        let mut throttle = thrustmaster_rule(0xb687, Some(0), "axis_01_32", "z");
+        throttle.invert = true;
+        let mut left_toe = thrustmaster_rule(0xb687, Some(0), "axis_01_34", "ry");
+        left_toe.invert = true;
+        let mut right_toe = thrustmaster_rule(0xb687, Some(0), "axis_01_33", "rz");
+        right_toe.invert = true;
+
         Self {
             display_name: "Flight Pack Generic".to_string(),
             selected_persona: GENERIC_GAMEPAD_PERSONA_ID_STR.to_string(),
@@ -823,8 +830,10 @@ impl RuntimeConfig {
             mappings: vec![
                 thrustmaster_rule(0xb10a, Some(0), "axis_01_30", "x"),
                 thrustmaster_rule(0xb10a, Some(0), "axis_01_31", "y"),
-                thrustmaster_rule(0xb687, Some(0), "axis_01_32", "z"),
+                throttle,
                 thrustmaster_rule(0xb687, Some(0), "axis_01_36", "rx"),
+                left_toe,
+                right_toe,
             ],
             ..Self::default()
         }
@@ -833,11 +842,17 @@ impl RuntimeConfig {
     /// Built-in JSON-exportable Flight Pack preset for Xbox Wireless Controller output.
     #[must_use]
     pub fn flight_pack_xbox_preset() -> Self {
-        let mut throttle = thrustmaster_rule(0xb687, Some(0), "axis_01_32", "right_trigger");
-        throttle.transform = Some(RuntimeTransform::AxisToTrigger {
+        let mut left_toe = thrustmaster_rule(0xb687, Some(0), "axis_01_34", "left_trigger");
+        left_toe.transform = Some(RuntimeTransform::AxisToTrigger {
             source_min: i32::from(i16::MIN),
             source_max: i32::from(i16::MAX),
-            invert: false,
+            invert: true,
+        });
+        let mut right_toe = thrustmaster_rule(0xb687, Some(0), "axis_01_33", "right_trigger");
+        right_toe.transform = Some(RuntimeTransform::AxisToTrigger {
+            source_min: i32::from(i16::MIN),
+            source_max: i32::from(i16::MAX),
+            invert: true,
         });
 
         Self {
@@ -848,7 +863,8 @@ impl RuntimeConfig {
                 thrustmaster_rule(0xb10a, Some(0), "axis_01_30", "left_x"),
                 thrustmaster_rule(0xb10a, Some(0), "axis_01_31", "left_y"),
                 thrustmaster_rule(0xb687, Some(0), "axis_01_36", "right_x"),
-                throttle,
+                left_toe,
+                right_toe,
                 thrustmaster_rule(0xb10a, Some(0), "hat_01_39", "hat"),
                 thrustmaster_rule(0xb10a, Some(0), "button_1", "a"),
                 thrustmaster_rule(0xb10a, Some(0), "button_2", "b"),
@@ -1394,17 +1410,48 @@ mod config_tests {
         let generic = RuntimeConfig::flight_pack_generic_preset();
         assert_eq!(generic.selected_persona, GENERIC_GAMEPAD_PERSONA_ID_STR);
         assert_eq!(generic.selected_profile, CUSTOM_RUNTIME_PROFILE_ID_STR);
-        assert!(!generic.mappings.is_empty());
+        assert!(generic.mappings.iter().any(|rule| {
+            rule.source_product_id == Some(0xb687)
+                && rule.source_control_id == "axis_01_34"
+                && rule.target_control_id == "ry"
+                && rule.invert
+        }));
+        assert!(generic.mappings.iter().any(|rule| {
+            rule.source_product_id == Some(0xb687)
+                && rule.source_control_id == "axis_01_33"
+                && rule.target_control_id == "rz"
+                && rule.invert
+        }));
 
         let xbox = RuntimeConfig::flight_pack_xbox_preset();
         assert_eq!(
             xbox.selected_persona,
             XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR
         );
+        assert!(xbox.mappings.iter().any(|rule| {
+            rule.source_product_id == Some(0xb687)
+                && rule.source_control_id == "axis_01_34"
+                && rule.target_control_id == "left_trigger"
+                && matches!(
+                    &rule.transform,
+                    Some(RuntimeTransform::AxisToTrigger { invert: true, .. })
+                )
+        }));
+        assert!(xbox.mappings.iter().any(|rule| {
+            rule.source_product_id == Some(0xb687)
+                && rule.source_control_id == "axis_01_33"
+                && rule.target_control_id == "right_trigger"
+                && matches!(
+                    &rule.transform,
+                    Some(RuntimeTransform::AxisToTrigger { invert: true, .. })
+                )
+        }));
         assert!(
-            xbox.mappings
+            !xbox
+                .mappings
                 .iter()
-                .any(|rule| rule.target_control_id == "right_trigger" && rule.transform.is_some())
+                .any(|rule| rule.source_control_id == "axis_01_32"
+                    && rule.target_control_id.ends_with("_trigger"))
         );
     }
 }

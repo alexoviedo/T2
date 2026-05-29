@@ -24,6 +24,7 @@ def thrustmaster_rule(
     source_control_id: str,
     target_control_id: str,
     *,
+    invert: bool = False,
     transform: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
@@ -32,7 +33,7 @@ def thrustmaster_rule(
         "source_interface_id": 0,
         "source_control_id": source_control_id,
         "target_control_id": target_control_id,
-        "invert": False,
+        "invert": invert,
         "deadzone": None,
         "transform": transform,
     }
@@ -54,8 +55,10 @@ def preset_config(name: str) -> dict[str, Any]:
             "mappings": [
                 thrustmaster_rule(0xB10A, "axis_01_30", "x"),
                 thrustmaster_rule(0xB10A, "axis_01_31", "y"),
-                thrustmaster_rule(0xB687, "axis_01_32", "z"),
+                thrustmaster_rule(0xB687, "axis_01_32", "z", invert=True),
                 thrustmaster_rule(0xB687, "axis_01_36", "rx"),
+                thrustmaster_rule(0xB687, "axis_01_34", "ry", invert=True),
+                thrustmaster_rule(0xB687, "axis_01_33", "rz", invert=True),
             ],
         }
     if name == "flight-pack-xbox":
@@ -63,7 +66,7 @@ def preset_config(name: str) -> dict[str, Any]:
             "type": "axis_to_trigger",
             "source_min": -32768,
             "source_max": 32767,
-            "invert": False,
+            "invert": True,
         }
         return {
             "schema_version": 1,
@@ -82,7 +85,13 @@ def preset_config(name: str) -> dict[str, Any]:
                 thrustmaster_rule(0xB687, "axis_01_36", "right_x"),
                 thrustmaster_rule(
                     0xB687,
-                    "axis_01_32",
+                    "axis_01_34",
+                    "left_trigger",
+                    transform=axis_to_trigger,
+                ),
+                thrustmaster_rule(
+                    0xB687,
+                    "axis_01_33",
                     "right_trigger",
                     transform=axis_to_trigger,
                 ),

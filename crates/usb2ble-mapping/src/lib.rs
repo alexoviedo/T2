@@ -89,10 +89,9 @@ pub fn xbox_flight_pack_demo_profile() -> MappingProfile {
         source_mappings: vec![
             rule(T16000_PRODUCT_ID, "axis_01_30", "left_x"),
             rule(T16000_PRODUCT_ID, "axis_01_31", "left_y"),
-            rule(T16000_PRODUCT_ID, "axis_01_36", "right_x"),
-            rule(T16000_PRODUCT_ID, "axis_01_35", "right_y"),
-            rule(TWCS_PRODUCT_ID, "axis_01_36", "left_trigger"),
-            rule(TWCS_PRODUCT_ID, "axis_01_32", "right_trigger"),
+            rule(TWCS_PRODUCT_ID, "axis_01_36", "right_x"),
+            axis_to_trigger_rule(TWCS_PRODUCT_ID, "axis_01_34", "left_trigger", true),
+            axis_to_trigger_rule(TWCS_PRODUCT_ID, "axis_01_33", "right_trigger", true),
             rule(T16000_PRODUCT_ID, "hat_01_39", "hat"),
             rule(T16000_PRODUCT_ID, "button_1", "a"),
             rule(T16000_PRODUCT_ID, "button_2", "b"),
@@ -152,10 +151,10 @@ pub fn flight_pack_demo_profile() -> MappingProfile {
         source_mappings: vec![
             rule(T16000_PRODUCT_ID, "axis_01_30", "x"),
             rule(T16000_PRODUCT_ID, "axis_01_31", "y"),
-            rule(TWCS_PRODUCT_ID, "axis_01_32", "z"),
+            inverted_rule(TWCS_PRODUCT_ID, "axis_01_32", "z"),
             rule(TWCS_PRODUCT_ID, "axis_01_36", "rx"),
-            rule(T16000_PRODUCT_ID, "axis_01_36", "ry"),
-            rule(T16000_PRODUCT_ID, "axis_01_35", "rz"),
+            inverted_rule(TWCS_PRODUCT_ID, "axis_01_34", "ry"),
+            inverted_rule(TWCS_PRODUCT_ID, "axis_01_33", "rz"),
         ],
         merge_policy: Some(usb2ble_contracts::CompositeProfile {
             profile_id: Some(FLIGHT_PACK_DEMO_PROFILE_ID),
@@ -759,6 +758,31 @@ fn rule(product_id: u16, source_control_id: &str, target_control_id: &str) -> So
     }
 }
 
+fn inverted_rule(
+    product_id: u16,
+    source_control_id: &str,
+    target_control_id: &str,
+) -> SourceMappingRule {
+    let mut rule = rule(product_id, source_control_id, target_control_id);
+    rule.invert = true;
+    rule
+}
+
+fn axis_to_trigger_rule(
+    product_id: u16,
+    source_control_id: &str,
+    target_control_id: &str,
+    invert: bool,
+) -> SourceMappingRule {
+    let mut rule = rule(product_id, source_control_id, target_control_id);
+    rule.transform = Some(RuntimeTransform::AxisToTrigger {
+        source_min: i32::from(i16::MIN),
+        source_max: i32::from(i16::MAX),
+        invert,
+    });
+    rule
+}
+
 fn profile_rule_matches(rule: &SourceMappingRule, control: &NormalizedCompositeValue) -> bool {
     rule.source_vendor_id
         .is_none_or(|vendor_id| vendor_id == control.source.device.vendor_id)
@@ -1072,6 +1096,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn flight_pack_demo_profile_maps_curated_axes_before_auto_fallback() {
         let twcs = source(2, 0x044f, 0xb687);
         let stick = source(3, 0x044f, 0xb10a);
@@ -1087,6 +1112,16 @@ mod tests {
                     twcs.clone(),
                     "axis_01_36",
                     NormalizedControlValue::Axis(3_000),
+                ),
+                value(
+                    twcs.clone(),
+                    "axis_01_34",
+                    NormalizedControlValue::Axis(-10_000),
+                ),
+                value(
+                    twcs.clone(),
+                    "axis_01_33",
+                    NormalizedControlValue::Axis(-20_000),
                 ),
                 value(twcs, "axis_01_30", NormalizedControlValue::Axis(11_111)),
                 value(
@@ -1136,7 +1171,7 @@ mod tests {
         );
         assert_eq!(
             control(&frame, "z"),
-            Some(NormalizedControlValue::Axis(-30_000))
+            Some(NormalizedControlValue::Axis(30_000))
         );
         assert_eq!(
             control(&frame, "rx"),
@@ -1144,11 +1179,11 @@ mod tests {
         );
         assert_eq!(
             control(&frame, "ry"),
-            Some(NormalizedControlValue::Axis(400))
+            Some(NormalizedControlValue::Axis(10_000))
         );
         assert_eq!(
             control(&frame, "rz"),
-            Some(NormalizedControlValue::Axis(300))
+            Some(NormalizedControlValue::Axis(20_000))
         );
         assert!(diagnostics.entries.iter().any(|entry| {
             entry.source_control_id == "axis_01_30"
@@ -1156,6 +1191,24 @@ mod tests {
                 && entry.target_control_id.is_none()
                 && entry.reason == "profile_unmapped"
         }));
+        assert!(diagnostics.entries.iter().any(|entry| {
+            entry.source_control_id == "axis_01_34"
+                && entry.source.device.product_id == 0xb687
+                && entry.target_control_id.as_deref() == Some("ry")
+                && entry.reason == "profile_rule_inverted"
+        }));
+        assert!(diagnostics.entries.iter().any(|entry| {
+            entry.source_control_id == "axis_01_33"
+                && entry.source.device.product_id == 0xb687
+                && entry.target_control_id.as_deref() == Some("rz")
+                && entry.reason == "profile_rule_inverted"
+        }));
+    }
+
+    #[test]
+    fn flight_pack_profiles_have_unique_target_controls() {
+        assert_unique_targets(&flight_pack_demo_profile());
+        assert_unique_targets(&xbox_flight_pack_demo_profile());
     }
 
     #[test]
@@ -1208,9 +1261,19 @@ mod tests {
                 value(
                     twcs.clone(),
                     "axis_01_32",
-                    NormalizedControlValue::Axis(12_000),
+                    NormalizedControlValue::Axis(-30_000),
                 ),
-                value(twcs, "axis_01_36", NormalizedControlValue::Axis(-12_000)),
+                value(
+                    twcs.clone(),
+                    "axis_01_36",
+                    NormalizedControlValue::Axis(-12_000),
+                ),
+                value(
+                    twcs.clone(),
+                    "axis_01_34",
+                    NormalizedControlValue::Axis(-32_768),
+                ),
+                value(twcs, "axis_01_33", NormalizedControlValue::Axis(32_767)),
                 value(
                     stick.clone(),
                     "axis_01_30",
@@ -1253,20 +1316,17 @@ mod tests {
         );
         assert_eq!(
             control(&frame, "right_x"),
-            Some(NormalizedControlValue::Axis(400))
-        );
-        assert_eq!(
-            control(&frame, "right_y"),
-            Some(NormalizedControlValue::Axis(300))
-        );
-        assert_eq!(
-            control(&frame, "left_trigger"),
             Some(NormalizedControlValue::Axis(-12_000))
         );
         assert_eq!(
-            control(&frame, "right_trigger"),
-            Some(NormalizedControlValue::Axis(12_000))
+            control(&frame, "left_trigger"),
+            Some(NormalizedControlValue::Trigger(1_023))
         );
+        assert_eq!(
+            control(&frame, "right_trigger"),
+            Some(NormalizedControlValue::Trigger(0))
+        );
+        assert_eq!(control(&frame, "right_y"), None);
         assert_eq!(control(&frame, "hat"), Some(NormalizedControlValue::Hat(0)));
         assert_eq!(
             control(&frame, "a"),
@@ -1278,6 +1338,18 @@ mod tests {
                 && entry.source.device.product_id == 0xb10a
                 && entry.target_control_id.as_deref() == Some("left_x")
                 && entry.reason == "profile_rule"
+        }));
+        assert!(diagnostics.entries.iter().any(|entry| {
+            entry.source_control_id == "axis_01_34"
+                && entry.source.device.product_id == 0xb687
+                && entry.target_control_id.as_deref() == Some("left_trigger")
+                && entry.reason == "profile_rule_calibrated"
+        }));
+        assert!(diagnostics.entries.iter().any(|entry| {
+            entry.source_control_id == "axis_01_32"
+                && entry.source.device.product_id == 0xb687
+                && entry.target_control_id.is_none()
+                && entry.reason == "profile_unmapped"
         }));
     }
 
@@ -1403,6 +1475,18 @@ mod tests {
                 product_id,
             },
             interface_id: InterfaceId(interface_id),
+        }
+    }
+
+    fn assert_unique_targets(profile: &MappingProfile) {
+        let mut targets = HashSet::new();
+        for rule in &profile.source_mappings {
+            assert!(
+                targets.insert(rule.target_control_id.clone()),
+                "duplicate target in {}: {}",
+                profile.profile_id.0,
+                rule.target_control_id
+            );
         }
     }
 }

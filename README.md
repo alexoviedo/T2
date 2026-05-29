@@ -27,9 +27,9 @@
   one-shot commands.
 - Repeatable soak and calibration witness tooling is available for the next
   demo-hardening pass. Xbox live bridge now has a checked-in 300-second soak
-  witness; practical RJ12 Flight Pack axis labels are checked in; Generic soak
-  and final Flight Pack calibration/deadzone semantics still need separate
-  evidence.
+  witness; practical RJ12 Flight Pack axis labels and refined target-side
+  mapping evidence are checked in; Generic soak and final Flight Pack
+  calibration/deadzone semantics still need separate evidence.
 - Browser Web Serial configurator smoke is checked in for Google Chrome:
   connect, config/status/schema/catalog load, Flight Pack Generic import,
   save, load, and `START_CONFIGURED`.
@@ -91,6 +91,8 @@
 - `tools/flight_pack_calibration_witness.py` guides named Flight Pack movements and drafts calibration/axis-label evidence.
 - Practical Flight Pack axis-label evidence exists in
   `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md`.
+- Practical Flight Pack mapping-refinement evidence exists in
+  `docs/milestone-evidence/FLIGHT_PACK_MAPPING_REFINEMENT_WITNESS_2026-05-28.md`.
 - `tools/configure_board.py` exercises the runtime configuration protocol over
   USB serial for Web Serial/webapp smoke testing.
 - Browser Web Serial configurator smoke evidence exists in
@@ -109,8 +111,8 @@
 ## What is not implemented yet
 - direct-attach hardware transcript remains blocked by available cabling/port geometry.
 - full target IR diagnostic dump.
-- calibrated TWCS/TFRP profile refinements and deadzone semantics beyond the
-  current demo rules.
+- calibrated TWCS/TFRP deadzone semantics and product-quality mapping feel
+  beyond the current target-side refined demo rules.
 - game/application compatibility beyond the browser Gamepad API witness.
 - broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
 - checked-in Generic long-duration live bridge soak evidence.

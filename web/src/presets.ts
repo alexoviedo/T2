@@ -4,6 +4,7 @@ function thrustmasterRule(
   productId: number,
   sourceControlId: string,
   targetControlId: string,
+  invert = false,
   transform?: any
 ): MappingRule {
   return {
@@ -12,7 +13,7 @@ function thrustmasterRule(
     source_interface_id: 0,
     source_control_id: sourceControlId,
     target_control_id: targetControlId,
-    invert: false,
+    invert,
     deadzone: null,
     transform: transform || null,
   };
@@ -32,8 +33,10 @@ export const flightPackGeneric: RuntimeConfig = {
   mappings: [
     thrustmasterRule(0xb10a, 'axis_01_30', 'x'),
     thrustmasterRule(0xb10a, 'axis_01_31', 'y'),
-    thrustmasterRule(0xb687, 'axis_01_32', 'z'),
+    thrustmasterRule(0xb687, 'axis_01_32', 'z', true),
     thrustmasterRule(0xb687, 'axis_01_36', 'rx'),
+    thrustmasterRule(0xb687, 'axis_01_34', 'ry', true),
+    thrustmasterRule(0xb687, 'axis_01_33', 'rz', true),
   ],
 };
 
@@ -51,12 +54,18 @@ export const flightPackXbox: RuntimeConfig = {
   mappings: [
     thrustmasterRule(0xb10a, 'axis_01_30', 'left_x'),
     thrustmasterRule(0xb10a, 'axis_01_31', 'left_y'),
-    thrustmasterRule(0xb10a, 'axis_01_36', 'right_x'),
-    thrustmasterRule(0xb687, 'axis_01_32', 'right_trigger', {
+    thrustmasterRule(0xb687, 'axis_01_36', 'right_x'),
+    thrustmasterRule(0xb687, 'axis_01_34', 'left_trigger', false, {
       type: 'axis_to_trigger',
       source_min: -32768,
       source_max: 32767,
-      invert: false,
+      invert: true,
+    }),
+    thrustmasterRule(0xb687, 'axis_01_33', 'right_trigger', false, {
+      type: 'axis_to_trigger',
+      source_min: -32768,
+      source_max: 32767,
+      invert: true,
     }),
     thrustmasterRule(0xb10a, 'hat_01_39', 'hat'),
     thrustmasterRule(0xb10a, 'button_1', 'a'),
