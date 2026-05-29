@@ -28,8 +28,10 @@
 - Repeatable soak and calibration witness tooling is available for the next
   demo-hardening pass. Xbox live bridge now has a checked-in 300-second soak
   witness; practical RJ12 Flight Pack axis labels and refined target-side
-  mapping evidence are checked in; Generic soak and final Flight Pack
-  calibration/deadzone semantics still need separate evidence.
+  mapping evidence are checked in; refined Generic host-visible browser
+  Gamepad API axis exposure is checked in for the practical RJ12 topology;
+  Generic soak and final Flight Pack calibration/deadzone semantics still need
+  separate evidence.
 - Browser Web Serial configurator smoke is checked in for Google Chrome:
   connect, config/status/schema/catalog load, Flight Pack Generic import,
   save, load, and `START_CONFIGURED`.
@@ -47,7 +49,7 @@
 - descriptor/report/summary/normalized-input control-plane fulfillment is proven for the THRUSTMASTER T.16000 FCS HOTAS through the HooToo powered hub.
 - expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, simultaneous normalized input for the recommended two-USB topology, and practical RJ12 labels for TWCS throttle plus TFRP rudder/toe axes.
 - final deadzone/calibration semantics and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4/product hardening.
-- BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses; final app/game compatibility and HOTAS mapping remain open.
+- BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses, including refined practical RJ12 `z/rx/ry/rz` axis exposure in Chrome; final app/game compatibility and product-quality HOTAS calibration remain open.
 
 ## What works today
 - serial control plane.
@@ -93,6 +95,9 @@
   `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md`.
 - Practical Flight Pack mapping-refinement evidence exists in
   `docs/milestone-evidence/FLIGHT_PACK_MAPPING_REFINEMENT_WITNESS_2026-05-28.md`.
+- Practical Flight Pack refined Generic host-visible axis exposure evidence
+  exists in
+  `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`.
 - `tools/configure_board.py` exercises the runtime configuration protocol over
   USB serial for Web Serial/webapp smoke testing.
 - Browser Web Serial configurator smoke evidence exists in
@@ -112,7 +117,7 @@
 - direct-attach hardware transcript remains blocked by available cabling/port geometry.
 - full target IR diagnostic dump.
 - calibrated TWCS/TFRP deadzone semantics and product-quality mapping feel
-  beyond the current target-side refined demo rules.
+  beyond the current refined demo rules and Chrome Gamepad API axis exposure.
 - game/application compatibility beyond the browser Gamepad API witness.
 - broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
 - checked-in Generic long-duration live bridge soak evidence.

@@ -155,9 +155,10 @@ bash -n scripts/*.sh
 - [x] BLE transport publishes this report to a connected host for the witnessed Generic Gamepad demo path.
 - [x] Explicit `START_BRIDGE` live bridge mode publishes USB-derived Generic reports automatically while connected.
 - [x] Practical RJ12 Flight Pack mapping refinement target witness captured for TWCS throttle, TFRP/RJ12 rudder, and both toe brakes.
+- [x] Practical RJ12 Flight Pack refined Generic host-visible browser Gamepad API axis exposure captured for TWCS throttle, TFRP/RJ12 rudder, and both toe brakes.
 - [ ] Broad game/app compatibility witness captured for the Generic Gamepad path.
 - [ ] Generic long-duration live bridge soak evidence checked in.
-- [ ] Final Flight Pack calibration/deadzone semantics evidenced. Axis-label and target-side mapping-refinement evidence exists for the practical RJ12 topology, but final calibration quality remains open.
+- [ ] Final Flight Pack calibration/deadzone semantics evidenced. Axis-label, target-side mapping-refinement, and host-visible Generic axis exposure evidence exists for the practical RJ12 topology, but final product-quality calibration remains open.
 
 ## Demo Bridge Validation Commands
 
@@ -169,6 +170,7 @@ bash -n scripts/*.sh
 - **Generic BLE evidence:** `docs/milestone-evidence/BLE_HID_MAC_PAIRING_INPUT_WITNESS_2026-04-30.md`; `docs/milestone-evidence/BROWSER_GAMEPAD_API_WITNESS_2026-04-30.md`; `docs/milestone-evidence/FLIGHT_PACK_DEMO_BLE_BROWSER_WITNESS_2026-05-08.md`; `docs/milestone-evidence/ASAP_DEMO_REHEARSAL_WITNESS_2026-05-08.md`
 - **Live bridge evidence:** `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`
 - **Flight Pack mapping evidence:** `docs/milestone-evidence/FLIGHT_PACK_MAPPING_REFINEMENT_WITNESS_2026-05-28.md`
+- **Flight Pack host-visible Generic axis exposure evidence:** `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`
 
 ## Xbox Persona Slice — compatibility persona, not broad app support
 
@@ -198,4 +200,5 @@ bash -n scripts/*.sh
 - [x] `tools/config_persistence_witness.py` provides a repeatable target-side protocol witness workflow.
 - [x] Durable config persistence proven by checked-in target evidence: `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
 - [x] Web Serial configurator smoke evidence checked in against real hardware: `docs/milestone-evidence/WEB_SERIAL_CONFIGURATOR_SMOKE_2026-05-28.md`.
-- [ ] Calibration profile quality proven by checked-in target and host-visible evidence. Target-side mapping refinement exists, but host-visible/game-app quality is still open.
+- [x] Refined practical RJ12 Generic mapping proven by checked-in target and host-visible browser Gamepad API evidence.
+- [ ] Final calibration/deadzone quality and real game/app behavior proven.

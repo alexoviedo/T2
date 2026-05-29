@@ -35,6 +35,9 @@ Checked-in evidence supports:
 - Practical RJ12 Flight Pack target-side mapping refinement for TWCS throttle,
   TFRP rudder, and both toe brakes, including the documented Xbox profile
   compromise that leaves TWCS throttle unmapped.
+- Practical RJ12 Flight Pack refined Generic host-visible browser Gamepad API
+  axis exposure in Google Chrome, mapping Generic `z/rx/ry/rz` to browser
+  A2/A3/A4/A5.
 - CI host checks, ESP32-S3 target preflight, firmware packaging, latest GitHub
   Release refresh, and Pages deployment.
 
@@ -54,6 +57,8 @@ Checked-in evidence supports:
   `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md`.
 - Flight Pack mapping-refinement evidence through
   `docs/milestone-evidence/FLIGHT_PACK_MAPPING_REFINEMENT_WITNESS_2026-05-28.md`.
+- Refined Generic Flight Pack host-visible axis exposure evidence through
+  `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`.
 - Generic BLE demo rehearsal through `tools/asap_demo_rehearsal.py` when
   hardware is connected.
 - Xbox BLE compatibility rehearsal through `tools/xbox_demo_rehearsal.py` when
@@ -70,9 +75,9 @@ Checked-in evidence supports:
 - Browser breadth beyond the checked-in Google Chrome Web Serial configurator
   smoke.
 - Final Flight Pack calibration, deadzones, and product-quality mapping feel.
-  Practical RJ12 TWCS/TFRP axis labels and target-side refined mapping are now
-  checked in, but final calibration quality and host-visible/game-app mapping
-  quality are not proven.
+  Practical RJ12 TWCS/TFRP axis labels, target-side refined mapping, and
+  host-visible Generic browser axis exposure are now checked in, but final
+  calibration quality and real game/app mapping quality are not proven.
 - Generic long-duration live bridge soak.
 - Stable browser Gamepad API display name for Xbox across clean host state.
 - Direct-attach USB witness; current direct attach remains blocked by available
@@ -140,9 +145,9 @@ Recommended order:
 ## Recommended Next Implementation Chunks
 
 - Generic 300-second live bridge soak and checked-in evidence.
-- Flight Pack deadzone tuning and host-visible mapping quality from the
-  checked-in practical RJ12 axis-label and target-side mapping-refinement
-  baseline.
+- Flight Pack deadzone tuning and real app/game mapping quality from the
+  checked-in practical RJ12 axis-label, target-side mapping-refinement, and
+  Generic host-visible axis-exposure baselines.
 - Web Serial configurator hardening from the checked-in smoke baseline,
   especially recovery/error UX under live target report chatter.
 - Runtime config recovery/error-path hardening using
