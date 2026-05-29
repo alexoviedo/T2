@@ -156,8 +156,8 @@ bash -n scripts/*.sh
 - [x] Explicit `START_BRIDGE` live bridge mode publishes USB-derived Generic reports automatically while connected.
 - [x] Practical RJ12 Flight Pack mapping refinement target witness captured for TWCS throttle, TFRP/RJ12 rudder, and both toe brakes.
 - [x] Practical RJ12 Flight Pack refined Generic host-visible browser Gamepad API axis exposure captured for TWCS throttle, TFRP/RJ12 rudder, and both toe brakes.
+- [x] Refined practical RJ12 Generic 300-second live bridge soak captured with serial bridge counters and continuous browser Gamepad API samples.
 - [ ] Broad game/app compatibility witness captured for the Generic Gamepad path.
-- [ ] Generic long-duration live bridge soak evidence checked in.
 - [ ] Final Flight Pack calibration/deadzone semantics evidenced. Axis-label, target-side mapping-refinement, and host-visible Generic axis exposure evidence exists for the practical RJ12 topology, but final product-quality calibration remains open.
 
 ## Demo Bridge Validation Commands
@@ -171,6 +171,7 @@ bash -n scripts/*.sh
 - **Live bridge evidence:** `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`
 - **Flight Pack mapping evidence:** `docs/milestone-evidence/FLIGHT_PACK_MAPPING_REFINEMENT_WITNESS_2026-05-28.md`
 - **Flight Pack host-visible Generic axis exposure evidence:** `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`
+- **Refined Generic live bridge soak evidence:** `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md`
 
 ## Xbox Persona Slice — compatibility persona, not broad app support
 

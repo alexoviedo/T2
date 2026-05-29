@@ -29,9 +29,9 @@
   demo-hardening pass. Xbox live bridge now has a checked-in 300-second soak
   witness; practical RJ12 Flight Pack axis labels and refined target-side
   mapping evidence are checked in; refined Generic host-visible browser
-  Gamepad API axis exposure is checked in for the practical RJ12 topology;
-  Generic soak and final Flight Pack calibration/deadzone semantics still need
-  separate evidence.
+  Gamepad API axis exposure and a refined Generic 300-second live bridge soak
+  are checked in for the practical RJ12 topology; final Flight Pack
+  calibration/deadzone semantics still need separate evidence.
 - Browser Web Serial configurator smoke is checked in for Google Chrome:
   connect, config/status/schema/catalog load, Flight Pack Generic import,
   save, load, and `START_CONFIGURED`.
@@ -49,7 +49,7 @@
 - descriptor/report/summary/normalized-input control-plane fulfillment is proven for the THRUSTMASTER T.16000 FCS HOTAS through the HooToo powered hub.
 - expanded Flight Pack evidence proves normalized input for the TFRP pedals and T.16000 stick in one full-pack run, TWCS normalized input when connected through the same hub without the other Flight Pack devices, simultaneous normalized input for the recommended two-USB topology, and practical RJ12 labels for TWCS throttle plus TFRP rudder/toe axes.
 - final deadzone/calibration semantics and simultaneous normalized streaming from all three separate Flight Pack USB devices remain open for full M4/product hardening.
-- BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses, including refined practical RJ12 `z/rx/ry/rz` axis exposure in Chrome; final app/game compatibility and product-quality HOTAS calibration remain open.
+- BLE Generic Gamepad publishing now has real Mac host and browser Gamepad API witnesses, including refined practical RJ12 `z/rx/ry/rz` axis exposure and a 300-second refined Generic live bridge soak in Chrome; final app/game compatibility and product-quality HOTAS calibration remain open.
 
 ## What works today
 - serial control plane.
@@ -90,6 +90,7 @@
 - `tools/asap_demo_rehearsal.py` runs the operator-friendly Generic Gamepad demo rehearsal, auto-detects the T.16000M source by VID/PID, supports `--live-bridge`, and saves a timestamped transcript.
 - `tools/xbox_demo_rehearsal.py` runs the Xbox BLE compatibility rehearsal, supports `--live-bridge`, and saves serial proof plus optional browser witness evidence.
 - `tools/live_bridge_soak.py` runs a timed Generic or Xbox live bridge soak and saves bridge status samples.
+- `tools/refined_generic_live_bridge_soak.py` runs a 300-second refined Generic Flight Pack live bridge soak with serial bridge counters and continuous browser Gamepad API samples.
 - `tools/flight_pack_calibration_witness.py` guides named Flight Pack movements and drafts calibration/axis-label evidence.
 - Practical Flight Pack axis-label evidence exists in
   `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md`.
@@ -98,6 +99,8 @@
 - Practical Flight Pack refined Generic host-visible axis exposure evidence
   exists in
   `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`.
+- Practical Flight Pack refined Generic live bridge soak evidence exists in
+  `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md`.
 - `tools/configure_board.py` exercises the runtime configuration protocol over
   USB serial for Web Serial/webapp smoke testing.
 - Browser Web Serial configurator smoke evidence exists in
@@ -120,7 +123,6 @@
   beyond the current refined demo rules and Chrome Gamepad API axis exposure.
 - game/application compatibility beyond the browser Gamepad API witness.
 - broader Xbox game/app compatibility beyond the current macOS Bluetooth and browser Gamepad API witness.
-- checked-in Generic long-duration live bridge soak evidence.
 - real hardware live bridge evidence from an actual game/app; the checked-in
   live bridge witness uses serial counters and browser Gamepad API evidence,
   which is useful but is not a substitute for game compatibility.
