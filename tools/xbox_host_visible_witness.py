@@ -34,7 +34,7 @@ DEFAULT_RESET_COMMAND = "espflash reset --chip esp32s3 --port {port} --non-inter
 XBOX_PERSONA = "xbox_wireless_controller"
 XBOX_DEVICE_NAME = "Xbox Wireless Controller"
 XBOX_ID_PATTERNS = ("xbox wireless controller", "vendor: 045e product: 0b13")
-SCENARIOS = [
+DEFAULT_SCENARIOS = [
     "neutral",
     "left_stick_left",
     "left_stick_right",
@@ -60,8 +60,25 @@ SCENARIOS = [
     "button_rb",
     "button_view",
     "button_menu",
+    "button_left_stick_press",
+    "button_right_stick_press",
+    "button_nexus",
+    "button_paddle_1",
+    "button_paddle_2",
+    "button_paddle_3",
     "button_share",
 ]
+SCENARIO_SETS = {
+    "all": DEFAULT_SCENARIOS,
+    "core": [
+        "neutral",
+        "left_stick_right",
+        "right_stick_right",
+        "left_trigger_max",
+        "right_trigger_max",
+        "button_a",
+    ],
+}
 STANDARD_EXPECTED_CONTROLS = {
     "left_stick_left": {"surface": "axis", "index": 0, "direction": "negative", "label": "A0 left stick X"},
     "left_stick_right": {"surface": "axis", "index": 0, "direction": "positive", "label": "A0 left stick X"},
@@ -81,6 +98,8 @@ STANDARD_EXPECTED_CONTROLS = {
     "button_rb": {"surface": "button", "index": 5, "direction": "positive", "label": "B5 RB"},
     "button_view": {"surface": "button", "index": 8, "direction": "positive", "label": "B8 View/Back"},
     "button_menu": {"surface": "button", "index": 9, "direction": "positive", "label": "B9 Menu/Start"},
+    "button_left_stick_press": {"surface": "button", "index": 10, "direction": "positive", "label": "B10 left stick press"},
+    "button_right_stick_press": {"surface": "button", "index": 11, "direction": "positive", "label": "B11 right stick press"},
     "hat_up": {"surface": "button", "index": 12, "direction": "positive", "label": "B12 D-pad up"},
     "hat_down": {"surface": "button", "index": 13, "direction": "positive", "label": "B13 D-pad down"},
     "hat_left": {"surface": "button", "index": 14, "direction": "positive", "label": "B14 D-pad left"},
@@ -104,6 +123,28 @@ def command_output(command: list[str]) -> str:
         check=False,
     )
     return result.stdout.strip()
+
+
+def scenario_names(value: str) -> list[str]:
+    if value in SCENARIO_SETS:
+        return list(SCENARIO_SETS[value])
+    names = [part.strip() for part in value.split(",") if part.strip()]
+    unknown = [name for name in names if name not in DEFAULT_SCENARIOS]
+    if unknown:
+        raise ValueError(f"unknown scenario(s): {', '.join(unknown)}")
+    return names
+
+
+def load_expected_standard_layout(path: pathlib.Path | None) -> dict[str, dict[str, Any]]:
+    if path is None:
+        return STANDARD_EXPECTED_CONTROLS
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("--expected-standard-layout must be a JSON object")
+    controls = data.get("controls", data)
+    if not isinstance(controls, dict):
+        raise ValueError("expected layout JSON must contain an object or controls object")
+    return {str(key): value for key, value in controls.items() if isinstance(value, dict)}
 
 
 def write_transcript(path: pathlib.Path, records: list[CommandRecord]) -> None:
@@ -138,7 +179,7 @@ def try_arm_chrome() -> dict[str, Any]:
     script = (
         'tell application "Google Chrome"\n'
         "  activate\n"
-        '  tell active tab of front window to execute javascript "document.querySelector(\\"#arm\\")?.click()"\n'
+        '  tell active tab of front window to execute javascript "document.querySelector(\\"#armButton\\")?.click()"\n'
         "end tell\n"
     )
     result = subprocess.run(
@@ -327,6 +368,114 @@ def changed_indices(before: list[float], after: list[float], threshold: float) -
     return rows
 
 
+def primary_change(
+    axis_changes: list[dict[str, Any]],
+    button_changes: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    changes = [{"surface": "axis", **change} for change in axis_changes] + [
+        {"surface": "button", **change} for change in button_changes
+    ]
+    if not changes:
+        return None
+    return max(changes, key=lambda change: abs(float(change.get("delta", 0.0))))
+
+
+def discovered_layout_rows(scenario_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for result in scenario_results:
+        scenario = str(result.get("scenario", ""))
+        if scenario in {"neutral", "left_trigger_min", "right_trigger_min"}:
+            continue
+        expected = result.get("standard_control", {}).get("expected")
+        observed = primary_change(
+            list(result.get("changed_axis_indices") or []),
+            list(result.get("changed_button_indices") or []),
+        )
+        rows.append(
+            {
+                "scenario": scenario,
+                "encoded_report_bytes": result.get("encoded_report_bytes"),
+                "expected": expected,
+                "observed": observed,
+                "matched": None
+                if expected is None
+                else bool(result.get("standard_control", {}).get("matched")),
+            }
+        )
+    return rows
+
+
+def layout_diagnosis(scenario_results: list[dict[str, Any]]) -> dict[str, Any]:
+    rows = discovered_layout_rows(scenario_results)
+    unexpected: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+    for row in rows:
+        expected = row.get("expected")
+        observed = row.get("observed")
+        if expected is None:
+            if observed is not None:
+                unexpected.append(row)
+            continue
+        if observed is None:
+            missing.append(row)
+        elif not row.get("matched"):
+            unexpected.append(row)
+    return {
+        "rows": rows,
+        "unexpected_button_indices": [
+            row for row in unexpected if (row.get("observed") or {}).get("surface") == "button"
+        ],
+        "unexpected_axis_indices": [
+            row for row in unexpected if (row.get("observed") or {}).get("surface") == "axis"
+        ],
+        "missing_expected_indices": missing,
+    }
+
+
+def format_control(control: dict[str, Any] | None) -> str:
+    if not control:
+        return "-"
+    surface = control.get("surface")
+    index = control.get("index")
+    direction = control.get("direction")
+    if surface == "axis":
+        return f"A{index} {direction}"
+    if surface == "button":
+        return f"B{index} {direction}"
+    return str(control)
+
+
+def format_observed(change: dict[str, Any] | None) -> str:
+    if not change:
+        return "-"
+    prefix = "A" if change.get("surface") == "axis" else "B"
+    return (
+        f"{prefix}{change.get('index')} "
+        f"{change.get('before')}->{change.get('after')} "
+        f"(delta {change.get('delta')})"
+    )
+
+
+def write_layout_diagnosis(run_dir: pathlib.Path, diagnosis: dict[str, Any]) -> None:
+    (run_dir / "layout_diagnosis.json").write_text(
+        json.dumps(diagnosis, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    lines = [
+        "# Xbox Standard Layout Diagnosis",
+        "",
+        "| Scenario | Expected standard control | Observed change | Match |",
+        "| --- | --- | --- | --- |",
+    ]
+    for row in diagnosis["rows"]:
+        expected = format_control(row.get("expected"))
+        observed = format_observed(row.get("observed"))
+        match = row.get("matched")
+        status = "n/a" if match is None else ("PASS" if match else "FAIL")
+        lines.append(f"| `{row['scenario']}` | {expected} | {observed} | {status} |")
+    (run_dir / "layout_diagnosis.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def find_change(changes: list[dict[str, Any]], index: int, direction: str) -> dict[str, Any] | None:
     for change in changes:
         if change.get("index") != index:
@@ -345,8 +494,9 @@ def standard_control_result(
     scenario: str,
     axis_changes: list[dict[str, Any]],
     button_changes: list[dict[str, Any]],
+    expected_controls: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    expected = STANDARD_EXPECTED_CONTROLS.get(scenario)
+    expected = (expected_controls or STANDARD_EXPECTED_CONTROLS).get(scenario)
     if expected is None:
         return {"scenario": scenario, "expected": None, "matched": None, "observed_change": None}
     changes = axis_changes if expected["surface"] == "axis" else button_changes
@@ -437,6 +587,12 @@ def scenario_expectations() -> dict[str, str]:
         "button_rb": "button",
         "button_view": "button",
         "button_menu": "button",
+        "button_left_stick_press": "button",
+        "button_right_stick_press": "button",
+        "button_nexus": "button",
+        "button_paddle_1": "button",
+        "button_paddle_2": "button",
+        "button_paddle_3": "button",
         "button_share": "button",
     }
 
@@ -469,7 +625,9 @@ def classify_standard_layout(
     browser: dict[str, Any],
     scenario_results: list[dict[str, Any]],
     xbox_like_identity_observed: bool,
+    expected_controls: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    expected_controls = expected_controls or STANDARD_EXPECTED_CONTROLS
     checks = {
         result["scenario"]: result.get("standard_control", {})
         for result in scenario_results
@@ -501,7 +659,7 @@ def classify_standard_layout(
         "core_pass": core_pass,
         "required_pass": required_pass,
         "matched_count": sum(1 for passed in matched.values() if passed),
-        "required_count": len(matched),
+        "required_count": len([scenario for scenario in expected_controls if scenario in checks]),
         "scenario_matches": matched,
         "failed_standard_scenarios": [scenario for scenario, passed in matched.items() if not passed],
     }
@@ -520,6 +678,15 @@ def main() -> int:
     parser.add_argument("--post-reset-wait-seconds", type=float, default=8.0)
     parser.add_argument("--assume-ready", action="store_true")
     parser.add_argument("--no-open", action="store_true")
+    parser.add_argument(
+        "--scenarios",
+        default="all",
+        help="Scenario set name (all/core) or comma-separated scenario names.",
+    )
+    parser.add_argument("--diagnose-layout", action="store_true")
+    parser.add_argument("--discover-layout", action="store_true")
+    parser.add_argument("--expected-standard-layout", type=pathlib.Path)
+    parser.add_argument("--no-live-bridge", action="store_true")
     args = parser.parse_args()
 
     stamp = utc_stamp()
@@ -542,6 +709,8 @@ def main() -> int:
     print("USB2BLE Xbox host-visible witness")
     print(f"Artifact directory: {run_dir}")
     port = select_port(args.port, args.timeout)
+    scenarios = scenario_names(args.scenarios)
+    expected_controls = load_expected_standard_layout(args.expected_standard_layout)
 
     try:
         if args.reset_first:
@@ -622,7 +791,7 @@ def main() -> int:
             active_gamepad_id = None if active_capture is None else str(active_capture.get("id"))
 
             if active_capture is not None:
-                for scenario in SCENARIOS:
+                for scenario in scenarios:
                     before_captures = load_captures(capture_file)
                     before = capture_with_id(before_captures, active_gamepad_id) or active_capture
                     command = f"PUBLISH_XBOX_TEST_REPORT {scenario}"
@@ -638,7 +807,12 @@ def main() -> int:
                     line = report_line(scenario_records, "publish_xbox_test_report")
                     axis_changes = changed_indices(axis_values(before), axis_values(after), 0.05)
                     button_changes = changed_indices(button_values(before), button_values(after), 0.05)
-                    standard_control = standard_control_result(scenario, axis_changes, button_changes)
+                    standard_control = standard_control_result(
+                        scenario,
+                        axis_changes,
+                        button_changes,
+                        expected_controls,
+                    )
                     scenario_results.append(
                         {
                             "scenario": scenario,
@@ -692,7 +866,14 @@ def main() -> int:
                 observed_identity = fallback.get("id")
                 active_browser_capture = fallback
         browser = browser_profile(active_browser_capture)
-        standard_layout = classify_standard_layout(browser, scenario_results, xbox_like_identity_observed)
+        standard_layout = classify_standard_layout(
+            browser,
+            scenario_results,
+            xbox_like_identity_observed,
+            expected_controls,
+        )
+        layout = layout_diagnosis(scenario_results)
+        write_layout_diagnosis(run_dir, layout)
 
         scenario_passes = {
             result["scenario"]: bool(
@@ -723,6 +904,12 @@ def main() -> int:
                 "button_rb",
                 "button_view",
                 "button_menu",
+                "button_left_stick_press",
+                "button_right_stick_press",
+                "button_nexus",
+                "button_paddle_1",
+                "button_paddle_2",
+                "button_paddle_3",
                 "button_share",
             )
         )
@@ -772,6 +959,17 @@ def main() -> int:
             "browser_identity_matched_xbox": xbox_like_identity_observed,
             "browser_gamepad": browser,
             "standard_layout": standard_layout,
+            "layout_diagnosis": {
+                "path_json": str(run_dir / "layout_diagnosis.json"),
+                "path_markdown": str(run_dir / "layout_diagnosis.md"),
+                "unexpected_button_indices": layout["unexpected_button_indices"],
+                "missing_expected_indices": layout["missing_expected_indices"],
+            },
+            "scenarios": scenarios,
+            "diagnose_layout": args.diagnose_layout,
+            "discover_layout": args.discover_layout,
+            "expected_standard_layout": None if args.expected_standard_layout is None else str(args.expected_standard_layout),
+            "no_live_bridge": args.no_live_bridge,
             "browser_capture_file": str(browser_copy) if browser_copy.exists() else None,
             "serial_transcript": str(transcript_file),
             "scenario_results": str(scenario_results_file),

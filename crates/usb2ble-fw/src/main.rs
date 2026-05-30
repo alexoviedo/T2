@@ -1315,6 +1315,12 @@ fn xbox_test_report(
         "button_rb" => xbox_button("rb"),
         "button_view" => xbox_button("view"),
         "button_menu" => xbox_button("menu"),
+        "button_nexus" => xbox_button("nexus"),
+        "button_left_stick_press" => xbox_button("left_stick_press"),
+        "button_right_stick_press" => xbox_button("right_stick_press"),
+        "button_paddle_1" => xbox_button("paddle_1"),
+        "button_paddle_2" => xbox_button("paddle_2"),
+        "button_paddle_3" => xbox_button("paddle_3"),
         "button_share" => xbox_button("share"),
         _ => return Err(usb2ble_contracts::PersonaError::Generic),
     };
@@ -1943,12 +1949,19 @@ mod tests {
             )),
             "publish_xbox_test_report",
         );
+        let left_stick_press = assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxTestReport(
+                "button_left_stick_press".to_string(),
+            )),
+            "publish_xbox_test_report",
+        );
 
         assert_eq!(neutral.report_id.0, 1);
         assert_eq!(neutral.bytes.len(), 16);
         assert_eq!(&neutral.bytes[0..2], &32_768_u16.to_le_bytes());
         assert_eq!(&right.bytes[0..2], &65_535_u16.to_le_bytes());
         assert_eq!(&left_trigger.bytes[8..10], &1_023_u16.to_le_bytes());
+        assert_eq!(&left_stick_press.bytes[13..15], &(1_u16 << 8).to_le_bytes());
         assert_eq!(share.bytes[15], 1);
     }
 

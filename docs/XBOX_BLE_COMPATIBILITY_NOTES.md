@@ -50,10 +50,45 @@ Current implementation intentionally matches the model-1914 BLE identity and rep
 ## Current USB2BLE Gaps
 
 - No Xbox console or proprietary Xbox Wireless compatibility is implemented or claimed.
-- Refined Flight Pack Xbox mapping is target-side only until a host-visible Xbox mapping witness is captured.
+- Refined Flight Pack Xbox mapping is target-side only until a host-visible Xbox
+  mapping witness captures physical rudder/toe-brake movement through the live
+  bridge.
 - Windows, Android, iOS, Linux, and external/native game compatibility are unproven for the refined Xbox profile.
 - Rumble host-output writes are descriptor-shaped and parser-safe, but not host-visible functional rumble.
 - BLE bond persistence/reconnect behavior remains unproven for this profile.
+
+## macOS Chrome Standard-Layout Discovery
+
+The 2026-05-29 deterministic host-visible diagnostic showed that Chrome can
+expose USB2BLE's Xbox-compatible persona as:
+
+```text
+Xbox Wireless Controller (STANDARD GAMEPAD)
+mapping=standard
+axes=4
+buttons=18
+```
+
+Chrome/macOS remapped Xbox-like raw button bits to browser-standard positions
+rather than using USB2BLE's original logical order literally. USB2BLE therefore
+uses the observed raw bit positions for the main logical buttons in the Xbox
+encoder:
+
+| Logical control | Raw Xbox button bit | Browser standard result |
+| --- | --- | --- |
+| A | 0 | B0 |
+| B | 1 | B1 |
+| X | 3 | B2 |
+| Y | 4 | B3 |
+| LB | 6 | B4 |
+| RB | 7 | B5 |
+| View | 10 | B8 |
+| Menu | 11 | B9 |
+
+Left/right stick press remain unresolved: the raw bits tested for those
+controls did not surface as browser B10/B11 in the current macOS Chrome run.
+The result is a strong host-visible diagnostic for the main controls, not a
+complete Xbox standard-layout claim.
 
 ## Flight Pack Xbox Mapping
 

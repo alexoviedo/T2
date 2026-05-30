@@ -13,6 +13,7 @@ sys.path.insert(0, str(TOOLS))
 
 import ble_advertising_probe  # noqa: E402
 import check_ble_hid_profile  # noqa: E402
+import check_persona_acceptance  # noqa: E402
 import check_xbox_ble_profile  # noqa: E402
 import xbox_host_visible_witness  # noqa: E402
 
@@ -145,6 +146,57 @@ class XboxHostVisibleWitnessTests(unittest.TestCase):
         self.assertTrue(result["core_pass"])
         self.assertFalse(result["required_pass"])
         self.assertIn("button_x", result["failed_standard_scenarios"])
+
+    def test_layout_diagnosis_records_unexpected_and_missing_controls(self) -> None:
+        scenario_results = [
+            {
+                "scenario": "button_x",
+                "encoded_report_bytes": "00",
+                "changed_axis_indices": [],
+                "changed_button_indices": [{"index": 5, "before": 0.0, "after": 1.0, "delta": 1.0}],
+                "standard_control": {
+                    "expected": xbox_host_visible_witness.STANDARD_EXPECTED_CONTROLS["button_x"],
+                    "matched": False,
+                },
+            },
+            {
+                "scenario": "button_y",
+                "encoded_report_bytes": "00",
+                "changed_axis_indices": [],
+                "changed_button_indices": [],
+                "standard_control": {
+                    "expected": xbox_host_visible_witness.STANDARD_EXPECTED_CONTROLS["button_y"],
+                    "matched": False,
+                },
+            },
+        ]
+
+        diagnosis = xbox_host_visible_witness.layout_diagnosis(scenario_results)
+
+        self.assertEqual(diagnosis["unexpected_button_indices"][0]["scenario"], "button_x")
+        self.assertEqual(diagnosis["missing_expected_indices"][0]["scenario"], "button_y")
+
+
+class PersonaAcceptanceGateTests(unittest.TestCase):
+    def test_unknown_persona_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            check_persona_acceptance.evaluate_persona("not_a_persona")
+
+    def test_planned_keyboard_persona_has_no_failures(self) -> None:
+        summary = check_persona_acceptance.evaluate_persona("ble_keyboard")
+        self.assertEqual(summary["fail_count"], 0)
+        self.assertGreaterEqual(summary["warn_count"], 1)
+
+    def test_xbox_persona_acceptance_references_standard_layout_evidence(self) -> None:
+        summary = check_persona_acceptance.evaluate_persona("xbox_wireless_controller")
+        self.assertEqual(summary["fail_count"], 0)
+        host_checks = [
+            check
+            for check in summary["checks"]
+            if check["layer"] == "evidence" and check["item"] == "host_visible_witness"
+        ]
+        self.assertEqual(len(host_checks), 1)
+        self.assertIn("XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md", host_checks[0]["note"])
 
 
 if __name__ == "__main__":

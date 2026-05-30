@@ -147,19 +147,19 @@ const XBOX_TRIGGER_IDS: [&str; 2] = ["left_trigger", "right_trigger"];
 const XBOX_BUTTON_IDS: [&str; 15] = [
     "a",
     "b",
+    "nexus",
     "x",
     "y",
+    "paddle_4",
     "lb",
     "rb",
-    "view",
-    "menu",
-    "nexus",
     "left_stick_press",
     "right_stick_press",
+    "view",
+    "menu",
     "paddle_1",
     "paddle_2",
     "paddle_3",
-    "paddle_4",
 ];
 
 /// Parsed Xbox Wireless Controller report ID 3 rumble output payload.
@@ -695,7 +695,7 @@ mod tests {
             &XBOX_TRIGGER_LOGICAL_MAX.to_le_bytes()
         );
         assert_eq!(report.bytes[12], 1);
-        assert_eq!(&report.bytes[13..15], &(0b100_0000_0001_u16).to_le_bytes());
+        assert_eq!(&report.bytes[13..15], &((1_u16 << 9) | 1).to_le_bytes());
         assert_eq!(report.bytes[15], 1);
     }
 
@@ -757,6 +757,35 @@ mod tests {
                 })
                 .unwrap();
             assert_eq!(report.bytes[12], expected);
+        }
+    }
+
+    #[test]
+    fn xbox_logical_buttons_use_chrome_standard_observed_bits() {
+        for (control_id, expected_bit) in [
+            ("a", 0),
+            ("b", 1),
+            ("x", 3),
+            ("y", 4),
+            ("lb", 6),
+            ("rb", 7),
+            ("view", 10),
+            ("menu", 11),
+        ] {
+            let report = XboxWirelessControllerEncoder
+                .encode(&PersonaInputFrame {
+                    persona_id: XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+                    logical_controls: vec![PersonaLogicalControlValue {
+                        control_id: control_id.to_string(),
+                        value: NormalizedControlValue::Button(true),
+                    }],
+                })
+                .unwrap();
+            assert_eq!(
+                &report.bytes[13..15],
+                &(1_u16 << expected_bit).to_le_bytes(),
+                "{control_id}"
+            );
         }
     }
 

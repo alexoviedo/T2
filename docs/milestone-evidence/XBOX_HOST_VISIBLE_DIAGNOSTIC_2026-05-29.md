@@ -8,6 +8,12 @@ Xbox Flight Pack host-visible movement, broad Xbox support, Xbox console support
 proprietary Xbox Wireless support, Windows/Android/iOS/Linux support, or BLE
 bond behavior.
 
+Superseded follow-up: after this diagnostic, the Xbox encoder button ordering
+was adjusted and rerun. See
+`docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md` for the
+newer result where A/B/X/Y, LB/RB, View, and Menu align and only stick-press
+buttons remain unexposed in macOS Chrome.
+
 ## Summary
 
 USB2BLE was tested against macOS 12.7.x and Google Chrome with deterministic
