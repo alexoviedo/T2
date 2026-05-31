@@ -120,7 +120,9 @@ Xbox replay, it expects Chrome's `mapping="standard"` layout.
 persona-switching hygiene check. The 2026-05-31 diagnostic showed that the
 stale-slot detector prevents false Generic evidence, but this Mac still needed
 host Bluetooth/cache cleanup before a clean no-human Generic browser replay
-could be captured. See
+could be captured. A follow-up manual cleanup restored Generic BLE HID
+visibility in macOS `hidutil`/`ioreg`, but Chrome still captured zero Generic
+Gamepad API samples while the target bridge published reports. See
 `docs/milestone-evidence/PERSONA_SWITCHING_HYGIENE_DIAGNOSTIC_2026-05-31.md`.
 
 ## Claim Boundaries

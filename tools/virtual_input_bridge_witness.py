@@ -409,6 +409,7 @@ def main() -> int:
     parser.add_argument("--wait-for-browser-seconds", type=float, dest="browser_timeout")
     parser.add_argument("--witness-port", type=int, default=DEFAULT_WITNESS_PORT)
     parser.add_argument("--out-dir", type=pathlib.Path, default=pathlib.Path("target/virtual-input-bridge-witness"))
+    parser.add_argument("--run-prefix", help="Artifact directory prefix; defaults to '<persona>_virtual_bridge'")
     parser.add_argument("--reset-command", default=DEFAULT_RESET_COMMAND)
     parser.add_argument("--no-reset-on-persona-mismatch", action="store_true")
     parser.add_argument("--no-browser", action="store_true")
@@ -422,13 +423,19 @@ def main() -> int:
     parser.add_argument("--no-open", action="store_true")
     parser.add_argument("--manual-arm", action="store_true")
     parser.add_argument("--no-physical-input", action="store_true")
+    parser.add_argument(
+        "--browser-wake-self-test",
+        action="store_true",
+        help="Publish a diagnostic BLE self-test report before browser capture to wake Gamepad API exposure.",
+    )
     args = parser.parse_args()
 
     persona_spec = PERSONAS[args.persona]
     scenarios = scenario_names(args.persona, args.scenarios)
     stamp = utc_stamp()
     session_label = f"{args.persona}-{stamp}"
-    run_dir = args.out_dir / f"{args.persona}_virtual_bridge_{stamp}"
+    run_prefix = args.run_prefix or f"{args.persona}_virtual_bridge"
+    run_dir = args.out_dir / f"{run_prefix}_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     capture_dir = run_dir / "gamepad-witness"
     port = select_port(args.port, args.timeout)
@@ -438,6 +445,7 @@ def main() -> int:
     reset_records: list[dict[str, Any]] = []
     human_prompted = False
     auto_arm_attempted = False
+    browser_wake_self_test_sent = False
     target_ble_connected = False
     server = None
     server_lines: list[str] = []
@@ -494,31 +502,51 @@ def main() -> int:
         send(serial, records, "GET_CONFIG_STATUS", args.timeout)
         start_configured = send(serial, records, "START_CONFIGURED", args.timeout)
         if any(response == "ERROR:PersonaAlreadyActive" for response in start_configured.responses):
-            serial.close()
-            ok, output = reset_board(port, args.reset_command)
-            reset_records.append(
-                {
-                    "reason": "persona_already_active",
-                    "requested_persona": persona_spec["persona_id"],
-                    "command": args.reset_command.format(port=port),
-                    "ok": ok,
-                    "output": output,
-                }
-            )
-            if not ok:
-                raise SystemExit(f"Reset command failed after PersonaAlreadyActive:\n{output}")
-            time.sleep(4.0)
-            serial = open_serial()
-            send(serial, records, "GET_INFO", args.timeout)
-            send(serial, records, "GET_STATUS", args.timeout)
-            import_json(
-                serial,
-                records,
-                json.dumps(preset_config(str(persona_spec["preset"])), separators=(",", ":")).encode("utf-8"),
-                args.timeout,
-            )
-            send(serial, records, "GET_CONFIG_STATUS", args.timeout)
-            start_configured = send(serial, records, "START_CONFIGURED", args.timeout)
+            already_active_status = send(serial, records, "GET_STATUS", args.timeout)
+            if status_persona(already_active_status) == str(persona_spec["persona_id"]):
+                reset_records.append(
+                    {
+                        "reason": "persona_already_active_reused",
+                        "requested_persona": persona_spec["persona_id"],
+                        "ok": True,
+                        "output": "matching persona was already active; reused existing BLE connection",
+                    }
+                )
+                start_configured = CommandRecord(
+                    "START_CONFIGURED",
+                    [
+                        "CONFIG_ACTION:action=start_configured;state=already_active_reused;"
+                        f"detail=persona={persona_spec['persona_id']};bridge=false;;"
+                    ],
+                )
+                print_record(start_configured)
+                records.append(start_configured)
+            else:
+                serial.close()
+                ok, output = reset_board(port, args.reset_command)
+                reset_records.append(
+                    {
+                        "reason": "persona_already_active",
+                        "requested_persona": persona_spec["persona_id"],
+                        "command": args.reset_command.format(port=port),
+                        "ok": ok,
+                        "output": output,
+                    }
+                )
+                if not ok:
+                    raise SystemExit(f"Reset command failed after PersonaAlreadyActive:\n{output}")
+                time.sleep(4.0)
+                serial = open_serial()
+                send(serial, records, "GET_INFO", args.timeout)
+                send(serial, records, "GET_STATUS", args.timeout)
+                import_json(
+                    serial,
+                    records,
+                    json.dumps(preset_config(str(persona_spec["preset"])), separators=(",", ":")).encode("utf-8"),
+                    args.timeout,
+                )
+                send(serial, records, "GET_CONFIG_STATUS", args.timeout)
+                start_configured = send(serial, records, "START_CONFIGURED", args.timeout)
         if any(response.startswith("ERROR:") for response in start_configured.responses):
             raise SystemExit("START_CONFIGURED failed: " + "; ".join(start_configured.responses))
         send(serial, records, "START_VIRTUAL_INPUT", args.timeout)
@@ -528,6 +556,13 @@ def main() -> int:
         bridge_started = send(serial, records, "GET_BRIDGE_STATUS", args.timeout)
         current_status = send(serial, records, "GET_STATUS", args.timeout)
         target_ble_connected = status_ble_connected(current_status)
+        if args.browser_wake_self_test and target_ble_connected:
+            wake_command = "SEND_XBOX_SELF_TEST_REPORT" if args.persona == "xbox" else "SEND_BLE_SELF_TEST_REPORT"
+            send(serial, records, wake_command, args.timeout)
+            time.sleep(0.25)
+            send(serial, records, wake_command, args.timeout)
+            time.sleep(0.5)
+            browser_wake_self_test_sent = True
 
         browser_gamepad = None
         if not args.no_browser:
@@ -670,6 +705,7 @@ def main() -> int:
         "target_ble_connected": target_ble_connected,
         "human_prompted": human_prompted,
         "auto_arm_attempted": auto_arm_attempted,
+        "browser_wake_self_test_sent": browser_wake_self_test_sent,
         "browser_url": witness_url(args.witness_port, args.persona, session_label, args.browser_url),
         "scenarios": scenarios,
         "expected_count": expected_summary["expected_count"],

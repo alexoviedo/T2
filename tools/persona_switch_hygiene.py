@@ -28,7 +28,11 @@ def run_command(command: list[str]) -> tuple[int, str]:
 
 
 def latest_run_dir(base: pathlib.Path, persona: str) -> pathlib.Path | None:
-    matches = sorted(base.glob(f"{persona}_virtual_bridge_*"), key=lambda path: path.stat().st_mtime, reverse=True)
+    matches = sorted(
+        list(base.glob(f"{persona}_virtual_bridge_*")) + list(base.glob(f"{persona}_virtual_bridge_clean_*")),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     return matches[0] if matches else None
 
 
@@ -91,6 +95,8 @@ def main() -> int:
     parser.add_argument("--duration-per-scenario", type=float, default=0.75)
     parser.add_argument("--out-dir", type=pathlib.Path, default=pathlib.Path("target/persona-switching-hygiene"))
     parser.add_argument("--witness-out-dir", type=pathlib.Path, default=pathlib.Path("target/virtual-input-bridge-witness"))
+    parser.add_argument("--run-prefix", default="persona_switch")
+    parser.add_argument("--clean-witness-prefix", action="store_true")
     parser.add_argument("--no-human", action="store_true")
     parser.add_argument("--no-open", action="store_true")
     args = parser.parse_args()
@@ -101,7 +107,7 @@ def main() -> int:
         raise SystemExit(f"Unknown persona(s): {', '.join(unknown)}")
 
     stamp = utc_stamp()
-    run_dir = args.out_dir / f"persona_switch_{stamp}"
+    run_dir = args.out_dir / f"{args.run_prefix}_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     results: list[dict[str, Any]] = []
@@ -125,6 +131,8 @@ def main() -> int:
             "--assume-bluetooth-connected",
             "--no-physical-input",
         ]
+        if args.clean_witness_prefix:
+            command.extend(["--run-prefix", f"{persona}_virtual_bridge_clean"])
         if args.no_human:
             command.append("--no-human")
         if args.no_open:

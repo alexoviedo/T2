@@ -319,6 +319,16 @@ class VirtualInputBridgeWitnessTests(unittest.TestCase):
 
 
 class PersonaSwitchHygieneTests(unittest.TestCase):
+    def test_latest_run_dir_includes_clean_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            base = pathlib.Path(temp)
+            old = base / "generic_virtual_bridge_20260101T000000Z"
+            clean = base / "generic_virtual_bridge_clean_20260101T000100Z"
+            old.mkdir()
+            clean.mkdir()
+
+            self.assertEqual(persona_switch_hygiene.latest_run_dir(base, "generic"), clean)
+
     def test_persona_result_summarizes_browser_slot_and_failures(self) -> None:
         result = persona_switch_hygiene.persona_result(
             {

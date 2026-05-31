@@ -45,14 +45,17 @@ before status docs should change.
   cache states. The 2026-05-31 persona-switching diagnostic showed strict
   browser stale-slot detection works, but no-human Generic browser replay
   remained blocked after target bond clear/reset because macOS/Chrome did not
-  reconnect automatically.
+  reconnect automatically. A manual cleanup follow-up restored Generic BLE HID
+  visibility in macOS `hidutil`/`ioreg`, but Chrome still captured zero Generic
+  Gamepad API samples while the target bridge published reports.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
   Gamepad API slot state, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: manual-assisted macOS Bluetooth cache cleanup
-  and reconnect witness, followed by strict Generic virtual browser replay using
-  `tools/persona_switch_hygiene.py`.
+- Recommended next prompt type: focused Generic Chrome/Gamepad API exposure
+  diagnostic starting from connected Generic BLE HID in macOS HID tools and
+  target bridge publishing, then strict Generic virtual browser replay only if
+  Chrome exposure is restored.
 - Risk: high, because BLE cache behavior is host-dependent.
 
 ## 4. Deadzone And Calibration Quality Tuning
