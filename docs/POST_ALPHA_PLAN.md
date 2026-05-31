@@ -17,22 +17,24 @@ before status docs should change.
   `docs/GAME_COMPATIBILITY_WITNESS.md`.
 - Risk: medium, because app input handling varies widely.
 
-## 2. Xbox Stick-Press Gap And Refined Live Mapping
+## 2. Xbox Stick-Press Gap And Physical Refined Live Mapping
 
 - Why it matters: the refined Xbox mapping is target-side proven, and a
   deterministic macOS/Chrome diagnostic now shows `mapping="standard"` with
   expected standard stick, trigger, D-pad, A/B/X/Y, LB/RB, View, and Menu
-  movement. Chrome did not expose left/right stick press as B10/B11, and
-  refined live Flight Pack host movement is still not proven.
+  movement. Virtual normalized-input replay now proves the refined Xbox
+  stick/rudder/toe mapping through the live bridge into Chrome standard controls.
+  Chrome did not expose left/right stick press as B10/B11, and physical
+  refined Flight Pack host movement is still not separately proven.
 - Evidence needed: decide whether the B10/B11 gap is Chrome/macOS suppression,
-  report-map button ordering, or descriptor semantics; then capture persisted
-  Xbox config, host-visible trigger and stick movement, serial report bytes,
-  bridge counters, browser samples, and limitations. A literal Xbox-like browser
-  `id` is useful context but should not be treated as the sole success criterion.
+  report-map button ordering, or descriptor semantics; then capture physical
+  refined Flight Pack Xbox movement, serial report bytes, bridge counters,
+  browser samples, and limitations. A literal Xbox-like browser `id` is useful
+  context but should not be treated as the sole success criterion.
 - Hardware/user action: likely required for BLE pairing and physical controls.
 - Recommended next prompt type: focused Xbox stick-press descriptor/report-map
-  investigation, followed by a refined Xbox Flight Pack live-bridge witness for
-  rudder and toe brakes with operator movement.
+  investigation, followed by a physical refined Xbox Flight Pack live-bridge
+  witness for rudder and toe brakes with operator movement.
 - Risk: medium-high, because host Xbox HID handling and pairing state can be
   sticky.
 

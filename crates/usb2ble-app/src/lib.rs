@@ -4,18 +4,19 @@
 
 use usb2ble_contracts::{
     AppState, BleCompatibilityVariant, BleLinkState, BondStore, BridgeRuntimeConfig,
-    CONTRACT_VERSION, CUSTOM_RUNTIME_PROFILE_ID_STR, CompositeMerger, ConfigActionResponse,
-    ConfigStatusResponse, ConfigStore, ControlCommand, ControlError, ControlResponse,
-    DescriptorKey, EncodedBleReport, EncodedReportResponse, FLIGHT_PACK_DEMO_PROFILE_ID_STR,
-    GENERIC_AUTO_PROFILE_ID_STR, GENERIC_GAMEPAD_PERSONA_ID_STR, HidDescriptorParser,
-    HidReportDecoder, HidSummaryResponse, InfoResponse, InputCatalog, InputCatalogEntry,
-    InputNormalizer, JsonResponse, MAX_RUNTIME_CONFIG_JSON_BYTES, Mapper,
-    MappingDiagnosticsResponse, MappingProfile, NormalizedControlValue, NormalizedInputFrame,
+    CONTRACT_VERSION, CUSTOM_RUNTIME_PROFILE_ID_STR, CompositeInputFrame, CompositeMerger,
+    ConfigActionResponse, ConfigStatusResponse, ConfigStore, ConnectionTopology, ControlCommand,
+    ControlError, ControlResponse, DescriptorKey, DeviceId, EncodedBleReport,
+    EncodedReportResponse, FLIGHT_PACK_DEMO_PROFILE_ID_STR, GENERIC_AUTO_PROFILE_ID_STR,
+    GENERIC_GAMEPAD_PERSONA_ID_STR, HidDescriptorParser, HidReportDecoder, HidSummaryResponse,
+    InfoResponse, InputCatalog, InputCatalogEntry, InputNormalizer, InterfaceId, JsonResponse,
+    MAX_RUNTIME_CONFIG_JSON_BYTES, Mapper, MappingDiagnosticsResponse, MappingProfile,
+    NormalizedCompositeValue, NormalizedControlValue, NormalizedInputFrame,
     NormalizedInputResponse, PersonaEncoder, PersonaId, ProfileId, ProfileResponse, ProfileStore,
     RUNTIME_CONFIG_SCHEMA_VERSION, RuntimeConfig, RuntimeTransform, SourceMappingRule,
-    StatusResponse, UsbDescriptorResponse, UsbIngressEvent, UsbReportResponse, UsbStatusResponse,
-    XBOX_AUTO_PROFILE_ID_STR, XBOX_FLIGHT_PACK_DEMO_PROFILE_ID_STR,
-    XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR,
+    StatusResponse, UsbDescriptorResponse, UsbDeviceRef, UsbIngressEvent, UsbInterfaceRef,
+    UsbReportResponse, UsbStatusResponse, XBOX_AUTO_PROFILE_ID_STR,
+    XBOX_FLIGHT_PACK_DEMO_PROFILE_ID_STR, XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR,
 };
 use usb2ble_hid::{HidParser, summarize_capabilities};
 use usb2ble_input::{LatestInputMerger, StandardInputNormalizer};
@@ -37,7 +38,32 @@ pub struct App<S> {
     runtime_config: RuntimeConfig,
     config_source: &'static str,
     last_config_error: Option<&'static str>,
+    virtual_input: VirtualInputRuntime,
 }
+
+#[derive(Debug, Clone, Default)]
+struct VirtualInputRuntime {
+    enabled: bool,
+    frame: Option<CompositeInputFrame>,
+    last_scenario: Option<String>,
+    frame_counter: u64,
+}
+
+const VIRTUAL_SCENARIOS: &[&str] = &[
+    "neutral",
+    "stick_left",
+    "stick_right",
+    "stick_forward",
+    "stick_back",
+    "rudder_left",
+    "rudder_right",
+    "left_toe_released",
+    "left_toe_pressed",
+    "right_toe_released",
+    "right_toe_pressed",
+    "throttle_min",
+    "throttle_max",
+];
 
 impl<S> App<S>
 where
@@ -72,6 +98,7 @@ where
             runtime_config,
             config_source,
             last_config_error,
+            virtual_input: VirtualInputRuntime::default(),
         }
     }
 
@@ -172,6 +199,30 @@ where
                 }),
                 Err(err) => ControlResponse::Error(err),
             },
+            ControlCommand::StartVirtualInput => {
+                self.virtual_input.enabled = true;
+                if self.virtual_input.frame.is_none() {
+                    let _ = self.publish_virtual_input_scenario("neutral");
+                }
+                self.virtual_input_status_response()
+            }
+            ControlCommand::StopVirtualInput => {
+                self.virtual_input.enabled = false;
+                self.virtual_input_status_response()
+            }
+            ControlCommand::GetVirtualInputStatus => self.virtual_input_status_response(),
+            ControlCommand::PublishVirtualInputFrame(scenario) => {
+                match self.publish_virtual_input_scenario(scenario) {
+                    Ok(()) => self.virtual_input_status_response(),
+                    Err(err) => ControlResponse::Error(err),
+                }
+            }
+            ControlCommand::RunVirtualInputSequence(sequence) => {
+                match self.run_virtual_input_sequence(sequence) {
+                    Ok(()) => self.virtual_input_status_response(),
+                    Err(err) => ControlResponse::Error(err),
+                }
+            }
             ControlCommand::StartBleGenericGamepad
             | ControlCommand::PublishGenericGamepadReport
             | ControlCommand::SendBleSelfTestReport
@@ -215,6 +266,12 @@ where
     }
 
     fn latest_composite(&self) -> Result<usb2ble_contracts::CompositeInputFrame, ControlError> {
+        if self.virtual_input.enabled
+            && let Some(frame) = &self.virtual_input.frame
+        {
+            return Ok(frame.clone());
+        }
+
         let frames = self.latest_normalized_frames();
         if frames.is_empty() {
             return Err(ControlError::NotFound);
@@ -663,6 +720,147 @@ where
     #[must_use]
     pub const fn state(&self) -> &AppState {
         &self.state
+    }
+
+    fn publish_virtual_input_scenario(&mut self, scenario: &str) -> Result<(), ControlError> {
+        if !self.virtual_input.enabled {
+            return Err(ControlError::Generic);
+        }
+        let next_counter = self.virtual_input.frame_counter.saturating_add(1);
+        let frame = virtual_flight_pack_frame(scenario, next_counter)?;
+        self.virtual_input.frame = Some(frame);
+        self.virtual_input.last_scenario = Some(scenario.to_string());
+        self.virtual_input.frame_counter = next_counter;
+        Ok(())
+    }
+
+    fn run_virtual_input_sequence(&mut self, sequence: &str) -> Result<(), ControlError> {
+        match sequence {
+            "flight_pack_core" | "all" => self.publish_virtual_input_scenario("neutral"),
+            _ => Err(ControlError::NotFound),
+        }
+    }
+
+    fn virtual_input_status_response(&self) -> ControlResponse {
+        let json = serde_json::json!({
+            "enabled": self.virtual_input.enabled,
+            "last_scenario": self.virtual_input.last_scenario,
+            "frame_counter": self.virtual_input.frame_counter,
+            "active_input_source": if self.virtual_input.enabled && self.virtual_input.frame.is_some() {
+                "virtual"
+            } else {
+                "live_usb"
+            },
+            "controls": self.virtual_input.frame.as_ref().map_or(0, |frame| frame.controls.len()),
+            "sources": self.virtual_input.frame.as_ref().map_or(0, |frame| frame.sources.len()),
+            "timestamp_micros": self.virtual_input.frame.as_ref().map(|frame| frame.timestamp_micros),
+            "supported_scenarios": VIRTUAL_SCENARIOS,
+            "supported_sequences": ["flight_pack_core"],
+        });
+        ControlResponse::Json(JsonResponse {
+            prefix: "VIRTUAL_INPUT_STATUS_JSON",
+            json: json.to_string(),
+        })
+    }
+}
+
+fn virtual_flight_pack_frame(
+    scenario: &str,
+    counter: u64,
+) -> Result<CompositeInputFrame, ControlError> {
+    let mut stick_x = 0;
+    let mut stick_y = 0;
+    let mut throttle = i32::from(i16::MAX);
+    let mut rudder = 0;
+    let mut left_toe = i32::from(i16::MAX);
+    let mut right_toe = i32::from(i16::MAX);
+
+    match scenario {
+        "neutral" | "left_toe_released" | "right_toe_released" | "throttle_min" => {}
+        "stick_left" => stick_x = i32::from(i16::MIN),
+        "stick_right" => stick_x = i32::from(i16::MAX),
+        "stick_forward" => stick_y = i32::from(i16::MIN),
+        "stick_back" => stick_y = i32::from(i16::MAX),
+        "rudder_left" => rudder = i32::from(i16::MAX),
+        "rudder_right" => rudder = i32::from(i16::MIN),
+        "left_toe_pressed" => left_toe = i32::from(i16::MIN),
+        "right_toe_pressed" => right_toe = i32::from(i16::MIN),
+        "throttle_max" => throttle = i32::from(i16::MIN),
+        _ => return Err(ControlError::NotFound),
+    }
+
+    let stick = virtual_source(1, 0xb10a);
+    let twcs = virtual_source(2, 0xb687);
+    let timestamp_micros = counter.saturating_mul(1_000);
+    let controls = vec![
+        virtual_value(
+            &stick,
+            "axis_01_30",
+            NormalizedControlValue::Axis(stick_x),
+            timestamp_micros,
+        ),
+        virtual_value(
+            &stick,
+            "axis_01_31",
+            NormalizedControlValue::Axis(stick_y),
+            timestamp_micros,
+        ),
+        virtual_value(
+            &twcs,
+            "axis_01_32",
+            NormalizedControlValue::Axis(throttle),
+            timestamp_micros,
+        ),
+        virtual_value(
+            &twcs,
+            "axis_01_36",
+            NormalizedControlValue::Axis(rudder),
+            timestamp_micros,
+        ),
+        virtual_value(
+            &twcs,
+            "axis_01_34",
+            NormalizedControlValue::Axis(left_toe),
+            timestamp_micros,
+        ),
+        virtual_value(
+            &twcs,
+            "axis_01_33",
+            NormalizedControlValue::Axis(right_toe),
+            timestamp_micros,
+        ),
+    ];
+
+    Ok(CompositeInputFrame {
+        sources: vec![stick, twcs],
+        controls,
+        timestamp_micros,
+    })
+}
+
+const fn virtual_source(device_id: u32, product_id: u16) -> UsbInterfaceRef {
+    UsbInterfaceRef {
+        device: UsbDeviceRef {
+            device_id: DeviceId(device_id),
+            topology: ConnectionTopology::Direct,
+            vendor_id: 0x044f,
+            product_id,
+        },
+        interface_id: InterfaceId(0),
+    }
+}
+
+fn virtual_value(
+    source: &UsbInterfaceRef,
+    control_id: &str,
+    value: NormalizedControlValue,
+    timestamp_micros: u64,
+) -> NormalizedCompositeValue {
+    NormalizedCompositeValue {
+        source: source.clone(),
+        control_id: control_id.to_string(),
+        value,
+        timestamp_micros,
     }
 }
 
@@ -1203,6 +1401,97 @@ mod tests {
         } else {
             panic!("Expected mapping diagnostics");
         }
+    }
+
+    #[test]
+    fn virtual_input_drives_refined_generic_mapping_without_usb_reports() {
+        let mut app = App::new(InMemoryStore::new());
+        app.set_runtime_config(RuntimeConfig::flight_pack_generic_preset())
+            .unwrap();
+
+        assert_eq!(
+            app.handle_control_command(&ControlCommand::GetGenericGamepadReport),
+            ControlResponse::Error(ControlError::NotFound)
+        );
+
+        match app.handle_control_command(&ControlCommand::StartVirtualInput) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "VIRTUAL_INPUT_STATUS_JSON");
+                assert!(resp.json.contains("\"enabled\":true"));
+                assert!(resp.json.contains("\"active_input_source\":\"virtual\""));
+            }
+            other => panic!("Expected virtual input status, got {other:?}"),
+        }
+        match app.handle_control_command(&ControlCommand::PublishVirtualInputFrame(
+            "throttle_max".to_string(),
+        )) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "VIRTUAL_INPUT_STATUS_JSON");
+                assert!(resp.json.contains("\"last_scenario\":\"throttle_max\""));
+            }
+            other => panic!("Expected virtual input status, got {other:?}"),
+        }
+
+        match app.handle_control_command(&ControlCommand::GetGenericGamepadMapping) {
+            ControlResponse::MappingDiagnostics(diagnostics) => {
+                let z = diagnostics
+                    .entries
+                    .iter()
+                    .find(|entry| entry.target_control_id.as_deref() == Some("z"))
+                    .expect("z mapping");
+                assert_eq!(z.source_control_id, "axis_01_32");
+                assert_eq!(
+                    z.source_value,
+                    NormalizedControlValue::Axis(i32::from(i16::MIN))
+                );
+            }
+            other => panic!("Expected MappingDiagnostics, got {other:?}"),
+        }
+
+        let report = app.generic_gamepad_report().unwrap();
+        assert_eq!(report.persona_id.0, GENERIC_GAMEPAD_PERSONA_ID_STR);
+        assert_eq!(report.bytes.len(), 15);
+    }
+
+    #[test]
+    fn virtual_input_drives_refined_xbox_mapping_without_usb_reports() {
+        let mut app = App::new(InMemoryStore::new());
+        app.set_runtime_config(RuntimeConfig::flight_pack_xbox_preset())
+            .unwrap();
+
+        assert_eq!(
+            app.handle_control_command(&ControlCommand::PublishVirtualInputFrame(
+                "left_toe_pressed".to_string()
+            )),
+            ControlResponse::Error(ControlError::Generic)
+        );
+        let _ = app.handle_control_command(&ControlCommand::StartVirtualInput);
+        let _ = app.handle_control_command(&ControlCommand::PublishVirtualInputFrame(
+            "left_toe_pressed".to_string(),
+        ));
+
+        match app.handle_control_command(&ControlCommand::GetXboxGamepadMapping) {
+            ControlResponse::MappingDiagnostics(diagnostics) => {
+                let trigger = diagnostics
+                    .entries
+                    .iter()
+                    .find(|entry| entry.target_control_id.as_deref() == Some("left_trigger"))
+                    .expect("left trigger mapping");
+                assert_eq!(trigger.source_control_id, "axis_01_34");
+                assert_eq!(
+                    trigger.source_value,
+                    NormalizedControlValue::Axis(i32::from(i16::MIN))
+                );
+                assert_eq!(trigger.reason, "profile_rule_calibrated");
+            }
+            other => panic!("Expected MappingDiagnostics, got {other:?}"),
+        }
+
+        let report = app.xbox_gamepad_report().unwrap();
+        assert_eq!(report.persona_id.0, XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR);
+        assert_eq!(report.report_id.0, 1);
+        assert_eq!(report.bytes.len(), 16);
+        assert_eq!(&report.bytes[8..10], &1_023_u16.to_le_bytes());
     }
 
     #[test]

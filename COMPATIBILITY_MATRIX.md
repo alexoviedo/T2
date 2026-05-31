@@ -15,7 +15,7 @@ This matrix tracks the support status for devices, personas, and milestones.
 | M4 | Expanded hardware evidence captured | Normalized live-input diagnostics work for the T.16000 stick, TFRP pedals, TWCS throttle, and the RJ12 two-USB Flight Pack topology; practical RJ12 axis labels are witnessed; button/detach and simultaneous three-separate-USB streaming remain open | `docs/milestone-evidence/M4_NORMALIZED_INPUT_WITNESS_2026-04-29.md`; `docs/milestone-evidence/M4_FLIGHT_PACK_NORMALIZED_WITNESS_2026-04-29.md`; `docs/milestone-evidence/M4_RJ12_TWO_USB_FLIGHT_PACK_WITNESS_2026-04-29.md`; `docs/milestone-evidence/FLIGHT_PACK_CALIBRATION_WITNESS_2026-05-28.md` |
 | M5 | Generic BLE self-test witnessed | Generic Gamepad BLE advertising, macOS pairing/input, and synthetic self-test input are witnessed. `FORGET_BLE_BONDS` exists as a command path, but bond-clear recovery and durable bond persistence are not proven. | `docs/milestone-evidence/BLE_HID_DEMO_CODEPATH_BUILD_WITNESS_2026-04-30.md`; `docs/milestone-evidence/BLE_HID_GENERIC_GAMEPAD_ADVERTISING_WITNESS_2026-04-30.md`; `docs/milestone-evidence/BLE_HID_MAC_PAIRING_INPUT_WITNESS_2026-04-30.md`; `docs/milestone-evidence/BROWSER_GAMEPAD_API_WITNESS_2026-04-30.md` |
 | M6 | Demo bridge slice witnessed; formal hardening open | Generic Gamepad USB-derived BLE publish and explicit live bridge are witnessed through macOS/browser evidence; practical RJ12 Flight Pack target-side mapping refinement, host-visible Generic axis exposure, a refined Generic 300-second live bridge soak, and a self-hosted browser game/app smoke are witnessed; broad external/native game/app compatibility, reconnect hardening, and final calibration are not proven | `docs/milestone-evidence/FLIGHT_PACK_DEMO_BLE_BROWSER_WITNESS_2026-05-08.md`; `docs/milestone-evidence/ASAP_DEMO_REHEARSAL_WITNESS_2026-05-08.md`; `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`; `docs/milestone-evidence/FLIGHT_PACK_MAPPING_REFINEMENT_WITNESS_2026-05-28.md`; `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`; `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md`; `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md` |
-| M11 | Xbox persona slice witnessed; broad compatibility open | Xbox report encoding, BLE identity/report publishing, earlier macOS/browser VID/PID support, and Xbox live bridge/soak evidence exist; Xbox BLE Profile v1 adds target-side model-1914 profile/report-map diagnostics and checker evidence. A newer deterministic macOS/Chrome diagnostic reached target BLE `Connected`; Chrome exposed `Xbox Wireless Controller (STANDARD GAMEPAD)` with `mapping="standard"` and expected standard stick, trigger, D-pad, A/B/X/Y, LB/RB, View, and Menu movement. Stick-press buttons did not surface at B10/B11. App/game compatibility, refined Xbox host-visible Flight Pack mapping, reconnect, and host breadth are not claimed | `docs/milestone-evidence/XBOX_BLE_WITNESS_2026-05-09.md`; `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`; `docs/milestone-evidence/LIVE_BRIDGE_SOAK_WITNESS_2026-05-10.md`; `docs/milestone-evidence/XBOX_BLE_PROFILE_V1_2026-05-29.md`; `docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md` |
+| M11 | Xbox persona slice witnessed; broad compatibility open | Xbox report encoding, BLE identity/report publishing, earlier macOS/browser VID/PID support, and Xbox live bridge/soak evidence exist; Xbox BLE Profile v1 adds target-side model-1914 profile/report-map diagnostics and checker evidence. A newer deterministic macOS/Chrome diagnostic reached target BLE `Connected`; Chrome exposed `Xbox Wireless Controller (STANDARD GAMEPAD)` with `mapping="standard"` and expected standard stick, trigger, D-pad, A/B/X/Y, LB/RB, View, and Menu movement. Stick-press buttons did not surface at B10/B11. Virtual normalized-input replay proves refined Flight Pack Xbox stick/rudder/toe mappings can drive Chrome standard controls through the live bridge. App/game compatibility, physical refined Xbox Flight Pack host movement, reconnect, and host breadth are not claimed | `docs/milestone-evidence/XBOX_BLE_WITNESS_2026-05-09.md`; `docs/milestone-evidence/LIVE_BRIDGE_WITNESS_2026-05-10.md`; `docs/milestone-evidence/LIVE_BRIDGE_SOAK_WITNESS_2026-05-10.md`; `docs/milestone-evidence/XBOX_BLE_PROFILE_V1_2026-05-29.md`; `docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md`; `docs/milestone-evidence/VIRTUAL_INPUT_XBOX_BRIDGE_WITNESS_2026-05-30.md` |
 
 ## Toolchain
 
@@ -42,7 +42,7 @@ This matrix tracks the support status for devices, personas, and milestones.
 | Persona | ID | Status | Note |
 |---------|----|--------|------|
 | Generic Gamepad | `generic_gamepad` | Witnessed demo bridge path | Starts on ESP32-S3, pairs/connects to macOS, publishes synthetic and live USB-derived reports, appears in browser Gamepad API, works with `START_BRIDGE`, exposes refined practical RJ12 Flight Pack `z/rx/ry/rz` axes as browser A2/A3/A4/A5 in the checked-in Chrome witness, has a checked-in 300-second refined Generic live bridge soak, and passes a self-hosted browser game/app smoke. This is not broad external/native game/app compatibility, not final Flight Pack calibration, and not durable bond persistence. |
-| Xbox Wireless Controller | `xbox_wireless_controller` | Witnessed compatibility persona slice plus target profile diagnostics; current host-visible standard-layout diagnostic is partial | Starts on ESP32-S3 with Xbox model 1914 / Series X\|S BLE identity, pairs/connects on macOS in earlier evidence as `Xbox Wireless Controller`, publishes synthetic and USB-derived 16-byte reports, exposes Xbox VID/PID in earlier browser evidence, and works with `START_BRIDGE`. Xbox BLE Profile v1 adds checked target-side diagnostics for Report ID 1 input, Report ID 3 output, model-1914 identity, and Flight Pack Xbox mapping. The 2026-05-29 deterministic host-visible run reached target BLE `Connected`; Chrome exposed `Xbox Wireless Controller (STANDARD GAMEPAD)` with `mapping="standard"` and expected standard stick, trigger, D-pad, A/B/X/Y, LB/RB, View, and Menu movement; stick-press buttons did not surface at B10/B11. Broad Xbox/game/app compatibility and refined Xbox host-visible Flight Pack mapping are not claimed. |
+| Xbox Wireless Controller | `xbox_wireless_controller` | Witnessed compatibility persona slice plus target profile diagnostics; current host-visible standard-layout diagnostic is partial | Starts on ESP32-S3 with Xbox model 1914 / Series X\|S BLE identity, pairs/connects on macOS in earlier evidence as `Xbox Wireless Controller`, publishes synthetic and USB-derived 16-byte reports, exposes Xbox VID/PID in earlier browser evidence, and works with `START_BRIDGE`. Xbox BLE Profile v1 adds checked target-side diagnostics for Report ID 1 input, Report ID 3 output, model-1914 identity, and Flight Pack Xbox mapping. The 2026-05-29 deterministic host-visible run reached target BLE `Connected`; Chrome exposed `Xbox Wireless Controller (STANDARD GAMEPAD)` with `mapping="standard"` and expected standard stick, trigger, D-pad, A/B/X/Y, LB/RB, View, and Menu movement; stick-press buttons did not surface at B10/B11. Virtual normalized-input replay proves refined Flight Pack Xbox stick/rudder/toe mappings through the live bridge into Chrome standard controls. Broad Xbox/game/app compatibility and physical refined Xbox Flight Pack host movement are not claimed. |
 
 ## Compatibility Claim Boundaries
 
@@ -55,13 +55,18 @@ This matrix tracks the support status for devices, personas, and milestones.
   Steam, or arbitrary app compatibility. Xbox BLE Profile v1 target diagnostics
   are checked in at
   `docs/milestone-evidence/XBOX_BLE_PROFILE_V1_2026-05-29.md`, but they do not
-  prove host-visible refined Xbox Flight Pack mapping. A current deterministic
+  prove host-visible refined Xbox Flight Pack mapping by itself. A current deterministic
   macOS/Chrome diagnostic is checked in at
   `docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md`; it
   reached target BLE `Connected`; Chrome exposed the device as
   `Xbox Wireless Controller (STANDARD GAMEPAD)` with `mapping="standard"` and
   expected standard stick, trigger, D-pad, A/B/X/Y, LB/RB, View, and Menu
-  movement. Stick-press buttons did not surface at B10/B11.
+  movement. Stick-press buttons did not surface at B10/B11. Virtual
+  normalized-input replay for the refined Flight Pack Xbox mapping is checked
+  in at
+  `docs/milestone-evidence/VIRTUAL_INPUT_XBOX_BRIDGE_WITNESS_2026-05-30.md`;
+  it proves deterministic virtual mapping/persona/bridge/Chrome visibility, not
+  physical USB movement.
 - Runtime configuration APIs and Web Serial tooling exist, and durable runtime
   config persistence is proven by
   `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.
@@ -80,8 +85,8 @@ This matrix tracks the support status for devices, personas, and milestones.
 - Self-hosted browser game/app smoke for the refined practical RJ12 Generic
   profile is proven by
   `docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md`.
-  Final deadzone/calibration quality, real game/app mapping quality, and Xbox
-  host-visible refined mapping remain unproven.
+  Final deadzone/calibration quality, real game/app mapping quality, and
+  physical Xbox host-visible refined movement remain unproven.
 - iPhone compatibility remains unproven. The first iPhone exploration is checked
   in as a useful failure: the target reported Generic BLE HID advertising, but
   the iPhone did not discover `USB2BLE Gamepad` in Settings > Bluetooth. See

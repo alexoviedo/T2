@@ -2134,6 +2134,42 @@ mod tests {
         assert_eq!(report.bytes[0], 0b0000_0010);
     }
 
+    #[test]
+    fn bridge_uses_virtual_input_frame_when_enabled() {
+        let mut runtime = Runtime::new();
+        runtime
+            .app
+            .set_runtime_config(RuntimeConfig::flight_pack_xbox_preset())
+            .unwrap();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        match runtime.run(ControlCommand::StartVirtualInput) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "VIRTUAL_INPUT_STATUS_JSON");
+                assert!(resp.json.contains("\"active_input_source\":\"virtual\""));
+            }
+            other => panic!("expected virtual status, got {other:?}"),
+        }
+        match runtime.run(ControlCommand::PublishVirtualInputFrame(
+            "left_toe_pressed".to_string(),
+        )) {
+            ControlResponse::Json(resp) => {
+                assert!(resp.json.contains("\"last_scenario\":\"left_toe_pressed\""));
+            }
+            other => panic!("expected virtual status, got {other:?}"),
+        }
+
+        assert_bridge_status(runtime.run(ControlCommand::StartBridge));
+        assert_eq!(runtime.poll_bridge(0), BridgePollOutcome::FirstPublish);
+
+        let report = runtime.ble.published_reports().last().unwrap();
+        assert_eq!(report.persona_id, XBOX_WIRELESS_CONTROLLER_PERSONA_ID);
+        assert_eq!(&report.bytes[8..10], &1_023_u16.to_le_bytes());
+    }
+
     fn inject_button_input(app: &mut App<InMemoryStore>) {
         let dev = UsbDeviceRef {
             device_id: DeviceId(1),

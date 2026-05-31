@@ -39,8 +39,17 @@ PERSONAS: dict[str, dict[str, Any]] = {
             "docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md",
             "docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md",
         ],
+        "real_usb_input_evidence": [
+            "docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md",
+            "docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md",
+        ],
+        "virtual_input_evidence": [],
+        "deterministic_persona_report_evidence": [],
         "host_evidence": [
             "docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md",
+        ],
+        "game_app_evidence": [
+            "docs/milestone-evidence/GAME_COMPATIBILITY_WITNESS_2026-05-28_SELF_HOSTED_SKY_RUN.md",
         ],
         "matrix_terms": ["generic_gamepad", "Generic Gamepad"],
         "claim_terms": ["Refined Generic"],
@@ -50,16 +59,28 @@ PERSONAS: dict[str, dict[str, Any]] = {
         "target_evidence": [
             "docs/milestone-evidence/XBOX_BLE_PROFILE_V1_2026-05-29.md",
         ],
+        "real_usb_input_evidence": [],
+        "virtual_input_evidence": [
+            "docs/milestone-evidence/VIRTUAL_INPUT_XBOX_BRIDGE_WITNESS_2026-05-30.md",
+        ],
+        "deterministic_persona_report_evidence": [
+            "docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md",
+        ],
         "host_evidence": [
             "docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md",
         ],
+        "game_app_evidence": [],
         "matrix_terms": ["xbox_wireless_controller", "Xbox Wireless Controller"],
         "claim_terms": ["Xbox BLE Profile v1", "Xbox macOS/Chrome deterministic diagnostic"],
     },
     "ble_keyboard": {
         "descriptor_checker": None,
         "target_evidence": [],
+        "real_usb_input_evidence": [],
+        "virtual_input_evidence": [],
+        "deterministic_persona_report_evidence": [],
         "host_evidence": [],
+        "game_app_evidence": [],
         "matrix_terms": ["Keyboard/iCade", "ble_keyboard"],
         "claim_terms": ["Keyboard/iCade"],
         "planned": True,
@@ -97,6 +118,13 @@ def add_file_checks(checks: list[Check], layer: str, item: str, paths: list[str]
         checks.append(Check(layer, item, "pass", ", ".join(paths)))
 
 
+def add_optional_evidence_check(checks: list[Check], item: str, paths: list[str]) -> None:
+    if not paths:
+        checks.append(Check("evidence", item, "warn", "not claimed by current evidence set"))
+        return
+    add_file_checks(checks, "evidence", item, paths, claimed=True)
+
+
 def evaluate_persona(persona: str, artifact_dir: pathlib.Path | None = None) -> dict[str, Any]:
     if persona not in PERSONAS:
         raise ValueError(f"unknown persona: {persona}")
@@ -113,7 +141,15 @@ def evaluate_persona(persona: str, artifact_dir: pathlib.Path | None = None) -> 
         checks.append(Check("source", "descriptor_checker", status, str(checker)))
 
     add_file_checks(checks, "evidence", "target_side_witness", spec["target_evidence"], claimed)
+    add_optional_evidence_check(checks, "real_usb_input_witness", spec["real_usb_input_evidence"])
+    add_optional_evidence_check(checks, "virtual_input_witness", spec["virtual_input_evidence"])
+    add_optional_evidence_check(
+        checks,
+        "deterministic_persona_report_witness",
+        spec["deterministic_persona_report_evidence"],
+    )
     add_file_checks(checks, "evidence", "host_visible_witness", spec["host_evidence"], claimed)
+    add_optional_evidence_check(checks, "game_app_witness", spec["game_app_evidence"])
 
     if artifact_dir is not None:
         checks.append(

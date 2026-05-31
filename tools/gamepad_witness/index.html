@@ -333,6 +333,8 @@
         lastPostAt: 0,
       };
 
+      const params = new URLSearchParams(window.location.search);
+
       const els = {
         armButton: document.querySelector("#armButton"),
         markButton: document.querySelector("#markButton"),
@@ -547,6 +549,13 @@
         });
         if (state.activeIndex === event.gamepad.index) state.activeIndex = null;
       });
+
+      if (params.get("autostart") === "1" || params.get("autoArm") === "1") {
+        setTimeout(() => {
+          const gamepad = selectGamepad(Array.from(navigator.getGamepads ? navigator.getGamepads() : []));
+          startWitness(gamepad);
+        }, 250);
+      }
     </script>
   </body>
 </html>

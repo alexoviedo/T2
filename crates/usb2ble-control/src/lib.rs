@@ -161,6 +161,25 @@ impl ControlPlane for SerialControlPlane {
         if s == "START_CONFIGURED" {
             return Ok(ControlCommand::StartConfigured);
         }
+        if s == "START_VIRTUAL_INPUT" {
+            return Ok(ControlCommand::StartVirtualInput);
+        }
+        if s == "STOP_VIRTUAL_INPUT" {
+            return Ok(ControlCommand::StopVirtualInput);
+        }
+        if s == "GET_VIRTUAL_INPUT_STATUS" {
+            return Ok(ControlCommand::GetVirtualInputStatus);
+        }
+        if let Some(rest) = s.strip_prefix("PUBLISH_VIRTUAL_INPUT_FRAME ") {
+            return Ok(ControlCommand::PublishVirtualInputFrame(
+                rest.trim().to_string(),
+            ));
+        }
+        if let Some(rest) = s.strip_prefix("RUN_VIRTUAL_INPUT_SEQUENCE ") {
+            return Ok(ControlCommand::RunVirtualInputSequence(
+                rest.trim().to_string(),
+            ));
+        }
         if let Some(rest) = s.strip_prefix("SET_BRIDGE_RATE_HZ ") {
             let rate_hz = rest
                 .trim()
@@ -796,6 +815,28 @@ mod tests {
         assert_eq!(
             cp.decode_command(b"START_CONFIGURED").unwrap(),
             ControlCommand::StartConfigured
+        );
+        assert_eq!(
+            cp.decode_command(b"START_VIRTUAL_INPUT").unwrap(),
+            ControlCommand::StartVirtualInput
+        );
+        assert_eq!(
+            cp.decode_command(b"STOP_VIRTUAL_INPUT").unwrap(),
+            ControlCommand::StopVirtualInput
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_VIRTUAL_INPUT_STATUS").unwrap(),
+            ControlCommand::GetVirtualInputStatus
+        );
+        assert_eq!(
+            cp.decode_command(b"PUBLISH_VIRTUAL_INPUT_FRAME rudder_right")
+                .unwrap(),
+            ControlCommand::PublishVirtualInputFrame("rudder_right".to_string())
+        );
+        assert_eq!(
+            cp.decode_command(b"RUN_VIRTUAL_INPUT_SEQUENCE flight_pack_core")
+                .unwrap(),
+            ControlCommand::RunVirtualInputSequence("flight_pack_core".to_string())
         );
     }
 

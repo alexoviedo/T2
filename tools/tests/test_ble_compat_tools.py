@@ -15,6 +15,7 @@ import ble_advertising_probe  # noqa: E402
 import check_ble_hid_profile  # noqa: E402
 import check_persona_acceptance  # noqa: E402
 import check_xbox_ble_profile  # noqa: E402
+import virtual_input_bridge_witness  # noqa: E402
 import xbox_host_visible_witness  # noqa: E402
 
 
@@ -197,6 +198,87 @@ class PersonaAcceptanceGateTests(unittest.TestCase):
         ]
         self.assertEqual(len(host_checks), 1)
         self.assertIn("XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md", host_checks[0]["note"])
+
+        virtual_checks = [
+            check
+            for check in summary["checks"]
+            if check["layer"] == "evidence" and check["item"] == "virtual_input_witness"
+        ]
+        self.assertEqual(len(virtual_checks), 1)
+        self.assertIn("VIRTUAL_INPUT_XBOX_BRIDGE_WITNESS_2026-05-30.md", virtual_checks[0]["note"])
+
+    def test_acceptance_gate_distinguishes_evidence_types(self) -> None:
+        summary = check_persona_acceptance.evaluate_persona("generic_gamepad")
+        items = {check["item"]: check for check in summary["checks"] if check["layer"] == "evidence"}
+
+        self.assertEqual(items["real_usb_input_witness"]["status"], "pass")
+        self.assertEqual(items["virtual_input_witness"]["status"], "warn")
+        self.assertEqual(items["deterministic_persona_report_witness"]["status"], "warn")
+        self.assertEqual(items["game_app_witness"]["status"], "pass")
+
+
+class VirtualInputBridgeWitnessTests(unittest.TestCase):
+    def test_scenario_set_expands_all_generic_scenarios(self) -> None:
+        scenarios = virtual_input_bridge_witness.scenario_names("generic", "all")
+
+        self.assertIn("throttle_max", scenarios)
+        self.assertIn("right_toe_pressed", scenarios)
+
+    def test_expected_axis_change_matches_direction(self) -> None:
+        result = virtual_input_bridge_witness.evaluate_expected(
+            "rudder_left",
+            virtual_input_bridge_witness.PERSONAS["generic"]["expected"],
+            [{"index": 3, "before": 0.0, "after": 1.0, "delta": 1.0}],
+            [],
+        )
+
+        self.assertTrue(result["matched"])
+        self.assertEqual(result["expected"]["label"], "A3 rx")
+
+    def test_expected_button_change_matches_xbox_trigger(self) -> None:
+        result = virtual_input_bridge_witness.evaluate_expected(
+            "left_toe_pressed",
+            virtual_input_bridge_witness.PERSONAS["xbox"]["expected"],
+            [],
+            [{"index": 6, "before": 0.0, "after": 1.0, "delta": 1.0}],
+        )
+
+        self.assertTrue(result["matched"])
+        self.assertEqual(result["expected"]["label"], "B6 left_trigger")
+
+    def test_expected_held_axis_value_matches_when_delta_was_missed(self) -> None:
+        result = virtual_input_bridge_witness.evaluate_expected(
+            "stick_left",
+            virtual_input_bridge_witness.PERSONAS["xbox"]["expected"],
+            [],
+            [],
+            {"axes": [-1.0, 0.0, 0.0, 0.0], "buttons": []},
+        )
+
+        self.assertTrue(result["matched"])
+        self.assertEqual(result["observed_change"]["mode"], "held_value")
+
+    def test_expected_summary_reports_failed_scenarios_by_name(self) -> None:
+        summary = virtual_input_bridge_witness.summarize_expected_results(
+            [
+                {
+                    "scenario": "neutral",
+                    "expected_result": {"expected": None, "matched": None},
+                },
+                {
+                    "scenario": "left_toe_pressed",
+                    "expected_result": {"expected": {"label": "B6 left_trigger"}, "matched": True},
+                },
+                {
+                    "scenario": "right_toe_pressed",
+                    "expected_result": {"expected": {"label": "B7 right_trigger"}, "matched": False},
+                },
+            ]
+        )
+
+        self.assertEqual(summary["expected_count"], 2)
+        self.assertEqual(summary["matched_expected_count"], 1)
+        self.assertEqual(summary["failed_expected_scenarios"], ["right_toe_pressed"])
 
 
 if __name__ == "__main__":

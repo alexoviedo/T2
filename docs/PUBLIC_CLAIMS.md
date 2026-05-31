@@ -26,6 +26,10 @@ These claims are supported by checked-in evidence:
   with `mapping="standard"` and expected standard stick, trigger, D-pad,
   A/B/X/Y, LB/RB, View, and Menu movement. Stick-press buttons did not surface
   at B10/B11, so this is still not a complete Xbox standard-layout claim.
+- Virtual normalized-input replay proves the refined Flight Pack Xbox mapping
+  can drive macOS Chrome standard Gamepad controls for stick, rudder, and toe
+  brake mappings through the live bridge. This is virtual-input regression
+  evidence, not physical USB movement evidence.
 
 ## Forbidden Overclaims
 
@@ -34,7 +38,7 @@ Do not claim any of these until matching checked-in evidence exists:
 - broad game/app compatibility,
 - external/native game compatibility,
 - iPhone compatibility,
-- Xbox host-visible refined Flight Pack mapping,
+- physical Xbox host-visible refined Flight Pack movement from real USB input,
 - complete Xbox standard button layout, including stick-press buttons,
 - BLE bond persistence or reconnect robustness,
 - final product-quality calibration or deadzone feel,

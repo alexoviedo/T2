@@ -49,7 +49,7 @@ these expected positions:
 | Persona | macOS Chrome status | Evidence |
 | --- | --- | --- |
 | Generic Gamepad | Refined Flight Pack axes `z/rx/ry/rz` are host-visible as A2/A3/A4/A5; 300-second refined Generic live bridge soak is witnessed. | `docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md`; `docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md` |
-| Xbox-compatible BLE gamepad | Partial deterministic standard-layout diagnostic: sticks, triggers, D-pad, A/B/X/Y, LB/RB, View, and Menu align; stick-press buttons did not surface at B10/B11. | `docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md` |
+| Xbox-compatible BLE gamepad | Partial deterministic standard-layout diagnostic: sticks, triggers, D-pad, A/B/X/Y, LB/RB, View, and Menu align; stick-press buttons did not surface at B10/B11. Virtual normalized-input replay also proves refined Xbox stick/rudder/toe mappings can drive Chrome standard controls through the live bridge. | `docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md`; `docs/milestone-evidence/VIRTUAL_INPUT_XBOX_BRIDGE_WITNESS_2026-05-30.md` |
 | BLE Keyboard / iCade fallback | Planned/not implemented. | none |
 
 ## Promotion Criteria

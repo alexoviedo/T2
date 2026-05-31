@@ -39,6 +39,7 @@ PREFIXES = (
     "CONFIG_JSON:",
     "CONFIG_IMPORT:",
     "CONFIG_ACTION:",
+    "VIRTUAL_INPUT_STATUS_JSON:",
     "ERROR:",
 )
 

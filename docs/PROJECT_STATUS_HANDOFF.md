@@ -51,6 +51,11 @@ Checked-in evidence supports:
   advertising intent (`name=USB2BLE Gamepad`, appearance `0x03c4`, HID UUID
   `1812`, name in scan response, bonding enabled) and confirms the iPhone still
   did not discover the current Generic advertisement.
+- Xbox BLE Profile v1 target diagnostics and macOS Chrome standard-layout
+  deterministic report evidence, with stick-press buttons still claim-bounded.
+- Diagnostic virtual normalized-input replay for the refined Flight Pack Xbox
+  mapping through live bridge into macOS Chrome standard Gamepad controls. This
+  is not physical USB movement evidence.
 - CI host checks, ESP32-S3 target preflight, firmware packaging, latest GitHub
   Release refresh, and Pages deployment.
 
@@ -85,6 +90,9 @@ Checked-in evidence supports:
 - Xbox BLE compatibility rehearsal through `tools/xbox_demo_rehearsal.py` when
   hardware is connected.
 - Live bridge smoke/soak helpers through `tools/live_bridge_soak.py`.
+- Virtual normalized-input bridge regression through
+  `tools/virtual_input_bridge_witness.py`, including no-human/browser auto-arm
+  options for already-connected hosts.
 - Game/app evidence workflow in `docs/GAME_COMPATIBILITY_WITNESS.md`.
 
 ## Not Yet Proven
@@ -103,6 +111,8 @@ Checked-in evidence supports:
   host-visible Generic browser axis exposure are now checked in, but final
   calibration quality and real game/app mapping quality are not proven.
 - Stable browser Gamepad API display name for Xbox across clean host state.
+- Physical refined Flight Pack Xbox host-visible movement from real USB input.
+  The virtual normalized-input path is witnessed separately.
 - Direct-attach USB witness; current direct attach remains blocked by available
   cabling/port geometry.
 

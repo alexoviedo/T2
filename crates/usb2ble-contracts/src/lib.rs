@@ -1320,6 +1320,16 @@ pub enum ControlCommand {
     LoadConfig,
     /// Start the selected persona and optional bridge from runtime configuration.
     StartConfigured,
+    /// Enable diagnostic virtual normalized input replay.
+    StartVirtualInput,
+    /// Disable diagnostic virtual normalized input replay.
+    StopVirtualInput,
+    /// Request diagnostic virtual normalized input replay status.
+    GetVirtualInputStatus,
+    /// Publish a named diagnostic virtual normalized input frame.
+    PublishVirtualInputFrame(String),
+    /// Run or enumerate a named diagnostic virtual input sequence.
+    RunVirtualInputSequence(String),
 }
 
 /// A response to be sent over the serial control plane.
