@@ -15,6 +15,7 @@ import ble_advertising_probe  # noqa: E402
 import check_ble_hid_profile  # noqa: E402
 import check_persona_acceptance  # noqa: E402
 import check_xbox_ble_profile  # noqa: E402
+import chrome_gamepad_probe  # noqa: E402
 import persona_switch_hygiene  # noqa: E402
 import virtual_input_bridge_witness  # noqa: E402
 import xbox_host_visible_witness  # noqa: E402
@@ -254,6 +255,7 @@ class VirtualInputBridgeWitnessTests(unittest.TestCase):
         self.assertIn("expectedMapping=none", url)
         self.assertIn("rejectStale=1", url)
         self.assertIn("sessionLabel=generic-test", url)
+        self.assertIn("captureMode=continuous", url)
 
     def test_scenario_set_expands_all_generic_scenarios(self) -> None:
         scenarios = virtual_input_bridge_witness.scenario_names("generic", "all")
@@ -316,6 +318,85 @@ class VirtualInputBridgeWitnessTests(unittest.TestCase):
         self.assertEqual(summary["expected_count"], 2)
         self.assertEqual(summary["matched_expected_count"], 1)
         self.assertEqual(summary["failed_expected_scenarios"], ["right_toe_pressed"])
+
+    def test_latest_usable_capture_can_require_newer_sample(self) -> None:
+        captures = [
+            {
+                "connected": True,
+                "id": "USB2BLE Gamepad (Vendor: 303a Product: 4001)",
+                "mapping": "",
+                "axes": [0.0] * 6,
+                "buttons": [],
+                "sample_seq": 10,
+            },
+            {
+                "connected": True,
+                "id": "USB2BLE Gamepad (Vendor: 303a Product: 4001)",
+                "mapping": "",
+                "axes": [1.0] * 6,
+                "buttons": [],
+                "sample_seq": 11,
+            },
+        ]
+
+        self.assertEqual(
+            virtual_input_bridge_witness.latest_usable_capture(captures, "generic", min_sample_seq=10),
+            captures[1],
+        )
+        self.assertIsNone(
+            virtual_input_bridge_witness.latest_usable_capture(captures, "generic", min_sample_seq=11)
+        )
+
+
+class ChromeGamepadProbeTests(unittest.TestCase):
+    def test_summary_distinguishes_no_gamepads_from_generic_gamepad(self) -> None:
+        empty = chrome_gamepad_probe.summarize_samples(
+            [{"gamepads": [], "document_has_focus": True, "user_activation_has_been_active": False}]
+        )
+        self.assertEqual(empty["sample_count"], 1)
+        self.assertEqual(empty["samples_with_gamepads"], 0)
+        self.assertFalse(empty["generic_gamepad_seen"])
+
+        generic = chrome_gamepad_probe.summarize_samples(
+            [
+                {
+                    "gamepads": [
+                        {
+                            "connected": True,
+                            "id": "USB2BLE Gamepad (Vendor: 303a Product: 4001)",
+                            "mapping": "",
+                            "axes_count": 10,
+                            "buttons_count": 16,
+                        }
+                    ],
+                    "document_has_focus": True,
+                    "user_activation_has_been_active": True,
+                }
+            ]
+        )
+        self.assertEqual(generic["samples_with_gamepads"], 1)
+        self.assertTrue(generic["generic_gamepad_seen"])
+        self.assertEqual(generic["axes_lengths"], [10])
+
+    def test_summary_flags_standard_or_stale_shape(self) -> None:
+        summary = chrome_gamepad_probe.summarize_samples(
+            [
+                {
+                    "gamepads": [
+                        {
+                            "connected": True,
+                            "id": "USB2BLE Gamepad (STANDARD GAMEPAD)",
+                            "mapping": "standard",
+                            "axes_count": 4,
+                            "buttons_count": 18,
+                        }
+                    ]
+                }
+            ]
+        )
+
+        self.assertTrue(summary["stale_or_standard_gamepad_seen"])
+        self.assertFalse(summary["generic_gamepad_seen"])
 
 
 class PersonaSwitchHygieneTests(unittest.TestCase):

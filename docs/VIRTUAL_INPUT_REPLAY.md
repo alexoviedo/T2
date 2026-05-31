@@ -125,6 +125,15 @@ visibility in macOS `hidutil`/`ioreg`, but Chrome still captured zero Generic
 Gamepad API samples while the target bridge published reports. See
 `docs/milestone-evidence/PERSONA_SWITCHING_HYGIENE_DIAGNOSTIC_2026-05-31.md`.
 
+`tools/chrome_gamepad_probe.py` is a raw Chrome profile/session diagnostic. It
+records `navigator.getGamepads()` even when no gamepads are visible, which
+helps distinguish witness filtering from Chrome profile state. The
+2026-05-31 Generic Chrome exposure diagnostic showed the existing Chrome profile
+returned no gamepads while a clean temporary Chrome profile exposed
+`USB2BLE Gamepad (Vendor: 303a Product: 4001)` with empty mapping, 10 axes, and
+16 buttons. See
+`docs/milestone-evidence/GENERIC_CHROME_GAMEPAD_EXPOSURE_DIAGNOSTIC_2026-05-31.md`.
+
 ## Claim Boundaries
 
 Virtual input evidence can prove deterministic mapping/persona/live-bridge

@@ -47,15 +47,17 @@ before status docs should change.
   remained blocked after target bond clear/reset because macOS/Chrome did not
   reconnect automatically. A manual cleanup follow-up restored Generic BLE HID
   visibility in macOS `hidutil`/`ioreg`, but Chrome still captured zero Generic
-  Gamepad API samples while the target bridge published reports.
+  Gamepad API samples while the target bridge published reports. A direct
+  Chrome profile diagnostic narrowed this further: the existing Chrome profile
+  returned no gamepads, while a clean temporary profile exposed the Generic
+  device with empty mapping, 10 axes, and 16 buttons.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
   Gamepad API slot state, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: focused Generic Chrome/Gamepad API exposure
-  diagnostic starting from connected Generic BLE HID in macOS HID tools and
-  target bridge publishing, then strict Generic virtual browser replay only if
-  Chrome exposure is restored.
+- Recommended next prompt type: refine strict Generic virtual replay evaluation
+  in clean temporary Chrome profile mode, then rerun complete Generic virtual
+  browser replay before attempting Generic->Xbox->Generic switching again.
 - Risk: high, because BLE cache behavior is host-dependent.
 
 ## 4. Deadzone And Calibration Quality Tuning

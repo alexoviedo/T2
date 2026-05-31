@@ -346,6 +346,8 @@
         mapping: params.get("expectedMapping") || "any",
         idContains: params.get("expectedIdContains") || "",
         rejectStale: params.get("rejectStale") === "1",
+        continuous: params.get("captureMode") === "continuous",
+        continuousEveryMs: Number(params.get("continuousEveryMs") || "200"),
       };
 
       const els = {
@@ -580,7 +582,9 @@
         const snap = snapshot(gamepad, "change");
         const currentSignature = signature(snap);
         const now = performance.now();
-        if (currentSignature !== state.previousSignature && now - state.lastPostAt > 80) {
+        const shouldPostContinuous =
+          expected.continuous && now - state.lastPostAt > expected.continuousEveryMs;
+        if ((currentSignature !== state.previousSignature && now - state.lastPostAt > 80) || shouldPostContinuous) {
           state.previousSignature = currentSignature;
           state.lastPostAt = now;
           appendLog(snap);

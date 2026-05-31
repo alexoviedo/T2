@@ -8,6 +8,7 @@ import json
 import pathlib
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any
 
@@ -229,8 +230,19 @@ def capture_matches_persona(capture: dict[str, Any] | None, persona: str) -> boo
     return True
 
 
-def latest_usable_capture(captures: list[dict[str, Any]], persona: str) -> dict[str, Any] | None:
+def latest_usable_capture(
+    captures: list[dict[str, Any]],
+    persona: str,
+    min_sample_seq: int | None = None,
+) -> dict[str, Any] | None:
     for capture in reversed(captures):
+        if min_sample_seq is not None:
+            try:
+                sample_seq = int(capture.get("sample_seq", 0))
+            except (TypeError, ValueError):
+                sample_seq = 0
+            if sample_seq <= min_sample_seq:
+                continue
         if capture_matches_persona(capture, persona):
             return capture
     return None
@@ -245,17 +257,18 @@ def wait_for_capture(
     capture_file: pathlib.Path | None,
     timeout: float,
     persona: str,
+    min_sample_seq: int | None = None,
 ) -> tuple[pathlib.Path | None, dict[str, Any] | None]:
     deadline = time.monotonic() + timeout
     current = capture_file
     while time.monotonic() < deadline:
         if current is None:
             current = find_latest_capture_file(capture_dir)
-        capture = latest_usable_capture(load_captures(current), persona)
+        capture = latest_usable_capture(load_captures(current), persona, min_sample_seq)
         if capture is not None:
             return current, capture
         time.sleep(0.2)
-    return current, latest_usable_capture(load_captures(current), persona)
+    return current, latest_usable_capture(load_captures(current), persona, min_sample_seq)
 
 
 def try_arm_chrome() -> None:
@@ -286,6 +299,8 @@ def witness_url(port: int, persona: str, session_label: str, browser_url: str | 
         "expectedMapping": expected_mapping,
         "rejectStale": "1",
         "sessionLabel": session_label,
+        "captureMode": "continuous",
+        "continuousEveryMs": "150",
     }
     if expected_id:
         params["expectedIdContains"] = expected_id
@@ -293,12 +308,52 @@ def witness_url(port: int, persona: str, session_label: str, browser_url: str | 
     return f"http://127.0.0.1:{port}/?{query}"
 
 
-def open_witness_browser(port: int, persona: str, session_label: str, browser_url: str | None) -> None:
+def open_witness_browser(
+    port: int,
+    persona: str,
+    session_label: str,
+    browser_url: str | None,
+    chrome_mode: str,
+    chrome_app: str,
+) -> dict[str, Any]:
     url = witness_url(port, persona, session_label, browser_url)
     if sys.platform == "darwin":
-        subprocess.run(["open", url], check=False)
+        if chrome_mode == "temp-profile":
+            temp_profile = tempfile.mkdtemp(prefix="usb2ble-virtual-bridge-chrome-")
+            command = [
+                "open",
+                "-na",
+                chrome_app,
+                "--args",
+                f"--user-data-dir={temp_profile}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                url,
+            ]
+        else:
+            temp_profile = None
+            command = ["open", "-a", chrome_app, url]
+        result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+        return {
+            "url": url,
+            "chrome_mode": chrome_mode,
+            "chrome_app": chrome_app,
+            "command": command,
+            "ok": result.returncode == 0,
+            "output": result.stdout,
+            "temp_profile": temp_profile,
+        }
     else:
         print(f"Open browser witness: {url}")
+        return {
+            "url": url,
+            "chrome_mode": "manual",
+            "chrome_app": chrome_app,
+            "command": None,
+            "ok": True,
+            "output": "",
+            "temp_profile": None,
+        }
 
 
 def browser_capture_seen(captures: list[dict[str, Any]]) -> bool:
@@ -424,6 +479,13 @@ def main() -> int:
     parser.add_argument("--manual-arm", action="store_true")
     parser.add_argument("--no-physical-input", action="store_true")
     parser.add_argument(
+        "--chrome-mode",
+        choices=["existing-profile", "temp-profile"],
+        default="existing-profile",
+        help="Browser launch mode. temp-profile avoids stale Chrome Gamepad API session/cache state.",
+    )
+    parser.add_argument("--chrome-app", default="Google Chrome")
+    parser.add_argument(
         "--browser-wake-self-test",
         action="store_true",
         help="Publish a diagnostic BLE self-test report before browser capture to wake Gamepad API exposure.",
@@ -446,6 +508,7 @@ def main() -> int:
     human_prompted = False
     auto_arm_attempted = False
     browser_wake_self_test_sent = False
+    browser_launch: dict[str, Any] | None = None
     target_ble_connected = False
     server = None
     server_lines: list[str] = []
@@ -454,7 +517,14 @@ def main() -> int:
     if not args.no_browser:
         server, server_lines, capture_file = start_witness_server(args.witness_port, capture_dir)
         if not args.no_open and not args.reuse_browser:
-            open_witness_browser(args.witness_port, args.persona, session_label, args.browser_url)
+            browser_launch = open_witness_browser(
+                args.witness_port,
+                args.persona,
+                session_label,
+                args.browser_url,
+                args.chrome_mode,
+                args.chrome_app,
+            )
             time.sleep(1.0)
             if args.auto_arm:
                 auto_arm_attempted = True
@@ -608,6 +678,13 @@ def main() -> int:
                 if not args.no_browser:
                     previous_capture = latest_usable_capture(load_captures(capture_file), args.persona) or previous_capture
 
+            min_sample_seq = None
+            if isinstance(previous_capture, dict):
+                try:
+                    min_sample_seq = int(previous_capture.get("sample_seq", 0))
+                except (TypeError, ValueError):
+                    min_sample_seq = None
+
             send(serial, records, f"PUBLISH_VIRTUAL_INPUT_FRAME {scenario}", args.timeout)
             time.sleep(args.duration_per_scenario)
             status = send(serial, records, "GET_VIRTUAL_INPUT_STATUS", args.timeout)
@@ -619,7 +696,13 @@ def main() -> int:
             axis_changes: list[dict[str, Any]] = []
             button_changes: list[dict[str, Any]] = []
             if not args.no_browser:
-                after_capture = latest_usable_capture(load_captures(capture_file), args.persona)
+                capture_file, after_capture = wait_for_capture(
+                    capture_dir,
+                    capture_file,
+                    min(args.browser_timeout, 3.0),
+                    args.persona,
+                    min_sample_seq,
+                )
                 axis_changes = changed_indices(axis_values(previous_capture), axis_values(after_capture), 0.05)
                 button_changes = changed_indices(button_values(previous_capture), button_values(after_capture), 0.05)
 
@@ -706,6 +789,7 @@ def main() -> int:
         "human_prompted": human_prompted,
         "auto_arm_attempted": auto_arm_attempted,
         "browser_wake_self_test_sent": browser_wake_self_test_sent,
+        "browser_launch": browser_launch,
         "browser_url": witness_url(args.witness_port, args.persona, session_label, args.browser_url),
         "scenarios": scenarios,
         "expected_count": expected_summary["expected_count"],
