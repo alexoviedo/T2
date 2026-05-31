@@ -15,6 +15,7 @@ import ble_advertising_probe  # noqa: E402
 import check_ble_hid_profile  # noqa: E402
 import check_persona_acceptance  # noqa: E402
 import check_xbox_ble_profile  # noqa: E402
+import persona_switch_hygiene  # noqa: E402
 import virtual_input_bridge_witness  # noqa: E402
 import xbox_host_visible_witness  # noqa: E402
 
@@ -216,8 +217,44 @@ class PersonaAcceptanceGateTests(unittest.TestCase):
         self.assertEqual(items["deterministic_persona_report_witness"]["status"], "warn")
         self.assertEqual(items["game_app_witness"]["status"], "pass")
 
+    def test_persona_switching_hygiene_diagnostic_is_not_a_pass_claim(self) -> None:
+        summary = check_persona_acceptance.evaluate_persona("generic_gamepad")
+        items = {check["item"]: check for check in summary["checks"] if check["layer"] == "evidence"}
+
+        self.assertEqual(items["persona_switching_hygiene_witness"]["status"], "warn")
+        self.assertIn("diagnostic only", items["persona_switching_hygiene_witness"]["note"])
+
 
 class VirtualInputBridgeWitnessTests(unittest.TestCase):
+    def test_capture_matches_generic_and_rejects_stale_standard_slot(self) -> None:
+        generic_capture = {
+            "connected": True,
+            "id": "USB2BLE Gamepad (Vendor: 303a Product: 4001)",
+            "mapping": "",
+            "axes": [0.0] * 6,
+            "buttons": [0.0] * 16,
+        }
+        stale_xbox_capture = {
+            "connected": True,
+            "id": "USB2BLE Gamepad (STANDARD GAMEPAD)",
+            "mapping": "standard",
+            "axes": [0.0] * 4,
+            "buttons": [0.0] * 18,
+        }
+
+        self.assertTrue(virtual_input_bridge_witness.capture_matches_persona(generic_capture, "generic"))
+        self.assertFalse(virtual_input_bridge_witness.capture_matches_persona(stale_xbox_capture, "generic"))
+        self.assertTrue(virtual_input_bridge_witness.capture_matches_persona(stale_xbox_capture, "xbox"))
+
+    def test_witness_url_carries_strict_persona_expectations(self) -> None:
+        url = virtual_input_bridge_witness.witness_url(8790, "generic", "generic-test")
+
+        self.assertIn("autoArm=1", url)
+        self.assertIn("expectedPersona=generic", url)
+        self.assertIn("expectedMapping=none", url)
+        self.assertIn("rejectStale=1", url)
+        self.assertIn("sessionLabel=generic-test", url)
+
     def test_scenario_set_expands_all_generic_scenarios(self) -> None:
         scenarios = virtual_input_bridge_witness.scenario_names("generic", "all")
 
@@ -279,6 +316,39 @@ class VirtualInputBridgeWitnessTests(unittest.TestCase):
         self.assertEqual(summary["expected_count"], 2)
         self.assertEqual(summary["matched_expected_count"], 1)
         self.assertEqual(summary["failed_expected_scenarios"], ["right_toe_pressed"])
+
+
+class PersonaSwitchHygieneTests(unittest.TestCase):
+    def test_persona_result_summarizes_browser_slot_and_failures(self) -> None:
+        result = persona_switch_hygiene.persona_result(
+            {
+                "run_dir": "target/example",
+                "virtual_bridge_witness_passed": False,
+                "target_ble_connected": False,
+                "browser_gamepad_seen": True,
+                "browser_expected_gamepad_seen": False,
+                "browser_stale_capture_count": 2,
+                "browser_capture_count": 3,
+                "published_delta": 0,
+                "matched_expected_count": 0,
+                "expected_count": 12,
+                "failed_expected_scenarios": ["rudder_left"],
+                "human_prompted": False,
+                "browser_gamepad": {
+                    "id": "USB2BLE Gamepad (STANDARD GAMEPAD)",
+                    "mapping": "standard",
+                    "axes": [0.0] * 4,
+                    "buttons": [0.0] * 18,
+                    "session_id": "session-1",
+                    "session_label": "generic-test",
+                },
+            }
+        )
+
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["browser_stale_capture_count"], 2)
+        self.assertEqual(result["browser_gamepad"]["axes_count"], 4)
+        self.assertEqual(result["browser_gamepad"]["session_label"], "generic-test")
 
 
 if __name__ == "__main__":

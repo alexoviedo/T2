@@ -213,21 +213,49 @@ def latest_connected_capture(captures: list[dict[str, Any]]) -> dict[str, Any] |
     return None
 
 
+def capture_matches_persona(capture: dict[str, Any] | None, persona: str) -> bool:
+    if not capture or capture.get("connected") is not True:
+        return False
+    if capture.get("stale") is True or capture.get("expected_match") is False:
+        return False
+    mapping = str(capture.get("mapping", ""))
+    gamepad_id = str(capture.get("id", ""))
+    axes_count = len(capture.get("axes", []))
+    buttons_count = len(capture.get("buttons", []))
+    if persona == "generic":
+        return mapping == "" and axes_count >= 6 and "STANDARD GAMEPAD" not in gamepad_id
+    if persona == "xbox":
+        return mapping == "standard" and axes_count >= 4 and buttons_count >= 8
+    return True
+
+
+def latest_usable_capture(captures: list[dict[str, Any]], persona: str) -> dict[str, Any] | None:
+    for capture in reversed(captures):
+        if capture_matches_persona(capture, persona):
+            return capture
+    return None
+
+
+def stale_capture_count(captures: list[dict[str, Any]]) -> int:
+    return sum(1 for capture in captures if capture.get("stale") is True or capture.get("type") in {"stale", "stale_connected"})
+
+
 def wait_for_capture(
     capture_dir: pathlib.Path,
     capture_file: pathlib.Path | None,
     timeout: float,
+    persona: str,
 ) -> tuple[pathlib.Path | None, dict[str, Any] | None]:
     deadline = time.monotonic() + timeout
     current = capture_file
     while time.monotonic() < deadline:
         if current is None:
             current = find_latest_capture_file(capture_dir)
-        capture = latest_connected_capture(load_captures(current))
+        capture = latest_usable_capture(load_captures(current), persona)
         if capture is not None:
             return current, capture
         time.sleep(0.2)
-    return current, latest_connected_capture(load_captures(current))
+    return current, latest_usable_capture(load_captures(current), persona)
 
 
 def try_arm_chrome() -> None:
@@ -242,8 +270,31 @@ def try_arm_chrome() -> None:
     subprocess.run(["osascript", "-e", script], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def open_witness_browser(port: int, browser_url: str | None) -> None:
-    url = browser_url or f"http://127.0.0.1:{port}/?autostart=1&autoArm=1"
+def witness_url(port: int, persona: str, session_label: str, browser_url: str | None = None) -> str:
+    if browser_url:
+        return browser_url
+    if persona == "generic":
+        expected_mapping = "none"
+        expected_id = "Vendor: 303a"
+    else:
+        expected_mapping = "standard"
+        expected_id = ""
+    params = {
+        "autostart": "1",
+        "autoArm": "1",
+        "expectedPersona": persona,
+        "expectedMapping": expected_mapping,
+        "rejectStale": "1",
+        "sessionLabel": session_label,
+    }
+    if expected_id:
+        params["expectedIdContains"] = expected_id
+    query = "&".join(f"{key}={value.replace(' ', '%20').replace(':', '%3A')}" for key, value in params.items())
+    return f"http://127.0.0.1:{port}/?{query}"
+
+
+def open_witness_browser(port: int, persona: str, session_label: str, browser_url: str | None) -> None:
+    url = witness_url(port, persona, session_label, browser_url)
     if sys.platform == "darwin":
         subprocess.run(["open", url], check=False)
     else:
@@ -376,6 +427,7 @@ def main() -> int:
     persona_spec = PERSONAS[args.persona]
     scenarios = scenario_names(args.persona, args.scenarios)
     stamp = utc_stamp()
+    session_label = f"{args.persona}-{stamp}"
     run_dir = args.out_dir / f"{args.persona}_virtual_bridge_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     capture_dir = run_dir / "gamepad-witness"
@@ -394,7 +446,7 @@ def main() -> int:
     if not args.no_browser:
         server, server_lines, capture_file = start_witness_server(args.witness_port, capture_dir)
         if not args.no_open and not args.reuse_browser:
-            open_witness_browser(args.witness_port, args.browser_url)
+            open_witness_browser(args.witness_port, args.persona, session_label, args.browser_url)
             time.sleep(1.0)
             if args.auto_arm:
                 auto_arm_attempted = True
@@ -479,17 +531,19 @@ def main() -> int:
 
         browser_gamepad = None
         if not args.no_browser:
-            capture_file, browser_gamepad = wait_for_capture(capture_dir, capture_file, args.browser_timeout)
+            capture_file, browser_gamepad = wait_for_capture(capture_dir, capture_file, args.browser_timeout, args.persona)
             if browser_gamepad is None and args.auto_arm:
                 auto_arm_attempted = True
                 try_arm_chrome()
-                capture_file, browser_gamepad = wait_for_capture(capture_dir, capture_file, min(args.browser_timeout, 4.0))
+                capture_file, browser_gamepad = wait_for_capture(
+                    capture_dir, capture_file, min(args.browser_timeout, 4.0), args.persona
+                )
             if browser_gamepad is None and args.manual_arm and not args.no_human:
                 human_prompted = True
                 print()
                 print("Click Arm in the browser Gamepad witness page, then press Enter here.")
                 input()
-                capture_file, browser_gamepad = wait_for_capture(capture_dir, capture_file, args.browser_timeout)
+                capture_file, browser_gamepad = wait_for_capture(capture_dir, capture_file, args.browser_timeout, args.persona)
             if (
                 browser_gamepad is None
                 and not args.assume_connected
@@ -509,7 +563,7 @@ def main() -> int:
                 if args.auto_arm:
                     auto_arm_attempted = True
                     try_arm_chrome()
-                capture_file, browser_gamepad = wait_for_capture(capture_dir, capture_file, args.browser_timeout)
+                capture_file, browser_gamepad = wait_for_capture(capture_dir, capture_file, args.browser_timeout, args.persona)
 
         previous_capture = browser_gamepad
         for scenario in scenarios:
@@ -517,7 +571,7 @@ def main() -> int:
                 send(serial, records, "PUBLISH_VIRTUAL_INPUT_FRAME neutral", args.timeout)
                 time.sleep(args.duration_per_scenario)
                 if not args.no_browser:
-                    previous_capture = latest_connected_capture(load_captures(capture_file)) or previous_capture
+                    previous_capture = latest_usable_capture(load_captures(capture_file), args.persona) or previous_capture
 
             send(serial, records, f"PUBLISH_VIRTUAL_INPUT_FRAME {scenario}", args.timeout)
             time.sleep(args.duration_per_scenario)
@@ -530,7 +584,7 @@ def main() -> int:
             axis_changes: list[dict[str, Any]] = []
             button_changes: list[dict[str, Any]] = []
             if not args.no_browser:
-                after_capture = latest_connected_capture(load_captures(capture_file))
+                after_capture = latest_usable_capture(load_captures(capture_file), args.persona)
                 axis_changes = changed_indices(axis_values(previous_capture), axis_values(after_capture), 0.05)
                 button_changes = changed_indices(button_values(previous_capture), button_values(after_capture), 0.05)
 
@@ -589,7 +643,7 @@ def main() -> int:
     expected_summary = summarize_expected_results(scenario_results)
 
     captures = load_captures(capture_file)
-    latest_browser_gamepad = latest_connected_capture(captures)
+    latest_browser_gamepad = latest_usable_capture(captures, args.persona)
     if browser_gamepad is None:
         browser_gamepad = latest_browser_gamepad
     target_errors = [
@@ -606,14 +660,17 @@ def main() -> int:
         "persona_id": persona_spec["persona_id"],
         "run_dir": str(run_dir),
         "capture_file": str(capture_file) if capture_file else None,
+        "browser_session_label": session_label,
         "browser_gamepad": browser_gamepad,
         "latest_browser_gamepad": latest_browser_gamepad,
         "browser_capture_count": len(captures),
+        "browser_stale_capture_count": stale_capture_count(captures),
         "browser_gamepad_seen": browser_capture_seen(captures),
+        "browser_expected_gamepad_seen": latest_browser_gamepad is not None,
         "target_ble_connected": target_ble_connected,
         "human_prompted": human_prompted,
         "auto_arm_attempted": auto_arm_attempted,
-        "browser_url": args.browser_url or f"http://127.0.0.1:{args.witness_port}/?autostart=1&autoArm=1",
+        "browser_url": witness_url(args.witness_port, args.persona, session_label, args.browser_url),
         "scenarios": scenarios,
         "expected_count": expected_summary["expected_count"],
         "matched_expected_count": expected_summary["matched_expected_count"],

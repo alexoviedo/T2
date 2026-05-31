@@ -41,12 +41,18 @@ before status docs should change.
 ## 3. BLE Bond And Reconnect Persistence
 
 - Why it matters: early adopters need to know whether reconnect behavior is
-  reliable across resets, power cycles, and host Bluetooth cache states.
+  reliable across resets, power cycles, persona switches, and host Bluetooth
+  cache states. The 2026-05-31 persona-switching diagnostic showed strict
+  browser stale-slot detection works, but no-human Generic browser replay
+  remained blocked after target bond clear/reset because macOS/Chrome did not
+  reconnect automatically.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
-  reconnect timing, bridge status counters, host connection state, and failure
-  modes.
+  reconnect timing, bridge status counters, host connection state, stale
+  Gamepad API slot state, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: reconnect/bond persistence witness chunk.
+- Recommended next prompt type: manual-assisted macOS Bluetooth cache cleanup
+  and reconnect witness, followed by strict Generic virtual browser replay using
+  `tools/persona_switch_hygiene.py`.
 - Risk: high, because BLE cache behavior is host-dependent.
 
 ## 4. Deadzone And Calibration Quality Tuning

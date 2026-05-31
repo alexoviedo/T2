@@ -97,6 +97,32 @@ target/virtual-input-bridge-witness/
 The first checked-in host-visible virtual replay evidence is
 `docs/milestone-evidence/VIRTUAL_INPUT_XBOX_BRIDGE_WITNESS_2026-05-30.md`.
 
+## Browser Slot Hygiene
+
+Persona switching can leave Chrome/macOS with a stale Gamepad API slot from the
+previous BLE persona. The witness page and `tools/virtual_input_bridge_witness.py`
+therefore support strict browser expectations:
+
+```text
+autoArm=1
+expectedPersona=generic|xbox
+expectedMapping=none|standard|any
+expectedIdContains=<substring>
+rejectStale=1
+sessionLabel=<unique-run-label>
+```
+
+For Generic replay, the strict witness expects a non-standard Generic slot with
+at least six axes and rejects stale Xbox-shaped `STANDARD GAMEPAD` samples. For
+Xbox replay, it expects Chrome's `mapping="standard"` layout.
+
+`tools/persona_switch_hygiene.py` runs one or more virtual bridge witnesses as a
+persona-switching hygiene check. The 2026-05-31 diagnostic showed that the
+stale-slot detector prevents false Generic evidence, but this Mac still needed
+host Bluetooth/cache cleanup before a clean no-human Generic browser replay
+could be captured. See
+`docs/milestone-evidence/PERSONA_SWITCHING_HYGIENE_DIAGNOSTIC_2026-05-31.md`.
+
 ## Claim Boundaries
 
 Virtual input evidence can prove deterministic mapping/persona/live-bridge

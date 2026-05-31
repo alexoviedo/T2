@@ -45,6 +45,10 @@ PERSONAS: dict[str, dict[str, Any]] = {
         ],
         "virtual_input_evidence": [],
         "deterministic_persona_report_evidence": [],
+        "persona_switching_hygiene_evidence": [
+            "docs/milestone-evidence/PERSONA_SWITCHING_HYGIENE_DIAGNOSTIC_2026-05-31.md",
+        ],
+        "persona_switching_hygiene_proven": False,
         "host_evidence": [
             "docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md",
         ],
@@ -66,6 +70,10 @@ PERSONAS: dict[str, dict[str, Any]] = {
         "deterministic_persona_report_evidence": [
             "docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md",
         ],
+        "persona_switching_hygiene_evidence": [
+            "docs/milestone-evidence/PERSONA_SWITCHING_HYGIENE_DIAGNOSTIC_2026-05-31.md",
+        ],
+        "persona_switching_hygiene_proven": False,
         "host_evidence": [
             "docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md",
         ],
@@ -79,6 +87,8 @@ PERSONAS: dict[str, dict[str, Any]] = {
         "real_usb_input_evidence": [],
         "virtual_input_evidence": [],
         "deterministic_persona_report_evidence": [],
+        "persona_switching_hygiene_evidence": [],
+        "persona_switching_hygiene_proven": False,
         "host_evidence": [],
         "game_app_evidence": [],
         "matrix_terms": ["Keyboard/iCade", "ble_keyboard"],
@@ -125,6 +135,21 @@ def add_optional_evidence_check(checks: list[Check], item: str, paths: list[str]
     add_file_checks(checks, "evidence", item, paths, claimed=True)
 
 
+def add_diagnostic_evidence_check(checks: list[Check], item: str, paths: list[str], proven: bool) -> None:
+    if not paths:
+        checks.append(Check("evidence", item, "warn", "not claimed by current evidence set"))
+        return
+    missing = [path for path in paths if not pathlib.Path(path).exists()]
+    if missing:
+        checks.append(Check("evidence", item, "fail", "missing: " + ", ".join(missing)))
+        return
+    status = "pass" if proven else "warn"
+    note = ", ".join(paths)
+    if not proven:
+        note = "diagnostic only: " + note
+    checks.append(Check("evidence", item, status, note))
+
+
 def evaluate_persona(persona: str, artifact_dir: pathlib.Path | None = None) -> dict[str, Any]:
     if persona not in PERSONAS:
         raise ValueError(f"unknown persona: {persona}")
@@ -147,6 +172,12 @@ def evaluate_persona(persona: str, artifact_dir: pathlib.Path | None = None) -> 
         checks,
         "deterministic_persona_report_witness",
         spec["deterministic_persona_report_evidence"],
+    )
+    add_diagnostic_evidence_check(
+        checks,
+        "persona_switching_hygiene_witness",
+        spec["persona_switching_hygiene_evidence"],
+        bool(spec.get("persona_switching_hygiene_proven")),
     )
     add_file_checks(checks, "evidence", "host_visible_witness", spec["host_evidence"], claimed)
     add_optional_evidence_check(checks, "game_app_witness", spec["game_app_evidence"])

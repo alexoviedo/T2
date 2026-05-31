@@ -328,12 +328,25 @@
         armed: false,
         activeIndex: null,
         previousSignature: "",
+        previousStaleSignature: "",
         samples: 0,
+        sampleSeq: 0,
         log: [],
         lastPostAt: 0,
+        lastStalePostAt: 0,
       };
 
       const params = new URLSearchParams(window.location.search);
+      const pageLoadedAt = new Date().toISOString();
+      const sessionId =
+        params.get("sessionLabel") ||
+        `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const expected = {
+        persona: params.get("expectedPersona") || "",
+        mapping: params.get("expectedMapping") || "any",
+        idContains: params.get("expectedIdContains") || "",
+        rejectStale: params.get("rejectStale") === "1",
+      };
 
       const els = {
         armButton: document.querySelector("#armButton"),
@@ -355,19 +368,34 @@
       }
 
       function snapshot(gamepad, type) {
+        state.sampleSeq += 1;
+        const axes = gamepad.axes.map(roundAxis);
+        const buttons = gamepad.buttons.map((button) => ({
+          pressed: button.pressed,
+          touched: button.touched,
+          value: Math.round(button.value * 1000) / 1000,
+        }));
         return {
           type,
           at: new Date().toISOString(),
+          page_loaded_at: pageLoadedAt,
+          session_id: sessionId,
+          session_label: params.get("sessionLabel") || "",
+          sample_seq: state.sampleSeq,
+          expected_persona: expected.persona,
+          expected_mapping: expected.mapping,
+          expected_id_contains: expected.idContains,
+          reject_stale: expected.rejectStale,
           index: gamepad.index,
           id: gamepad.id,
           mapping: gamepad.mapping || "",
           connected: gamepad.connected,
-          axes: gamepad.axes.map(roundAxis),
-          buttons: gamepad.buttons.map((button) => ({
-            pressed: button.pressed,
-            touched: button.touched,
-            value: Math.round(button.value * 1000) / 1000,
-          })),
+          axes_count: axes.length,
+          buttons_count: buttons.length,
+          axes,
+          buttons,
+          stale: isStale(gamepad),
+          expected_match: gamepadMatchesExpected(gamepad),
         };
       }
 
@@ -410,11 +438,54 @@
         postCapture(entry);
       }
 
+      function mappingMatches(gamepad) {
+        if (expected.mapping === "any") return true;
+        if (expected.mapping === "none") return (gamepad.mapping || "") === "";
+        return (gamepad.mapping || "") === expected.mapping;
+      }
+
+      function idMatches(gamepad) {
+        if (!expected.idContains) return true;
+        return gamepad.id.toLowerCase().includes(expected.idContains.toLowerCase());
+      }
+
+      function isXboxStandardShape(gamepad) {
+        return (
+          (gamepad.mapping || "") === "standard" ||
+          gamepad.id.includes("STANDARD GAMEPAD") ||
+          (gamepad.axes.length === 4 && gamepad.buttons.length >= 17)
+        );
+      }
+
+      function isStale(gamepad) {
+        if (!expected.rejectStale) return false;
+        if (expected.persona === "generic" && isXboxStandardShape(gamepad)) return true;
+        if (!mappingMatches(gamepad)) return true;
+        if (!idMatches(gamepad)) return true;
+        return false;
+      }
+
+      function gamepadMatchesExpected(gamepad) {
+        return !isStale(gamepad) && mappingMatches(gamepad) && idMatches(gamepad);
+      }
+
       function selectGamepad(gamepads) {
-        if (state.activeIndex !== null && gamepads[state.activeIndex]) {
+        if (
+          state.activeIndex !== null &&
+          gamepads[state.activeIndex] &&
+          gamepadMatchesExpected(gamepads[state.activeIndex])
+        ) {
           return gamepads[state.activeIndex];
         }
-        return gamepads.find(Boolean) || null;
+        const connected = gamepads.filter(Boolean);
+        const matched = connected.find((gamepad) => gamepadMatchesExpected(gamepad));
+        if (matched) return matched;
+        if (expected.rejectStale) return null;
+        return connected[0] || null;
+      }
+
+      function firstStaleGamepad(gamepads) {
+        return gamepads.filter(Boolean).find((gamepad) => isStale(gamepad)) || null;
       }
 
       function renderEmpty() {
@@ -484,6 +555,18 @@
         const gamepads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []);
         const gamepad = selectGamepad(gamepads);
         if (!gamepad) {
+          const stale = firstStaleGamepad(gamepads);
+          if (stale) {
+            const snap = snapshot(stale, "stale");
+            const staleSignature = signature(snap);
+            const now = performance.now();
+            if (staleSignature !== state.previousStaleSignature || now - state.lastStalePostAt > 1000) {
+              state.previousStaleSignature = staleSignature;
+              state.lastStalePostAt = now;
+              appendLog(snap);
+              postCapture(snap);
+            }
+          }
           renderEmpty();
           els.pageState.textContent = "Armed";
           requestAnimationFrame(tick);
@@ -534,10 +617,14 @@
       });
 
       window.addEventListener("gamepadconnected", (event) => {
-        state.activeIndex = event.gamepad.index;
-        capture(event.gamepad, "connected");
-        renderGamepad(event.gamepad);
-        startWitness(event.gamepad);
+        if (gamepadMatchesExpected(event.gamepad)) {
+          state.activeIndex = event.gamepad.index;
+          capture(event.gamepad, "connected");
+          renderGamepad(event.gamepad);
+          startWitness(event.gamepad);
+        } else if (expected.rejectStale) {
+          capture(event.gamepad, "stale_connected");
+        }
       });
 
       window.addEventListener("gamepaddisconnected", (event) => {
