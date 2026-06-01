@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import subprocess
 import sys
 from typing import Any
@@ -14,6 +15,7 @@ from asap_demo_rehearsal import utc_stamp
 
 
 DEFAULT_PORT = "/dev/cu.usbmodem5B5E0200881"
+RUN_TIMESTAMP_RE = re.compile(r"_(\d{8}T\d{6}Z)$")
 
 
 def run_command(command: list[str]) -> tuple[int, str]:
@@ -29,11 +31,16 @@ def run_command(command: list[str]) -> tuple[int, str]:
 
 def latest_run_dir(base: pathlib.Path, persona: str) -> pathlib.Path | None:
     matches = sorted(
-        list(base.glob(f"{persona}_virtual_bridge_*")) + list(base.glob(f"{persona}_virtual_bridge_clean_*")),
-        key=lambda path: path.stat().st_mtime,
+        set(base.glob(f"{persona}_virtual_bridge_*")) | set(base.glob(f"{persona}_virtual_bridge_clean_*")),
+        key=lambda path: (run_timestamp(path), path.stat().st_mtime),
         reverse=True,
     )
     return matches[0] if matches else None
+
+
+def run_timestamp(path: pathlib.Path) -> str:
+    match = RUN_TIMESTAMP_RE.search(path.name)
+    return match.group(1) if match else ""
 
 
 def load_summary(run_dir: pathlib.Path | None) -> dict[str, Any] | None:

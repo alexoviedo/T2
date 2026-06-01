@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import sys
 import tempfile
@@ -477,6 +478,18 @@ class PersonaSwitchHygieneTests(unittest.TestCase):
             clean = base / "generic_virtual_bridge_clean_20260101T000100Z"
             old.mkdir()
             clean.mkdir()
+
+            self.assertEqual(persona_switch_hygiene.latest_run_dir(base, "generic"), clean)
+
+    def test_latest_run_dir_uses_embedded_timestamp_when_mtime_ties(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            base = pathlib.Path(temp)
+            old = base / "generic_virtual_bridge_20260101T000000Z"
+            clean = base / "generic_virtual_bridge_clean_20260101T000100Z"
+            old.mkdir()
+            clean.mkdir()
+            old_time = old.stat().st_mtime
+            os.utime(clean, (old_time, old_time))
 
             self.assertEqual(persona_switch_hygiene.latest_run_dir(base, "generic"), clean)
 
