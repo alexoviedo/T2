@@ -392,6 +392,14 @@
           id: gamepad.id,
           mapping: gamepad.mapping || "",
           connected: gamepad.connected,
+          document_visibility: document.visibilityState,
+          document_has_focus: document.hasFocus(),
+          user_activation_has_been_active: navigator.userActivation
+            ? navigator.userActivation.hasBeenActive
+            : null,
+          user_activation_is_active: navigator.userActivation
+            ? navigator.userActivation.isActive
+            : null,
           axes_count: axes.length,
           buttons_count: buttons.length,
           axes,

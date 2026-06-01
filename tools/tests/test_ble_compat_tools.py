@@ -6,6 +6,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -258,6 +259,37 @@ class VirtualInputBridgeWitnessTests(unittest.TestCase):
         self.assertIn("rejectStale=1", url)
         self.assertIn("sessionLabel=generic-test", url)
         self.assertIn("captureMode=continuous", url)
+
+    def test_temp_profile_chrome_launch_disables_background_throttling(self) -> None:
+        original_platform = virtual_input_bridge_witness.sys.platform
+
+        class Completed:
+            returncode = 0
+            stdout = ""
+
+        try:
+            virtual_input_bridge_witness.sys.platform = "darwin"
+            with mock.patch.object(
+                virtual_input_bridge_witness.subprocess,
+                "run",
+                return_value=Completed(),
+            ) as run:
+                launch = virtual_input_bridge_witness.open_witness_browser(
+                    8790,
+                    "generic",
+                    "generic-test",
+                    None,
+                    "temp-profile",
+                    "Google Chrome",
+                )
+        finally:
+            virtual_input_bridge_witness.sys.platform = original_platform
+
+        command = run.call_args.args[0]
+        self.assertTrue(launch["ok"])
+        self.assertIn("--disable-background-timer-throttling", command)
+        self.assertIn("--disable-renderer-backgrounding", command)
+        self.assertIn("--disable-backgrounding-occluded-windows", command)
 
     def test_scenario_set_expands_all_generic_scenarios(self) -> None:
         scenarios = virtual_input_bridge_witness.scenario_names("generic", "all")

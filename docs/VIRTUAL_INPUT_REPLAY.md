@@ -157,6 +157,14 @@ virtual rudder, toe, or stick frames even while the target mapping/report and
 bridge counters changed. See
 `docs/milestone-evidence/VIRTUAL_INPUT_GENERIC_BRIDGE_DIAGNOSTIC_2026-05-31.md`.
 
+A 2026-06-01 follow-up disabled Chrome background throttling for temporary
+profile witness runs and added browser focus/visibility/user-activation fields
+to each capture. The follow-up confirmed the page was visible and focused and
+that a fresh temporary Chrome profile could surface the first non-neutral
+Generic virtual axis pair, but complete multi-axis Generic virtual browser
+replay still did not pass. See
+`docs/milestone-evidence/GENERIC_VIRTUAL_BROWSER_REPLAY_DIAGNOSTIC_2026-06-01.md`.
+
 ## Claim Boundaries
 
 Virtual input evidence can prove deterministic mapping/persona/live-bridge

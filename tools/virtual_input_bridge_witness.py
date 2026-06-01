@@ -336,6 +336,9 @@ def open_witness_browser(
                 f"--user-data-dir={temp_profile}",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--disable-background-timer-throttling",
+                "--disable-renderer-backgrounding",
+                "--disable-backgrounding-occluded-windows",
                 url,
             ]
         else:
