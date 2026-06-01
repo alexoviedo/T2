@@ -74,6 +74,22 @@ Supported named scenarios:
 - `right_toe_released`, `right_toe_pressed`
 - `throttle_min`, `throttle_max`
 
+## Scenario Evaluation Semantics
+
+The witness treats active movement scenarios and endpoint/release scenarios
+differently:
+
+| Scenario kind | Examples | Evaluation rule |
+| --- | --- | --- |
+| Active movement | `stick_left`, `rudder_right`, `left_toe_pressed` | The expected browser axis/button must move in the expected direction or already be held at the expected value. |
+| Complementary endpoint | `throttle_max -> throttle_min` | The min/max pair is evaluated as an ordered transition on Generic A2 / `z`; absolute values do not need to be exactly `-1.0` and `1.0` if the ordering and direction are clear. |
+| Release after press | `left_toe_pressed -> left_toe_released`, `right_toe_pressed -> right_toe_released` | Release is evaluated as a transition back toward the documented released/baseline direction. A release scenario that starts already released is inconclusive, not a hard failure. |
+
+Raw delta results and semantic results are both written to the witness summary.
+Strict failures are preserved for wrong browser slots, wrong axis/button index,
+missing browser samples, target errors, stale slots, or missing bridge
+publication.
+
 ## Witness Tool
 
 `tools/virtual_input_bridge_witness.py` drives the workflow:
@@ -133,6 +149,13 @@ returned no gamepads while a clean temporary Chrome profile exposed
 `USB2BLE Gamepad (Vendor: 303a Product: 4001)` with empty mapping, 10 axes, and
 16 buttons. See
 `docs/milestone-evidence/GENERIC_CHROME_GAMEPAD_EXPOSURE_DIAGNOSTIC_2026-05-31.md`.
+
+The follow-up Generic virtual bridge diagnostic in a clean temporary Chrome
+profile proved the semantic evaluator can validate the Generic throttle
+endpoint pair, but Chrome still did not deliver fresh Gamepad API samples for
+virtual rudder, toe, or stick frames even while the target mapping/report and
+bridge counters changed. See
+`docs/milestone-evidence/VIRTUAL_INPUT_GENERIC_BRIDGE_DIAGNOSTIC_2026-05-31.md`.
 
 ## Claim Boundaries
 

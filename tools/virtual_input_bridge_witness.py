@@ -75,14 +75,14 @@ SCENARIO_SETS = {
     "generic": {
         "all": [
             "neutral",
-            "throttle_min",
             "throttle_max",
+            "throttle_min",
             "rudder_left",
             "rudder_right",
-            "left_toe_released",
             "left_toe_pressed",
-            "right_toe_released",
+            "left_toe_released",
             "right_toe_pressed",
+            "right_toe_released",
             "stick_left",
             "stick_right",
             "stick_forward",
@@ -103,6 +103,14 @@ SCENARIO_SETS = {
             "right_toe_released",
             "right_toe_pressed",
         ],
+    },
+}
+
+PAIRED_PREDECESSORS = {
+    "generic": {
+        "throttle_min": "throttle_max",
+        "left_toe_released": "left_toe_pressed",
+        "right_toe_released": "right_toe_pressed",
     },
 }
 
@@ -395,19 +403,72 @@ def value_matches_direction(value: float, direction: str, threshold: float = 0.5
     return False
 
 
+def pair_predecessor(persona: str, scenario: str) -> str | None:
+    return PAIRED_PREDECESSORS.get(persona, {}).get(scenario)
+
+
+def should_reset_to_neutral(persona: str, scenario: str, previous_scenario: str | None) -> bool:
+    if scenario == "neutral":
+        return False
+    predecessor = pair_predecessor(persona, scenario)
+    return predecessor is None or previous_scenario != predecessor
+
+
+def axis_or_button_values(capture: dict[str, Any] | None, surface: str) -> list[float]:
+    if surface == "axis":
+        return axis_values(capture)
+    return button_values(capture)
+
+
+def endpoint_value(capture: dict[str, Any] | None, surface: str, index: int) -> float | None:
+    values = axis_or_button_values(capture, surface)
+    if index < len(values):
+        try:
+            return float(values[index])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def movement_matches_direction(before: float | None, after: float | None, direction: str, threshold: float) -> bool:
+    if before is None or after is None:
+        return False
+    delta = after - before
+    if direction == "positive":
+        return delta > threshold
+    if direction == "negative":
+        return delta < -threshold
+    if direction == "any":
+        return abs(delta) > threshold
+    return False
+
+
 def evaluate_expected(
     scenario: str,
     expected: dict[str, dict[str, Any]],
     axis_changes: list[dict[str, Any]],
     button_changes: list[dict[str, Any]],
     after_capture: dict[str, Any] | None = None,
+    before_capture: dict[str, Any] | None = None,
+    paired_predecessor: str | None = None,
+    threshold: float = 0.2,
 ) -> dict[str, Any]:
     control = expected.get(scenario)
     if control is None:
-        return {"expected": None, "matched": None, "observed_change": None, "observed_value": None}
+        return {
+            "expected": None,
+            "matched": None,
+            "observed_change": None,
+            "observed_value": None,
+            "raw_result": {"status": "not_applicable", "matched": None},
+            "semantic_result": {"status": "not_applicable", "matched": None},
+        }
     changes = axis_changes if control["surface"] == "axis" else button_changes
     observed = find_change(changes, int(control["index"]), str(control["direction"]))
+    raw_observed = observed
     observed_value = None
+    before_value = endpoint_value(before_capture, str(control["surface"]), int(control["index"]))
+    after_value = endpoint_value(after_capture, str(control["surface"]), int(control["index"]))
     if observed is None and after_capture is not None:
         values = axis_values(after_capture) if control["surface"] == "axis" else button_values(after_capture)
         index = int(control["index"])
@@ -421,11 +482,70 @@ def evaluate_expected(
                     "delta": None,
                     "mode": "held_value",
                 }
+    raw_matched = raw_observed is not None
+    raw_status = "pass" if raw_matched else "fail"
+    semantic_status = raw_status
+    semantic_reason = "raw_delta_or_held_value"
+    semantic_matched = raw_matched
+    semantic_observed = observed
+    if not raw_matched:
+        direction = str(control["direction"])
+        if observed is not None and paired_predecessor is None:
+            semantic_matched = True
+            semantic_status = "pass"
+            semantic_reason = "held_value"
+            semantic_observed = observed
+        elif movement_matches_direction(before_value, after_value, direction, threshold):
+            semantic_matched = True
+            semantic_status = "pass"
+            semantic_reason = "paired_endpoint_transition" if paired_predecessor else "direct_transition"
+            semantic_observed = {
+                "index": int(control["index"]),
+                "before": before_value,
+                "after": after_value,
+                "delta": None if before_value is None or after_value is None else after_value - before_value,
+                "mode": semantic_reason,
+            }
+        elif paired_predecessor and before_value is not None and after_value is not None:
+            if abs(after_value - before_value) <= threshold:
+                semantic_status = "inconclusive"
+                semantic_reason = "already_at_or_near_endpoint"
+            elif value_matches_direction(after_value, direction, threshold):
+                semantic_matched = True
+                semantic_status = "pass"
+                semantic_reason = "paired_endpoint_value"
+                semantic_observed = {
+                    "index": int(control["index"]),
+                    "before": before_value,
+                    "after": after_value,
+                    "delta": after_value - before_value,
+                    "mode": semantic_reason,
+                }
+        elif paired_predecessor and before_value is not None and after_value is not None and abs(after_value - before_value) <= threshold:
+            semantic_status = "inconclusive"
+            semantic_reason = "no_meaningful_movement"
     return {
         "expected": control,
-        "matched": observed is not None,
+        "matched": semantic_matched,
         "observed_change": observed,
-        "observed_value": observed_value,
+        "observed_value": observed_value if observed_value is not None else after_value,
+        "before_value": before_value,
+        "after_value": after_value,
+        "paired_predecessor": paired_predecessor,
+        "raw_result": {
+            "status": raw_status,
+            "matched": raw_matched,
+            "observed_change": raw_observed,
+            "observed_value": observed_value if observed_value is not None else after_value,
+        },
+        "semantic_result": {
+            "status": semantic_status,
+            "matched": semantic_matched,
+            "reason": semantic_reason,
+            "observed_change": semantic_observed,
+            "before_value": before_value,
+            "after_value": after_value,
+        },
     }
 
 
@@ -437,10 +557,22 @@ def summarize_expected_results(scenario_results: list[dict[str, Any]]) -> dict[s
     ]
     matched = [result for _, result in expected_results if result.get("matched")]
     failed = [scenario for scenario, result in expected_results if not result.get("matched")]
+    inconclusive = [
+        scenario
+        for scenario, result in expected_results
+        if (result.get("semantic_result") or {}).get("status") == "inconclusive"
+    ]
+    raw_failed = [
+        scenario
+        for scenario, result in expected_results
+        if not (result.get("raw_result") or {}).get("matched")
+    ]
     return {
         "expected_count": len(expected_results),
         "matched_expected_count": len(matched),
         "failed_expected_scenarios": failed,
+        "raw_failed_expected_scenarios": raw_failed,
+        "inconclusive_expected_scenarios": inconclusive,
     }
 
 
@@ -671,8 +803,10 @@ def main() -> int:
                 capture_file, browser_gamepad = wait_for_capture(capture_dir, capture_file, args.browser_timeout, args.persona)
 
         previous_capture = browser_gamepad
+        previous_scenario = None
         for scenario in scenarios:
-            if scenario != "neutral":
+            reset_before_scenario = should_reset_to_neutral(args.persona, scenario, previous_scenario)
+            if reset_before_scenario:
                 send(serial, records, "PUBLISH_VIRTUAL_INPUT_FRAME neutral", args.timeout)
                 time.sleep(args.duration_per_scenario)
                 if not args.no_browser:
@@ -709,11 +843,13 @@ def main() -> int:
             scenario_results.append(
                 {
                     "scenario": scenario,
+                    "reset_before_scenario": reset_before_scenario,
+                    "paired_predecessor": pair_predecessor(args.persona, scenario),
                     "virtual_status": json_response(status, "VIRTUAL_INPUT_STATUS_JSON"),
                     "mapping_response": mapping.responses,
                     "report_response": report.responses,
                     "bridge_status": parse_semicolon_fields(response_with_prefix([bridge], "BRIDGE_STATUS:")),
-                    "browser_before": previous_capture if scenario == "neutral" else None,
+                    "browser_before": previous_capture,
                     "browser_after": after_capture,
                     "changed_axis_indices": axis_changes,
                     "changed_button_indices": button_changes,
@@ -725,11 +861,14 @@ def main() -> int:
                         axis_changes,
                         button_changes,
                         after_capture,
+                        previous_capture,
+                        pair_predecessor(args.persona, scenario),
                     ),
                 }
             )
             if not args.no_browser:
                 previous_capture = after_capture
+            previous_scenario = scenario
 
         stop_records = [
             send(serial, records, "GET_BRIDGE_STATUS", args.timeout),
@@ -795,6 +934,8 @@ def main() -> int:
         "expected_count": expected_summary["expected_count"],
         "matched_expected_count": expected_summary["matched_expected_count"],
         "failed_expected_scenarios": expected_summary["failed_expected_scenarios"],
+        "raw_failed_expected_scenarios": expected_summary["raw_failed_expected_scenarios"],
+        "inconclusive_expected_scenarios": expected_summary["inconclusive_expected_scenarios"],
         "published_delta": published_delta,
         "target_only_passed": target_only_passed,
         "target_errors": target_errors,

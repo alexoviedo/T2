@@ -43,7 +43,10 @@ PERSONAS: dict[str, dict[str, Any]] = {
             "docs/milestone-evidence/REFINED_GENERIC_AXIS_EXPOSURE_WITNESS_2026-05-28.md",
             "docs/milestone-evidence/REFINED_GENERIC_LIVE_BRIDGE_SOAK_WITNESS_2026-05-28.md",
         ],
-        "virtual_input_evidence": [],
+        "virtual_input_evidence": [
+            "docs/milestone-evidence/VIRTUAL_INPUT_GENERIC_BRIDGE_DIAGNOSTIC_2026-05-31.md",
+        ],
+        "virtual_input_proven": False,
         "deterministic_persona_report_evidence": [],
         "persona_switching_hygiene_evidence": [
             "docs/milestone-evidence/PERSONA_SWITCHING_HYGIENE_DIAGNOSTIC_2026-05-31.md",
@@ -67,6 +70,7 @@ PERSONAS: dict[str, dict[str, Any]] = {
         "virtual_input_evidence": [
             "docs/milestone-evidence/VIRTUAL_INPUT_XBOX_BRIDGE_WITNESS_2026-05-30.md",
         ],
+        "virtual_input_proven": True,
         "deterministic_persona_report_evidence": [
             "docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md",
         ],
@@ -86,6 +90,7 @@ PERSONAS: dict[str, dict[str, Any]] = {
         "target_evidence": [],
         "real_usb_input_evidence": [],
         "virtual_input_evidence": [],
+        "virtual_input_proven": False,
         "deterministic_persona_report_evidence": [],
         "persona_switching_hygiene_evidence": [],
         "persona_switching_hygiene_proven": False,
@@ -167,7 +172,12 @@ def evaluate_persona(persona: str, artifact_dir: pathlib.Path | None = None) -> 
 
     add_file_checks(checks, "evidence", "target_side_witness", spec["target_evidence"], claimed)
     add_optional_evidence_check(checks, "real_usb_input_witness", spec["real_usb_input_evidence"])
-    add_optional_evidence_check(checks, "virtual_input_witness", spec["virtual_input_evidence"])
+    add_diagnostic_evidence_check(
+        checks,
+        "virtual_input_witness",
+        spec["virtual_input_evidence"],
+        bool(spec.get("virtual_input_proven")),
+    )
     add_optional_evidence_check(
         checks,
         "deterministic_persona_report_witness",

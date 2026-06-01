@@ -50,14 +50,19 @@ before status docs should change.
   Gamepad API samples while the target bridge published reports. A direct
   Chrome profile diagnostic narrowed this further: the existing Chrome profile
   returned no gamepads, while a clean temporary profile exposed the Generic
-  device with empty mapping, 10 axes, and 16 buttons.
+  device with empty mapping, 10 axes, and 16 buttons. A follow-up Generic
+  virtual bridge diagnostic validated the clean-profile throttle A2 endpoint
+  pair, but Chrome did not surface later virtual rudder/toe/stick report
+  changes despite target mapping/report and bridge publication changes.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
   Gamepad API slot state, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: refine strict Generic virtual replay evaluation
-  in clean temporary Chrome profile mode, then rerun complete Generic virtual
-  browser replay before attempting Generic->Xbox->Generic switching again.
+- Recommended next prompt type: isolate Generic clean-profile browser sampling
+  versus macOS HID notification behavior by adding a lower-level Chrome DevTools
+  polling path and/or target BLE notification readiness diagnostics, then rerun
+  complete Generic virtual browser replay before attempting Generic->Xbox->Generic
+  switching again.
 - Risk: high, because BLE cache behavior is host-dependent.
 
 ## 4. Deadzone And Calibration Quality Tuning

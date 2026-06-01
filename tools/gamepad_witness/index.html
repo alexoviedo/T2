@@ -551,6 +551,14 @@
         });
       }
 
+      function scheduleTick() {
+        if (expected.continuous) {
+          setTimeout(tick, Math.max(50, expected.continuousEveryMs));
+        } else {
+          requestAnimationFrame(tick);
+        }
+      }
+
       function tick() {
         if (!state.armed) return;
 
@@ -571,7 +579,7 @@
           }
           renderEmpty();
           els.pageState.textContent = "Armed";
-          requestAnimationFrame(tick);
+          scheduleTick();
           return;
         }
 
@@ -592,7 +600,7 @@
         }
 
         els.pageState.textContent = "Armed";
-        requestAnimationFrame(tick);
+        scheduleTick();
       }
 
       function startWitness(gamepad) {
@@ -603,7 +611,7 @@
         els.pageState.textContent = "Armed";
 
         if (gamepad) capture(gamepad, "arm");
-        requestAnimationFrame(tick);
+        scheduleTick();
       }
 
       els.armButton.addEventListener("click", () => {

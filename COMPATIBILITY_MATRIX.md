@@ -76,7 +76,12 @@ This matrix tracks the support status for devices, personas, and milestones.
   narrows the remaining blocker to existing Chrome profile/session state by
   showing a clean temporary Chrome profile exposes the Generic gamepad again. It
   does not prove complete Generic virtual browser replay, automatic persona
-  switching, or reconnect robustness.
+  switching, or reconnect robustness. A follow-up Generic virtual bridge
+  diagnostic at
+  `docs/milestone-evidence/VIRTUAL_INPUT_GENERIC_BRIDGE_DIAGNOSTIC_2026-05-31.md`
+  validates the throttle A2 endpoint pair in the clean temporary profile, but
+  Chrome did not surface later virtual rudder/toe/stick report changes despite
+  target report and bridge publication changes.
 - Runtime configuration APIs and Web Serial tooling exist, and durable runtime
   config persistence is proven by
   `docs/milestone-evidence/CONFIG_PERSISTENCE_WITNESS_2026-05-28.md`.

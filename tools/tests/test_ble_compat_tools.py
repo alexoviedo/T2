@@ -215,6 +215,7 @@ class PersonaAcceptanceGateTests(unittest.TestCase):
 
         self.assertEqual(items["real_usb_input_witness"]["status"], "pass")
         self.assertEqual(items["virtual_input_witness"]["status"], "warn")
+        self.assertIn("diagnostic only", items["virtual_input_witness"]["note"])
         self.assertEqual(items["deterministic_persona_report_witness"]["status"], "warn")
         self.assertEqual(items["game_app_witness"]["status"], "pass")
 
@@ -306,11 +307,21 @@ class VirtualInputBridgeWitnessTests(unittest.TestCase):
                 },
                 {
                     "scenario": "left_toe_pressed",
-                    "expected_result": {"expected": {"label": "B6 left_trigger"}, "matched": True},
+                    "expected_result": {
+                        "expected": {"label": "B6 left_trigger"},
+                        "matched": True,
+                        "raw_result": {"matched": True},
+                        "semantic_result": {"status": "pass"},
+                    },
                 },
                 {
                     "scenario": "right_toe_pressed",
-                    "expected_result": {"expected": {"label": "B7 right_trigger"}, "matched": False},
+                    "expected_result": {
+                        "expected": {"label": "B7 right_trigger"},
+                        "matched": False,
+                        "raw_result": {"matched": False},
+                        "semantic_result": {"status": "fail"},
+                    },
                 },
             ]
         )
@@ -318,6 +329,65 @@ class VirtualInputBridgeWitnessTests(unittest.TestCase):
         self.assertEqual(summary["expected_count"], 2)
         self.assertEqual(summary["matched_expected_count"], 1)
         self.assertEqual(summary["failed_expected_scenarios"], ["right_toe_pressed"])
+        self.assertEqual(summary["raw_failed_expected_scenarios"], ["right_toe_pressed"])
+
+    def test_generic_press_then_release_passes_semantically(self) -> None:
+        result = virtual_input_bridge_witness.evaluate_expected(
+            "left_toe_released",
+            virtual_input_bridge_witness.PERSONAS["generic"]["expected"],
+            [],
+            [],
+            {"axes": [0.0, 0.0, -1.0, 0.0, -1.0, 0.0], "buttons": []},
+            {"axes": [0.0, 0.0, -1.0, 0.0, 1.0, 0.0], "buttons": []},
+            "left_toe_pressed",
+        )
+
+        self.assertTrue(result["matched"])
+        self.assertFalse(result["raw_result"]["matched"])
+        self.assertEqual(result["semantic_result"]["status"], "pass")
+        self.assertEqual(result["semantic_result"]["reason"], "paired_endpoint_transition")
+
+    def test_generic_release_from_already_released_is_inconclusive(self) -> None:
+        result = virtual_input_bridge_witness.evaluate_expected(
+            "right_toe_released",
+            virtual_input_bridge_witness.PERSONAS["generic"]["expected"],
+            [],
+            [],
+            {"axes": [0.0, 0.0, -1.0, 0.0, -1.0, -1.0], "buttons": []},
+            {"axes": [0.0, 0.0, -1.0, 0.0, -1.0, -1.0], "buttons": []},
+            "right_toe_pressed",
+        )
+
+        self.assertFalse(result["matched"])
+        self.assertEqual(result["semantic_result"]["status"], "inconclusive")
+        self.assertEqual(result["semantic_result"]["reason"], "already_at_or_near_endpoint")
+
+    def test_generic_throttle_endpoint_pair_passes_semantically(self) -> None:
+        result = virtual_input_bridge_witness.evaluate_expected(
+            "throttle_min",
+            virtual_input_bridge_witness.PERSONAS["generic"]["expected"],
+            [],
+            [],
+            {"axes": [0.0, 0.0, -1.0, 0.0, -1.0, -1.0], "buttons": []},
+            {"axes": [0.0, 0.0, 1.0, 0.0, -1.0, -1.0], "buttons": []},
+            "throttle_max",
+        )
+
+        self.assertTrue(result["matched"])
+        self.assertEqual(result["semantic_result"]["status"], "pass")
+
+    def test_wrong_axis_index_still_fails(self) -> None:
+        result = virtual_input_bridge_witness.evaluate_expected(
+            "rudder_right",
+            virtual_input_bridge_witness.PERSONAS["generic"]["expected"],
+            [{"index": 2, "before": 0.0, "after": -1.0, "delta": -1.0}],
+            [],
+            {"axes": [0.0, 0.0, -1.0, 0.0, -1.0, -1.0], "buttons": []},
+            {"axes": [0.0, 0.0, 0.0, 0.0, -1.0, -1.0], "buttons": []},
+        )
+
+        self.assertFalse(result["matched"])
+        self.assertEqual(result["semantic_result"]["status"], "fail")
 
     def test_latest_usable_capture_can_require_newer_sample(self) -> None:
         captures = [
