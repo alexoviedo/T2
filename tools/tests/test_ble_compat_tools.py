@@ -19,6 +19,7 @@ import check_persona_acceptance  # noqa: E402
 import check_xbox_ble_profile  # noqa: E402
 import chrome_gamepad_probe  # noqa: E402
 import generic_hid_delivery_diagnosis  # noqa: E402
+import generic_report_descriptor_diagnosis  # noqa: E402
 import persona_switch_hygiene  # noqa: E402
 import virtual_input_bridge_witness  # noqa: E402
 import xbox_host_visible_witness  # noqa: E402
@@ -644,6 +645,94 @@ class GenericHidDeliveryDiagnosisTests(unittest.TestCase):
             generic_hid_delivery_diagnosis.classify_scenario(result, hid_probe_available=True),
             "witness_sampling",
         )
+
+
+class GenericReportDescriptorDiagnosisTests(unittest.TestCase):
+    def test_generic_report_map_extracts_six_axis_fields(self) -> None:
+        report_map = generic_report_descriptor_diagnosis.extract_generic_report_map()
+        layout = generic_report_descriptor_diagnosis.parse_report_map(report_map)
+
+        axes = [
+            field
+            for field in layout["fields"]
+            if field.get("usage_name") in {"x", "y", "z", "rx", "ry", "rz"}
+        ]
+
+        self.assertEqual([field["usage_name"] for field in axes], ["x", "y", "z", "rx", "ry", "rz"])
+        self.assertEqual([field["byte_offset"] for field in axes], [3, 5, 7, 9, 11, 13])
+        self.assertTrue(all(field["bit_size"] == 16 for field in axes))
+        self.assertTrue(all(field["logical_min"] == -32768 for field in axes))
+        self.assertTrue(all(field["logical_max"] == 32767 for field in axes))
+
+    def test_decodes_generic_report_axis_bytes(self) -> None:
+        report_map = generic_report_descriptor_diagnosis.extract_generic_report_map()
+        layout = generic_report_descriptor_diagnosis.parse_report_map(report_map)
+        decoded = generic_report_descriptor_diagnosis.decode_report(
+            "00000800800000018000000180ff7f",
+            layout["fields"],
+        )
+
+        self.assertEqual(decoded["x"]["value"], -32768)
+        self.assertEqual(decoded["y"]["value"], 0)
+        self.assertEqual(decoded["z"]["value"], -32767)
+        self.assertEqual(decoded["rx"]["value"], 0)
+        self.assertEqual(decoded["ry"]["value"], -32767)
+        self.assertEqual(decoded["rz"]["value"], 32767)
+
+    def test_root_cause_reports_changed_without_hid_as_category_c(self) -> None:
+        layout = {
+            "fields": [
+                {
+                    "usage_name": axis,
+                    "constant": False,
+                }
+                for axis in ["x", "y", "z", "rx", "ry", "rz"]
+            ]
+        }
+        root_cause = generic_report_descriptor_diagnosis.classify_root_cause(
+            layout,
+            [
+                {
+                    "scenario": "left_toe_pressed",
+                    "report_value_changed": True,
+                    "hid_event_count_for_usage": 0,
+                    "descriptor_element_present_in_probe": True,
+                }
+            ],
+        )
+
+        self.assertEqual(root_cause["category"], "C")
+        self.assertIn("left_toe_pressed", root_cause["changed_without_hid"])
+
+    def test_hid_correlation_uses_scenario_time_window(self) -> None:
+        report_map = generic_report_descriptor_diagnosis.extract_generic_report_map()
+        layout = generic_report_descriptor_diagnosis.parse_report_map(report_map)
+        rows = generic_report_descriptor_diagnosis.correlate_scenarios(
+            [
+                {
+                    "scenario": "rudder_left",
+                    "baseline_report_bytes": "000008000000000180000001800180",
+                    "active_report_bytes": "000008000000000180ff7f01800180",
+                    "active_start": "2026-06-02T00:00:10.000Z",
+                    "active_end": "2026-06-02T00:00:12.000Z",
+                },
+                {
+                    "scenario": "rudder_right",
+                    "baseline_report_bytes": "000008000000000180000001800180",
+                    "active_report_bytes": "000008000000000180008001800180",
+                    "active_start": "2026-06-02T00:00:20.000Z",
+                    "active_end": "2026-06-02T00:00:22.000Z",
+                },
+            ],
+            [
+                {"type": "element", "usage_page": 1, "usage": 51},
+                {"type": "input_value", "at": "2026-06-02T00:00:10.500Z", "usage_page": 1, "usage": 51},
+            ],
+            layout["fields"],
+        )
+
+        self.assertEqual(rows[0]["hid_event_count_for_usage"], 1)
+        self.assertEqual(rows[1]["hid_event_count_for_usage"], 0)
 
 
 class PersonaSwitchHygieneTests(unittest.TestCase):

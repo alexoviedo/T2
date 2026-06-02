@@ -48,7 +48,15 @@ def load_jsonl(path: pathlib.Path) -> list[dict[str, Any]]:
 
 def summarize_events(rows: list[dict[str, Any]]) -> dict[str, Any]:
     devices = [row for row in rows if row.get("type") == "device"]
+    elements = [row for row in rows if row.get("type") == "element"]
     events = [row for row in rows if row.get("type") == "input_value"]
+    element_usages = sorted(
+        {
+            f"{element.get('usage_page')}:{element.get('usage')}"
+            for element in elements
+            if element.get("usage_page") is not None and element.get("usage") is not None
+        }
+    )
     usages = sorted(
         {
             f"{event.get('usage_page')}:{event.get('usage')}"
@@ -58,6 +66,7 @@ def summarize_events(rows: list[dict[str, Any]]) -> dict[str, Any]:
     )
     return {
         "device_count": len(devices),
+        "element_count": len(elements),
         "event_count": len(events),
         "products": sorted({str(device.get("product", "")) for device in devices if device.get("product")}),
         "transports": sorted({str(device.get("transport", "")) for device in devices if device.get("transport")}),
@@ -68,6 +77,7 @@ def summarize_events(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 if device.get("vendor_id") is not None and device.get("product_id") is not None
             }
         ),
+        "element_usages": element_usages,
         "changed_usages": usages,
         "hid_events_seen": len(events) > 0,
     }

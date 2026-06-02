@@ -32,7 +32,9 @@ These claims are supported by checked-in evidence:
   evidence, not physical USB movement evidence.
 - Generic virtual replay remains diagnostic: the latest HID delivery evidence
   narrows the incomplete Generic browser replay to macOS HID delivery for later
-  axes, but it is not a complete Generic virtual browser replay claim.
+  axes. The follow-up descriptor diagnostic confirms the default descriptor and
+  encoder declare/write all six axes as intended, but it is still not a
+  complete Generic virtual browser replay claim.
 
 ## Forbidden Overclaims
 

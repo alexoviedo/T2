@@ -47,6 +47,7 @@ PERSONAS: dict[str, dict[str, Any]] = {
             "docs/milestone-evidence/VIRTUAL_INPUT_GENERIC_BRIDGE_DIAGNOSTIC_2026-05-31.md",
             "docs/milestone-evidence/GENERIC_VIRTUAL_BROWSER_REPLAY_DIAGNOSTIC_2026-06-01.md",
             "docs/milestone-evidence/GENERIC_HID_DELIVERY_DIAGNOSTIC_2026-06-02.md",
+            "docs/milestone-evidence/GENERIC_REPORT_DESCRIPTOR_DIAGNOSTIC_2026-06-02.md",
         ],
         "virtual_input_proven": False,
         "deterministic_persona_report_evidence": [],

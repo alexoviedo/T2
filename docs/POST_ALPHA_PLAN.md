@@ -57,16 +57,19 @@ before status docs should change.
   lower-level HID delivery diagnostic added a Swift IOKit callback probe and
   showed macOS HID events for Generic X/Y/Z/Rx usages while Ry/Rz toe-axis
   changes and one negative Rx direction did not produce macOS HID callback
-  events despite target report and bridge deltas.
+  events despite target report and bridge deltas. A descriptor diagnosis then
+  confirmed the Generic default descriptor declares X/Y/Z/Rx/Ry/Rz at expected
+  offsets, the encoder writes the intended fields, and macOS enumerates all six
+  elements, so the current evidence does not justify changing the proven
+  default descriptor.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
   Gamepad API slot state, HID callback events, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: inspect Generic HID report descriptor and report
-  payload semantics for later axes/usages 52/53 and signed minimum endpoints,
-  add any needed target BLE notification/readiness diagnostics, then rerun the
-  layered HID delivery diagnostic before attempting Generic->Xbox->Generic
-  switching again.
+- Recommended next prompt type: add a deliberate experimental Generic delivery
+  path, such as symmetric endpoint values or a split/alternative axis descriptor
+  variant, then rerun the layered HID delivery diagnostic before attempting
+  Generic->Xbox->Generic switching again.
 - Risk: high, because BLE cache behavior is host-dependent.
 
 ## 4. Deadzone And Calibration Quality Tuning

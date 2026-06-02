@@ -102,6 +102,31 @@ func deviceMetadata(_ device: IOHIDDevice) -> [String: Any] {
     return metadata
 }
 
+func emitElements(for device: IOHIDDevice) {
+    guard let elements = IOHIDDeviceCopyMatchingElements(device, nil, IOOptionBits(kIOHIDOptionsTypeNone)) as? [IOHIDElement] else {
+        return
+    }
+    for element in elements {
+        let elementType = IOHIDElementGetType(element)
+        var event: [String: Any] = [
+            "type": "element",
+            "at": nowIso8601(),
+            "product": stringProperty(device, kIOHIDProductKey as CFString),
+            "element_type": elementType.rawValue,
+            "usage_page": IOHIDElementGetUsagePage(element),
+            "usage": IOHIDElementGetUsage(element),
+            "logical_min": IOHIDElementGetLogicalMin(element),
+            "logical_max": IOHIDElementGetLogicalMax(element),
+            "report_size": IOHIDElementGetReportSize(element),
+            "report_count": IOHIDElementGetReportCount(element),
+        ]
+        if let id = registryId(device) {
+            event["registry_id"] = id
+        }
+        jsonLine(event)
+    }
+}
+
 let inputValueCallback: IOHIDValueCallback = { _, _, _, value in
     let element = IOHIDValueGetElement(value)
     let device = IOHIDElementGetDevice(element)
@@ -168,6 +193,7 @@ if let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> {
             probeState?.matchedRegistryIds.insert(id)
         }
         jsonLine(deviceMetadata(device))
+        emitElements(for: device)
     }
 }
 
