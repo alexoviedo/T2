@@ -78,7 +78,9 @@ PROBE_HTML = """<!doctype html>
       const state = {
         armed: false,
         seq: 0,
+        rafSeq: 0,
         startedAt: new Date().toISOString(),
+        previousByIndex: {},
       };
       const els = {
         state: document.querySelector("#state"),
@@ -90,23 +92,47 @@ PROBE_HTML = """<!doctype html>
         return Math.round(value * 1000) / 1000;
       }
 
+      function axesSignature(axes) {
+        return axes.map(round).join(",");
+      }
+
+      function buttonsSignature(buttons) {
+        return buttons.map((button) => `${button.pressed ? 1 : 0}:${round(button.value)}`).join(",");
+      }
+
       function gamepadSnapshot(gamepad) {
         if (!gamepad) return null;
-        return {
+        const axes = gamepad.axes.map(round);
+        const buttons = gamepad.buttons.map((button) => ({
+          pressed: button.pressed,
+          touched: button.touched,
+          value: round(button.value),
+        }));
+        const previous = state.previousByIndex[String(gamepad.index)] || null;
+        const timestamp = gamepad.timestamp;
+        const currentAxesSignature = axesSignature(axes);
+        const currentButtonsSignature = buttonsSignature(buttons);
+        const snapshot = {
+          raf_seq: state.rafSeq,
           index: gamepad.index,
           id: gamepad.id,
           mapping: gamepad.mapping || "",
           connected: gamepad.connected,
-          timestamp: gamepad.timestamp,
-          axes_count: gamepad.axes.length,
-          buttons_count: gamepad.buttons.length,
-          axes: gamepad.axes.map(round),
-          buttons: gamepad.buttons.map((button) => ({
-            pressed: button.pressed,
-            touched: button.touched,
-            value: round(button.value),
-          })),
+          timestamp,
+          timestamp_changed_since_previous: previous ? previous.timestamp !== timestamp : null,
+          axes_changed_since_previous: previous ? previous.axes_signature !== currentAxesSignature : null,
+          buttons_changed_since_previous: previous ? previous.buttons_signature !== currentButtonsSignature : null,
+          axes_count: axes.length,
+          buttons_count: buttons.length,
+          axes,
+          buttons,
         };
+        state.previousByIndex[String(gamepad.index)] = {
+          timestamp,
+          axes_signature: currentAxesSignature,
+          buttons_signature: currentButtonsSignature,
+        };
+        return snapshot;
       }
 
       async function postSample(type, extra = {}) {
@@ -118,6 +144,7 @@ PROBE_HTML = """<!doctype html>
           page_loaded_at: state.startedAt,
           session_label: sessionLabel,
           seq: state.seq,
+          raf_seq: state.rafSeq,
           armed: state.armed,
           has_get_gamepads: Boolean(navigator.getGamepads),
           gamepad_count: gamepads.filter(Boolean).length,
@@ -144,6 +171,11 @@ PROBE_HTML = """<!doctype html>
         if (!state.armed) return;
         postSample("poll");
         setTimeout(tick, sampleMs);
+      }
+
+      function rafLoop() {
+        state.rafSeq += 1;
+        requestAnimationFrame(rafLoop);
       }
 
       function arm(source) {
@@ -174,6 +206,7 @@ PROBE_HTML = """<!doctype html>
         }, 350);
       }
       window.focus();
+      requestAnimationFrame(rafLoop);
     </script>
   </body>
 </html>
@@ -264,6 +297,30 @@ def summarize_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         if str(gamepad.get("mapping", "")) == "standard"
         or "STANDARD GAMEPAD" in str(gamepad.get("id", ""))
     ]
+    timestamp_updates = any(gamepad.get("timestamp_changed_since_previous") is True for _, gamepad in connected)
+    axes_updates = any(gamepad.get("axes_changed_since_previous") is True for _, gamepad in connected)
+    button_updates = any(gamepad.get("buttons_changed_since_previous") is True for _, gamepad in connected)
+    changed_axis_indices: set[int] = set()
+    last_axes_by_index: dict[int, list[float]] = {}
+    for _, gamepad in connected:
+        try:
+            index = int(gamepad.get("index", 0))
+        except (TypeError, ValueError):
+            index = 0
+        axes = gamepad.get("axes")
+        if not isinstance(axes, list):
+            continue
+        try:
+            current = [float(axis) for axis in axes]
+        except (TypeError, ValueError):
+            continue
+        previous = last_axes_by_index.get(index)
+        if previous is not None:
+            for axis_index, (before, after) in enumerate(zip(previous, current)):
+                if abs(after - before) > 0.05:
+                    changed_axis_indices.add(axis_index)
+        last_axes_by_index[index] = current
+    only_first_axis_pair_updates = bool(changed_axis_indices) and changed_axis_indices.issubset({2, 3})
     return {
         "sample_count": len(samples),
         "samples_with_gamepads": sum(1 for sample in samples if connected_gamepads(sample)),
@@ -274,6 +331,14 @@ def summarize_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "buttons_lengths": buttons_lengths,
         "generic_gamepad_seen": bool(generic),
         "stale_or_standard_gamepad_seen": bool(stale_xbox),
+        "gamepad_visible": bool(connected),
+        "timestamp_updates": timestamp_updates,
+        "axes_change_seen": axes_updates,
+        "buttons_change_seen": button_updates,
+        "changed_axis_indices": sorted(changed_axis_indices),
+        "only_first_axis_pair_updates": only_first_axis_pair_updates,
+        "polling_suspect": bool(connected) and not timestamp_updates and not axes_updates,
+        "chrome_cache_suspect": bool(stale_xbox) or (not connected and len(samples) > 0),
         "document_focus_observed": any(sample.get("document_has_focus") is True for sample in samples),
         "user_activation_observed": any(sample.get("user_activation_has_been_active") is True for sample in samples),
         "first_connected_sample": connected[0][0] if connected else None,
@@ -296,6 +361,9 @@ def open_chrome(url: str, mode: str, chrome_app: str, out_dir: pathlib.Path) -> 
             f"--user-data-dir={temp_profile}",
             "--no-first-run",
             "--no-default-browser-check",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--disable-backgrounding-occluded-windows",
             url,
         ]
     result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)

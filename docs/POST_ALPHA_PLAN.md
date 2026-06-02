@@ -53,15 +53,19 @@ before status docs should change.
   device with empty mapping, 10 axes, and 16 buttons. A follow-up Generic
   virtual bridge diagnostic validated the clean-profile throttle A2 endpoint
   pair, but Chrome did not surface later virtual rudder/toe/stick report
-  changes despite target mapping/report and bridge publication changes.
+  changes despite target mapping/report and bridge publication changes. A
+  lower-level HID delivery diagnostic added a Swift IOKit callback probe and
+  showed macOS HID events for Generic X/Y/Z/Rx usages while Ry/Rz toe-axis
+  changes and one negative Rx direction did not produce macOS HID callback
+  events despite target report and bridge deltas.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
-  Gamepad API slot state, and failure modes.
+  Gamepad API slot state, HID callback events, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: isolate Generic clean-profile browser sampling
-  versus macOS HID notification behavior by adding a lower-level Chrome DevTools
-  polling path and/or target BLE notification readiness diagnostics, then rerun
-  complete Generic virtual browser replay before attempting Generic->Xbox->Generic
+- Recommended next prompt type: inspect Generic HID report descriptor and report
+  payload semantics for later axes/usages 52/53 and signed minimum endpoints,
+  add any needed target BLE notification/readiness diagnostics, then rerun the
+  layered HID delivery diagnostic before attempting Generic->Xbox->Generic
   switching again.
 - Risk: high, because BLE cache behavior is host-dependent.
 

@@ -30,6 +30,9 @@ These claims are supported by checked-in evidence:
   can drive macOS Chrome standard Gamepad controls for stick, rudder, and toe
   brake mappings through the live bridge. This is virtual-input regression
   evidence, not physical USB movement evidence.
+- Generic virtual replay remains diagnostic: the latest HID delivery evidence
+  narrows the incomplete Generic browser replay to macOS HID delivery for later
+  axes, but it is not a complete Generic virtual browser replay claim.
 
 ## Forbidden Overclaims
 

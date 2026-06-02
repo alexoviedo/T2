@@ -18,9 +18,11 @@ import check_ble_hid_profile  # noqa: E402
 import check_persona_acceptance  # noqa: E402
 import check_xbox_ble_profile  # noqa: E402
 import chrome_gamepad_probe  # noqa: E402
+import generic_hid_delivery_diagnosis  # noqa: E402
 import persona_switch_hygiene  # noqa: E402
 import virtual_input_bridge_witness  # noqa: E402
 import xbox_host_visible_witness  # noqa: E402
+import macos_hid_event_probe  # noqa: E402
 
 
 class BleAdvertisingProbeTests(unittest.TestCase):
@@ -500,6 +502,148 @@ class ChromeGamepadProbeTests(unittest.TestCase):
 
         self.assertTrue(summary["stale_or_standard_gamepad_seen"])
         self.assertFalse(summary["generic_gamepad_seen"])
+
+    def test_summary_reports_timestamp_and_axis_updates(self) -> None:
+        summary = chrome_gamepad_probe.summarize_samples(
+            [
+                {
+                    "gamepads": [
+                        {
+                            "connected": True,
+                            "id": "USB2BLE Gamepad (Vendor: 303a Product: 4001)",
+                            "mapping": "",
+                            "axes_count": 10,
+                            "buttons_count": 16,
+                            "index": 0,
+                            "timestamp": 1,
+                            "timestamp_changed_since_previous": None,
+                            "axes_changed_since_previous": None,
+                            "buttons_changed_since_previous": None,
+                            "axes": [0.0, 0.0, 0.0],
+                            "buttons": [],
+                        }
+                    ]
+                },
+                {
+                    "gamepads": [
+                        {
+                            "connected": True,
+                            "id": "USB2BLE Gamepad (Vendor: 303a Product: 4001)",
+                            "mapping": "",
+                            "axes_count": 10,
+                            "buttons_count": 16,
+                            "index": 0,
+                            "timestamp": 2,
+                            "timestamp_changed_since_previous": True,
+                            "axes_changed_since_previous": True,
+                            "buttons_changed_since_previous": False,
+                            "axes": [0.0, 0.0, 1.0],
+                            "buttons": [],
+                        }
+                    ]
+                },
+            ]
+        )
+
+        self.assertTrue(summary["gamepad_visible"])
+        self.assertTrue(summary["timestamp_updates"])
+        self.assertTrue(summary["axes_change_seen"])
+        self.assertEqual(summary["changed_axis_indices"], [2])
+        self.assertTrue(summary["only_first_axis_pair_updates"])
+
+
+class MacosHidEventProbeTests(unittest.TestCase):
+    def test_summary_counts_devices_and_input_usages(self) -> None:
+        summary = macos_hid_event_probe.summarize_events(
+            [
+                {
+                    "type": "device",
+                    "product": "USB2BLE Gamepad",
+                    "transport": "Bluetooth Low Energy",
+                    "vendor_id": 0x303A,
+                    "product_id": 0x4001,
+                },
+                {
+                    "type": "input_value",
+                    "usage_page": 1,
+                    "usage": 48,
+                    "integer_value": 32767,
+                },
+            ]
+        )
+
+        self.assertEqual(summary["device_count"], 1)
+        self.assertEqual(summary["event_count"], 1)
+        self.assertEqual(summary["vendor_product_ids"], ["303a:4001"])
+        self.assertEqual(summary["changed_usages"], ["1:48"])
+        self.assertTrue(summary["hid_events_seen"])
+
+
+class GenericHidDeliveryDiagnosisTests(unittest.TestCase):
+    def test_endpoint_baseline_is_inconclusive_not_target_report_failure(self) -> None:
+        result = {
+            "target_mapping_changed": True,
+            "target_report_changed": False,
+            "endpoint_baseline_expected": True,
+            "bridge_published_delta": 4,
+            "macos_hid_event_seen": False,
+            "chrome_axes_changed": False,
+            "chrome_timestamp_changed": False,
+        }
+
+        self.assertEqual(
+            generic_hid_delivery_diagnosis.classify_scenario(result, hid_probe_available=True),
+            "inconclusive",
+        )
+
+    def test_non_endpoint_unchanged_report_is_target_report_failure(self) -> None:
+        result = {
+            "target_mapping_changed": True,
+            "target_report_changed": False,
+            "endpoint_baseline_expected": False,
+            "bridge_published_delta": 4,
+            "macos_hid_event_seen": False,
+            "chrome_axes_changed": False,
+            "chrome_timestamp_changed": False,
+        }
+
+        self.assertEqual(
+            generic_hid_delivery_diagnosis.classify_scenario(result, hid_probe_available=True),
+            "target_report",
+        )
+
+    def test_target_and_bridge_change_without_hid_event_is_macos_hid_layer(self) -> None:
+        result = {
+            "target_mapping_changed": True,
+            "target_report_changed": True,
+            "endpoint_baseline_expected": False,
+            "bridge_published_delta": 4,
+            "macos_hid_event_seen": False,
+            "chrome_axes_changed": False,
+            "chrome_timestamp_changed": False,
+        }
+
+        self.assertEqual(
+            generic_hid_delivery_diagnosis.classify_scenario(result, hid_probe_available=True),
+            "macos_hid",
+        )
+
+    def test_chrome_held_active_value_without_delta_is_witness_sampling(self) -> None:
+        result = {
+            "target_mapping_changed": True,
+            "target_report_changed": True,
+            "endpoint_baseline_expected": False,
+            "bridge_published_delta": 4,
+            "macos_hid_event_seen": True,
+            "chrome_axis_active_value_seen": True,
+            "chrome_axes_changed": False,
+            "chrome_timestamp_changed": False,
+        }
+
+        self.assertEqual(
+            generic_hid_delivery_diagnosis.classify_scenario(result, hid_probe_available=True),
+            "witness_sampling",
+        )
 
 
 class PersonaSwitchHygieneTests(unittest.TestCase):
