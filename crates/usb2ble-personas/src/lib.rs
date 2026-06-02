@@ -45,8 +45,10 @@ pub const XBOX_TRIGGER_LOGICAL_MAX: u16 = 1_023;
 const BLE_HID_APPEARANCE_GAMEPAD: u16 = 0x03c4;
 
 static GENERIC_GAMEPAD_DEVICE_NAME: &[u8] = b"USB2BLE Gamepad\0";
+static GENERIC_UNSIGNED_6AXIS_DEVICE_NAME: &[u8] = b"USB2BLE Gamepad U6\0";
 static GENERIC_GAMEPAD_MANUFACTURER_NAME: &[u8] = b"T2\0";
 static GENERIC_GAMEPAD_SERIAL_NUMBER: &[u8] = b"T2-DEMO-0001\0";
+static GENERIC_UNSIGNED_6AXIS_SERIAL_NUMBER: &[u8] = b"T2-GENERIC-U6-0001\0";
 
 static XBOX_MODEL_1914_DEVICE_NAME: &[u8] = b"Xbox Wireless Controller\0";
 static XBOX_MODEL_1914_MANUFACTURER_NAME: &[u8] = b"Microsoft\0";
@@ -59,6 +61,17 @@ pub const GENERIC_GAMEPAD_BLE_IDENTITY: BlePersonaIdentity = BlePersonaIdentity 
     serial_number: GENERIC_GAMEPAD_SERIAL_NUMBER,
     vendor_id: 0x303a,
     product_id: 0x4001,
+    version: 0x0001,
+    appearance: BLE_HID_APPEARANCE_GAMEPAD,
+};
+
+/// BLE identity for the experimental unsigned six-axis Generic Gamepad variant.
+pub const GENERIC_UNSIGNED_6AXIS_BLE_IDENTITY: BlePersonaIdentity = BlePersonaIdentity {
+    device_name: GENERIC_UNSIGNED_6AXIS_DEVICE_NAME,
+    manufacturer_name: GENERIC_GAMEPAD_MANUFACTURER_NAME,
+    serial_number: GENERIC_UNSIGNED_6AXIS_SERIAL_NUMBER,
+    vendor_id: 0x303a,
+    product_id: 0x4002,
     version: 0x0001,
     appearance: BLE_HID_APPEARANCE_GAMEPAD,
 };
@@ -114,6 +127,47 @@ const GENERIC_GAMEPAD_REPORT_MAP: &[u8] = &[
     0x09, 0x35, //   Usage (Rz)
     0x16, 0x00, 0x80, //   Logical Minimum (-32768)
     0x26, 0xff, 0x7f, //   Logical Maximum (32767)
+    0x75, 0x10, //   Report Size (16)
+    0x95, 0x06, //   Report Count (6)
+    0x81, 0x02, //   Input (Data,Var,Abs)
+    0xc0, // End Collection
+];
+
+const GENERIC_UNSIGNED_6AXIS_REPORT_MAP: &[u8] = &[
+    0x05, 0x01, // Usage Page (Generic Desktop)
+    0x09, 0x05, // Usage (Game Pad)
+    0xa1, 0x01, // Collection (Application)
+    0x85, 0x01, //   Report ID (1)
+    0x05, 0x09, //   Usage Page (Button)
+    0x19, 0x01, //   Usage Minimum (Button 1)
+    0x29, 0x10, //   Usage Maximum (Button 16)
+    0x15, 0x00, //   Logical Minimum (0)
+    0x25, 0x01, //   Logical Maximum (1)
+    0x75, 0x01, //   Report Size (1)
+    0x95, 0x10, //   Report Count (16)
+    0x81, 0x02, //   Input (Data,Var,Abs)
+    0x05, 0x01, //   Usage Page (Generic Desktop)
+    0x09, 0x39, //   Usage (Hat switch)
+    0x15, 0x00, //   Logical Minimum (0)
+    0x25, 0x07, //   Logical Maximum (7)
+    0x35, 0x00, //   Physical Minimum (0)
+    0x46, 0x3b, 0x01, //   Physical Maximum (315)
+    0x65, 0x14, //   Unit (Eng Rot:Angular Pos)
+    0x75, 0x04, //   Report Size (4)
+    0x95, 0x01, //   Report Count (1)
+    0x81, 0x42, //   Input (Data,Var,Abs,Null)
+    0x65, 0x00, //   Unit (None)
+    0x75, 0x04, //   Report Size (4)
+    0x95, 0x01, //   Report Count (1)
+    0x81, 0x03, //   Input (Const,Var,Abs)
+    0x09, 0x30, //   Usage (X)
+    0x09, 0x31, //   Usage (Y)
+    0x09, 0x32, //   Usage (Z)
+    0x09, 0x33, //   Usage (Rx)
+    0x09, 0x34, //   Usage (Ry)
+    0x09, 0x35, //   Usage (Rz)
+    0x15, 0x00, //   Logical Minimum (0)
+    0x27, 0xff, 0xff, 0x00, 0x00, //   Logical Maximum (65535)
     0x75, 0x10, //   Report Size (16)
     0x95, 0x06, //   Report Count (6)
     0x81, 0x02, //   Input (Data,Var,Abs)
@@ -265,6 +319,74 @@ impl PersonaEncoder for GenericGamepadEncoder {
                 .position(|control_id| *control_id == logical.control_id)
             {
                 axes[index] = normalize_axis(logical.value);
+            }
+        }
+
+        let mut bytes = Vec::with_capacity(15);
+        bytes.extend_from_slice(&buttons.to_le_bytes());
+        bytes.push(hat);
+        for axis in axes {
+            bytes.extend_from_slice(&axis.to_le_bytes());
+        }
+
+        Ok(EncodedBleReport {
+            persona_id: GENERIC_GAMEPAD_PERSONA_ID,
+            report_id: GENERIC_GAMEPAD_REPORT_ID,
+            bytes,
+        })
+    }
+}
+
+/// Encoder for the experimental unsigned six-axis Generic Gamepad variant.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GenericUnsigned6AxisEncoder;
+
+impl PersonaEncoder for GenericUnsigned6AxisEncoder {
+    fn descriptor(&self, persona_id: PersonaId) -> Result<PersonaDescriptor, PersonaError> {
+        if persona_id != GENERIC_GAMEPAD_PERSONA_ID {
+            return Err(PersonaError::Generic);
+        }
+
+        Ok(PersonaDescriptor {
+            persona_id,
+            display_name: "USB2BLE Generic Gamepad Unsigned 6-Axis".to_string(),
+            identity: GENERIC_UNSIGNED_6AXIS_BLE_IDENTITY,
+            transport_family: BleTransportFamily::Generic,
+            compatibility_variant: BleCompatibilityVariant::GenericUnsigned6Axis,
+            report_map: GENERIC_UNSIGNED_6AXIS_REPORT_MAP.to_vec(),
+            input_schema: generic_gamepad_schema(),
+        })
+    }
+
+    fn encode(&self, input: &PersonaInputFrame) -> Result<EncodedBleReport, PersonaError> {
+        if input.persona_id != GENERIC_GAMEPAD_PERSONA_ID {
+            return Err(PersonaError::Generic);
+        }
+
+        let mut buttons = 0_u16;
+        let mut hat = 8_u8;
+        let mut axes = [scale_axis_to_unsigned_16(NormalizedControlValue::Axis(0)); 6];
+
+        for logical in &input.logical_controls {
+            if let Some(index) = parse_button_index(&logical.control_id) {
+                if matches!(logical.value, NormalizedControlValue::Button(true)) {
+                    buttons |= 1_u16 << index;
+                }
+                continue;
+            }
+
+            if logical.control_id == "hat" {
+                if let NormalizedControlValue::Hat(value) = logical.value {
+                    hat = normalize_hat(value);
+                }
+                continue;
+            }
+
+            if let Some(index) = AXIS_IDS
+                .iter()
+                .position(|control_id| *control_id == logical.control_id)
+            {
+                axes[index] = scale_axis_to_unsigned_16(logical.value);
             }
         }
 
@@ -485,6 +607,25 @@ fn normalize_axis(value: NormalizedControlValue) -> i16 {
     })
 }
 
+fn scale_axis_to_unsigned_16(value: NormalizedControlValue) -> u16 {
+    let raw = match value {
+        NormalizedControlValue::Axis(value)
+        | NormalizedControlValue::Trigger(value)
+        | NormalizedControlValue::Unknown(value) => value,
+        NormalizedControlValue::Button(value) => {
+            if value {
+                i32::from(i16::MAX)
+            } else {
+                0
+            }
+        }
+        NormalizedControlValue::Hat(value) => i32::from(value),
+    };
+    let clamped = i64::from(raw.clamp(i32::from(i16::MIN), i32::from(i16::MAX)));
+    let shifted = clamped + 32_768;
+    u16::try_from(shifted.clamp(0, i64::from(u16::MAX))).unwrap_or(0)
+}
+
 fn scale_axis_to_xbox(value: NormalizedControlValue) -> u16 {
     let raw = match value {
         NormalizedControlValue::Axis(value)
@@ -593,6 +734,87 @@ mod tests {
         assert_eq!(report.bytes[2], 3);
         assert_eq!(&report.bytes[3..5], &i16::MIN.to_le_bytes());
         assert_eq!(&report.bytes[13..15], &i16::MAX.to_le_bytes());
+    }
+
+    #[test]
+    fn unsigned_six_axis_descriptor_keeps_default_untouched() {
+        let default_descriptor = GenericGamepadEncoder
+            .descriptor(GENERIC_GAMEPAD_PERSONA_ID)
+            .unwrap();
+        let unsigned_descriptor = GenericUnsigned6AxisEncoder
+            .descriptor(GENERIC_GAMEPAD_PERSONA_ID)
+            .unwrap();
+
+        assert_eq!(
+            default_descriptor.compatibility_variant,
+            BleCompatibilityVariant::GenericDefault
+        );
+        assert_eq!(
+            unsigned_descriptor.compatibility_variant,
+            BleCompatibilityVariant::GenericUnsigned6Axis
+        );
+        assert_eq!(default_descriptor.identity.product_id, 0x4001);
+        assert_eq!(unsigned_descriptor.identity.product_id, 0x4002);
+        assert_eq!(
+            unsigned_descriptor.identity.device_name,
+            b"USB2BLE Gamepad U6\0"
+        );
+        assert_ne!(
+            default_descriptor.report_map,
+            unsigned_descriptor.report_map
+        );
+        assert!(
+            unsigned_descriptor
+                .report_map
+                .windows(5)
+                .any(|bytes| bytes == [0x27, 0xff, 0xff, 0x00, 0x00])
+        );
+        assert!(
+            !default_descriptor
+                .report_map
+                .windows(5)
+                .any(|bytes| bytes == [0x27, 0xff, 0xff, 0x00, 0x00])
+        );
+    }
+
+    #[test]
+    fn unsigned_six_axis_encodes_neutral_and_extremes() {
+        let report = GenericUnsigned6AxisEncoder
+            .encode(&PersonaInputFrame {
+                persona_id: GENERIC_GAMEPAD_PERSONA_ID,
+                logical_controls: vec![
+                    PersonaLogicalControlValue {
+                        control_id: "x".to_string(),
+                        value: NormalizedControlValue::Axis(i32::from(i16::MIN)),
+                    },
+                    PersonaLogicalControlValue {
+                        control_id: "y".to_string(),
+                        value: NormalizedControlValue::Axis(0),
+                    },
+                    PersonaLogicalControlValue {
+                        control_id: "rz".to_string(),
+                        value: NormalizedControlValue::Axis(i32::from(i16::MAX)),
+                    },
+                ],
+            })
+            .unwrap();
+
+        assert_eq!(report.report_id, GENERIC_GAMEPAD_REPORT_ID);
+        assert_eq!(report.bytes.len(), 15);
+        assert_eq!(&report.bytes[3..5], &0_u16.to_le_bytes());
+        assert_eq!(&report.bytes[5..7], &32_768_u16.to_le_bytes());
+        assert_eq!(&report.bytes[7..9], &32_768_u16.to_le_bytes());
+        assert_eq!(&report.bytes[9..11], &32_768_u16.to_le_bytes());
+        assert_eq!(&report.bytes[11..13], &32_768_u16.to_le_bytes());
+        assert_eq!(&report.bytes[13..15], &u16::MAX.to_le_bytes());
+
+        let default_report = GenericGamepadEncoder
+            .encode(&PersonaInputFrame {
+                persona_id: GENERIC_GAMEPAD_PERSONA_ID,
+                logical_controls: Vec::new(),
+            })
+            .unwrap();
+        assert_eq!(&default_report.bytes[3..15], &[0; 12]);
     }
 
     #[test]

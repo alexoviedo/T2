@@ -592,6 +592,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port")
     parser.add_argument("--persona", choices=sorted(PERSONAS), required=True)
+    parser.add_argument(
+        "--variant",
+        default="generic_default",
+        help="Compatibility variant for --persona generic (default: generic_default).",
+    )
     parser.add_argument("--scenarios", default="all")
     parser.add_argument("--duration-per-scenario", type=float, default=0.8)
     parser.add_argument("--timeout", type=float, default=4.0)
@@ -630,8 +635,13 @@ def main() -> int:
     persona_spec = PERSONAS[args.persona]
     scenarios = scenario_names(args.persona, args.scenarios)
     stamp = utc_stamp()
-    session_label = f"{args.persona}-{stamp}"
-    run_prefix = args.run_prefix or f"{args.persona}_virtual_bridge"
+    variant_safe = args.variant.replace("/", "_").replace(" ", "_")
+    session_label = f"{args.persona}-{variant_safe}-{stamp}"
+    run_prefix = args.run_prefix or (
+        f"{args.persona}_{variant_safe}_virtual_bridge"
+        if args.persona == "generic" and args.variant != "generic_default"
+        else f"{args.persona}_virtual_bridge"
+    )
     run_dir = args.out_dir / f"{run_prefix}_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     capture_dir = run_dir / "gamepad-witness"
@@ -705,10 +715,18 @@ def main() -> int:
             args.timeout,
         )
         send(serial, records, "GET_CONFIG_STATUS", args.timeout)
-        start_configured = send(serial, records, "START_CONFIGURED", args.timeout)
+        if args.persona == "generic" and args.variant != "generic_default":
+            start_command = f"START_BLE_GENERIC_GAMEPAD_VARIANT {args.variant}"
+        else:
+            start_command = "START_CONFIGURED"
+        start_configured = send(serial, records, start_command, args.timeout)
         if any(response == "ERROR:PersonaAlreadyActive" for response in start_configured.responses):
             already_active_status = send(serial, records, "GET_STATUS", args.timeout)
-            if status_persona(already_active_status) == str(persona_spec["persona_id"]):
+            can_reuse_active_persona = (
+                status_persona(already_active_status) == str(persona_spec["persona_id"])
+                and not (args.persona == "generic" and args.variant != "generic_default")
+            )
+            if can_reuse_active_persona:
                 reset_records.append(
                     {
                         "reason": "persona_already_active_reused",
@@ -718,7 +736,7 @@ def main() -> int:
                     }
                 )
                 start_configured = CommandRecord(
-                    "START_CONFIGURED",
+                    start_command,
                     [
                         "CONFIG_ACTION:action=start_configured;state=already_active_reused;"
                         f"detail=persona={persona_spec['persona_id']};bridge=false;;"
@@ -751,9 +769,10 @@ def main() -> int:
                     args.timeout,
                 )
                 send(serial, records, "GET_CONFIG_STATUS", args.timeout)
-                start_configured = send(serial, records, "START_CONFIGURED", args.timeout)
+                start_configured = send(serial, records, start_command, args.timeout)
         if any(response.startswith("ERROR:") for response in start_configured.responses):
-            raise SystemExit("START_CONFIGURED failed: " + "; ".join(start_configured.responses))
+            raise SystemExit(f"{start_command} failed: " + "; ".join(start_configured.responses))
+        send(serial, records, "GET_BLE_COMPAT_PROFILE", args.timeout)
         send(serial, records, "START_VIRTUAL_INPUT", args.timeout)
         send(serial, records, "PUBLISH_VIRTUAL_INPUT_FRAME neutral", args.timeout)
         send(serial, records, "GET_VIRTUAL_INPUT_STATUS", args.timeout)
@@ -917,6 +936,7 @@ def main() -> int:
         "captured_at": stamp,
         "port": port,
         "persona": args.persona,
+        "variant": args.variant if args.persona == "generic" else "n/a",
         "persona_id": persona_spec["persona_id"],
         "run_dir": str(run_dir),
         "capture_file": str(capture_file) if capture_file else None,

@@ -29,7 +29,9 @@ use usb2ble_mapping::{
     map_composite_to_xbox_wireless_controller_with_profile, select_generic_gamepad_profile,
     select_xbox_wireless_controller_profile, xbox_flight_pack_demo_profile,
 };
-use usb2ble_personas::{GenericGamepadEncoder, XboxWirelessControllerEncoder};
+use usb2ble_personas::{
+    GenericGamepadEncoder, GenericUnsigned6AxisEncoder, XboxWirelessControllerEncoder,
+};
 
 /// The main application structure.
 pub struct App<S> {
@@ -531,6 +533,18 @@ where
 
     /// Build a Generic Gamepad report from all latest normalized inputs.
     pub fn generic_gamepad_report(&self) -> Result<EncodedBleReport, ControlError> {
+        if self.state.active_ble_variant == Some(BleCompatibilityVariant::GenericUnsigned6Axis) {
+            self.generic_gamepad_report_with_encoder(&GenericUnsigned6AxisEncoder)
+        } else {
+            self.generic_gamepad_report_with_encoder(&GenericGamepadEncoder)
+        }
+    }
+
+    /// Build a Generic Gamepad report using an explicit Generic-compatible encoder.
+    pub fn generic_gamepad_report_with_encoder(
+        &self,
+        encoder: &impl PersonaEncoder,
+    ) -> Result<EncodedBleReport, ControlError> {
         let composite = self.latest_composite()?;
         let profile = self
             .profile_for_persona(GENERIC_GAMEPAD_PERSONA_ID, &composite)
@@ -538,9 +552,14 @@ where
         let persona_frame = GenericAutoMapper
             .map_to_persona_frame(&profile, &composite)
             .map_err(|_| ControlError::Generic)?;
-        GenericGamepadEncoder
+        encoder
             .encode(&persona_frame)
             .map_err(|_| ControlError::Generic)
+    }
+
+    /// Build an experimental unsigned six-axis Generic report from latest normalized inputs.
+    pub fn generic_unsigned_6axis_report(&self) -> Result<EncodedBleReport, ControlError> {
+        self.generic_gamepad_report_with_encoder(&GenericUnsigned6AxisEncoder)
     }
 
     /// Build an Xbox Wireless Controller report from all latest normalized inputs.

@@ -231,10 +231,16 @@ def main() -> int:
     parser.add_argument("--scenario-seconds", type=float, default=2.5)
     parser.add_argument("--post-neutral-seconds", type=float, default=1.5)
     parser.add_argument("--sample-ms", type=int, default=75)
+    parser.add_argument(
+        "--variant",
+        default="generic_default",
+        help="Generic BLE compatibility variant to test (default: generic_default).",
+    )
     args = parser.parse_args()
 
     stamp = utc_stamp()
-    run_dir = args.out_dir / f"generic_hid_delivery_{stamp}"
+    variant_safe = args.variant.replace("/", "_").replace(" ", "_")
+    run_dir = args.out_dir / f"generic_hid_delivery_{variant_safe}_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     chrome_root = run_dir / "chrome"
     hid_root = run_dir / "macos_hid"
@@ -261,9 +267,19 @@ def main() -> int:
             args.timeout,
         )
         send(serial, records, "GET_CONFIG_STATUS", args.timeout)
-        start = send(serial, records, "START_CONFIGURED", args.timeout)
-        if any(response.startswith("ERROR:") and response != "ERROR:PersonaAlreadyActive" for response in start.responses):
-            raise SystemExit("START_CONFIGURED failed: " + "; ".join(start.responses))
+        if args.variant == "generic_default":
+            start_command = "START_CONFIGURED"
+        else:
+            start_command = f"START_BLE_GENERIC_GAMEPAD_VARIANT {args.variant}"
+        start = send(serial, records, start_command, args.timeout)
+        allow_already_active = args.variant == "generic_default"
+        if any(
+            response.startswith("ERROR:")
+            and not (allow_already_active and response == "ERROR:PersonaAlreadyActive")
+            for response in start.responses
+        ):
+            raise SystemExit(f"{start_command} failed: " + "; ".join(start.responses))
+        send(serial, records, "GET_BLE_COMPAT_PROFILE", args.timeout)
         send(serial, records, "START_VIRTUAL_INPUT", args.timeout)
         send(serial, records, "PUBLISH_VIRTUAL_INPUT_FRAME neutral", args.timeout)
         send(serial, records, "START_BRIDGE", args.timeout)
@@ -282,7 +298,7 @@ def main() -> int:
                 "--sample-ms",
                 str(args.sample_ms),
                 "--session-label",
-                f"generic-hid-delivery-{stamp}",
+                f"generic-hid-delivery-{variant_safe}-{stamp}",
                 "--chrome-mode",
                 "temp-profile",
                 "--auto-gesture",
@@ -422,6 +438,7 @@ def main() -> int:
         "captured_at": stamp,
         "run_dir": str(run_dir),
         "port": port,
+        "variant": args.variant,
         "chrome_sample_file": str(chrome_file) if chrome_file else None,
         "hid_event_file": str(hid_file) if hid_file else None,
         "hid_probe_available": hid_probe_available,

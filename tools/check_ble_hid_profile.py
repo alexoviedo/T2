@@ -90,6 +90,37 @@ def builtin_profile(variant: str) -> dict[str, Any]:
             }
         )
         return profile
+    if variant == "generic_unsigned_6axis":
+        profile = builtin_profile("generic_default")
+        profile.update(
+            {
+                "active_variant": "generic_unsigned_6axis",
+                "intended_host_target": "macos_chrome_six_axis_delivery_experiment",
+                "device_name": "USB2BLE Gamepad U6",
+                "product_id": 0x4002,
+                "report_map_len": 79,
+                "scan_response": {
+                    **profile["scan_response"],
+                    "estimated_payload_len": 20,
+                },
+                "generic_reference": {
+                    "axes_declared": ["x", "y", "z", "rx", "ry", "rz"],
+                    "axis_value_type": "unsigned_16_centered",
+                    "axis_logical_min": 0,
+                    "axis_logical_max": 65535,
+                    "axis_offsets": {
+                        "x": 3,
+                        "y": 5,
+                        "z": 7,
+                        "rx": 9,
+                        "ry": 11,
+                        "rz": 13,
+                    },
+                    "variant_purpose": "experimental host-compatible six-axis delivery check",
+                },
+            }
+        )
+        return profile
     if variant == "xbox_compatibility":
         profile = builtin_profile("generic_default")
         profile.update(
@@ -326,7 +357,11 @@ def main() -> int:
     if args.variant_witness_dir:
         profiles.extend(profiles_from_variant_witness(args.variant_witness_dir))
     if not profiles:
-        profiles = [builtin_profile("generic_default"), builtin_profile("generic_hogp_strict")]
+        profiles = [
+            builtin_profile("generic_default"),
+            builtin_profile("generic_hogp_strict"),
+            builtin_profile("generic_unsigned_6axis"),
+        ]
 
     summaries = [check_profile(profile) for profile in profiles]
     result = {

@@ -53,15 +53,28 @@ def latest_delivery_run() -> pathlib.Path:
     return runs[-1]
 
 
-def extract_generic_report_map(source: pathlib.Path = PERSONAS_SOURCE) -> list[int]:
+REPORT_MAP_CONSTS = {
+    "generic_default": "GENERIC_GAMEPAD_REPORT_MAP",
+    "generic_hogp_strict": "GENERIC_GAMEPAD_REPORT_MAP",
+    "generic_unsigned_6axis": "GENERIC_UNSIGNED_6AXIS_REPORT_MAP",
+}
+
+
+def extract_generic_report_map(
+    source: pathlib.Path = PERSONAS_SOURCE,
+    variant: str = "generic_default",
+) -> list[int]:
+    const_name = REPORT_MAP_CONSTS.get(variant)
+    if const_name is None:
+        raise ValueError(f"unsupported Generic report-map variant: {variant}")
     text = source.read_text(encoding="utf-8")
     match = re.search(
-        r"const\s+GENERIC_GAMEPAD_REPORT_MAP:\s*&\[u8\]\s*=\s*&\[(?P<body>.*?)\];",
+        rf"const\s+{re.escape(const_name)}:\s*&\[u8\]\s*=\s*&\[(?P<body>.*?)\];",
         text,
         re.S,
     )
     if not match:
-        raise ValueError(f"could not locate GENERIC_GAMEPAD_REPORT_MAP in {source}")
+        raise ValueError(f"could not locate {const_name} in {source}")
     body = re.sub(r"//.*", "", match.group("body"))
     values: list[int] = []
     for token in re.findall(r"0x[0-9a-fA-F]+|\b\d+\b", body):
@@ -424,14 +437,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--delivery-run", type=pathlib.Path)
     parser.add_argument("--out-dir", type=pathlib.Path, default=DEFAULT_OUT_ROOT)
+    parser.add_argument("--variant", default="generic_default")
     args = parser.parse_args()
 
     delivery_run = args.delivery_run or latest_delivery_run()
     stamp = utc_stamp()
-    run_dir = args.out_dir / f"generic_report_descriptor_{stamp}"
+    variant_safe = args.variant.replace("/", "_").replace(" ", "_")
+    run_dir = args.out_dir / f"generic_report_descriptor_{variant_safe}_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    report_map = extract_generic_report_map()
+    report_map = extract_generic_report_map(variant=args.variant)
     layout = parse_report_map(report_map)
     summary, scenarios, hid_rows = load_delivery_run(delivery_run)
     correlations = correlate_scenarios(scenarios, hid_rows, layout["fields"])
@@ -439,6 +454,7 @@ def main() -> int:
 
     report_layout = {
         "source": str(PERSONAS_SOURCE),
+        "variant": args.variant,
         "report_map_len": len(report_map),
         "report_map_hex": "".join(f"{byte:02x}" for byte in report_map),
         **layout,
@@ -459,6 +475,7 @@ def main() -> int:
     summary_out = {
         "captured_at": stamp,
         "run_dir": str(run_dir),
+        "variant": args.variant,
         "delivery_run": str(delivery_run),
         "root_cause": root_cause,
         "axis_fields": [

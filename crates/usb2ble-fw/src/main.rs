@@ -18,10 +18,10 @@ use usb2ble_contracts::{
 };
 use usb2ble_control::SerialControlPlane;
 use usb2ble_personas::{
-    GENERIC_GAMEPAD_PERSONA_ID, GenericGamepadEncoder, XBOX_INPUT_REPORT_ID,
-    XBOX_INPUT_REPORT_PAYLOAD_LEN, XBOX_MODEL_1914_REPORT_MAP_LEN, XBOX_RUMBLE_OUTPUT_PAYLOAD_LEN,
-    XBOX_RUMBLE_REPORT_ID, XBOX_STICK_LOGICAL_MAX, XBOX_TRIGGER_LOGICAL_MAX,
-    XBOX_WIRELESS_CONTROLLER_PERSONA_ID, XboxWirelessControllerEncoder,
+    GENERIC_GAMEPAD_PERSONA_ID, GenericGamepadEncoder, GenericUnsigned6AxisEncoder,
+    XBOX_INPUT_REPORT_ID, XBOX_INPUT_REPORT_PAYLOAD_LEN, XBOX_MODEL_1914_REPORT_MAP_LEN,
+    XBOX_RUMBLE_OUTPUT_PAYLOAD_LEN, XBOX_RUMBLE_REPORT_ID, XBOX_STICK_LOGICAL_MAX,
+    XBOX_TRIGGER_LOGICAL_MAX, XBOX_WIRELESS_CONTROLLER_PERSONA_ID, XboxWirelessControllerEncoder,
 };
 use usb2ble_platform_esp32::{
     self as platform, EspUsbIngress, PlatformStore, Uart, UartReadResult, ble_hid::BleHidTransport,
@@ -717,14 +717,7 @@ where
     let active_persona = app.state().active_persona;
     let active_variant = app.state().active_ble_variant;
     let descriptor = active_persona.and_then(|persona| {
-        let encoder: &dyn PersonaEncoder = if persona == GENERIC_GAMEPAD_PERSONA_ID {
-            generic_encoder
-        } else if persona == XBOX_WIRELESS_CONTROLLER_PERSONA_ID {
-            xbox_encoder
-        } else {
-            return None;
-        };
-        encoder.descriptor(persona).ok()
+        descriptor_for_persona_variant(persona, active_variant, generic_encoder, xbox_encoder)
     });
     let (device_name, appearance) = descriptor
         .as_ref()
@@ -764,6 +757,28 @@ where
     })
 }
 
+fn descriptor_for_persona_variant(
+    persona: PersonaId,
+    variant: Option<BleCompatibilityVariant>,
+    generic_encoder: &(impl PersonaEncoder + ?Sized),
+    xbox_encoder: &(impl PersonaEncoder + ?Sized),
+) -> Option<usb2ble_contracts::PersonaDescriptor> {
+    if persona == GENERIC_GAMEPAD_PERSONA_ID {
+        if variant == Some(BleCompatibilityVariant::GenericUnsigned6Axis) {
+            return GenericUnsigned6AxisEncoder.descriptor(persona).ok();
+        }
+        let mut descriptor = generic_encoder.descriptor(persona).ok()?;
+        if let Some(variant) = variant {
+            descriptor.compatibility_variant = variant;
+        }
+        Some(descriptor)
+    } else if persona == XBOX_WIRELESS_CONTROLLER_PERSONA_ID {
+        xbox_encoder.descriptor(persona).ok()
+    } else {
+        None
+    }
+}
+
 fn nul_terminated_bytes_to_string(bytes: &[u8]) -> String {
     let end = bytes
         .iter()
@@ -799,6 +814,9 @@ fn variant_intended_host_target(variant: Option<BleCompatibilityVariant>) -> &'s
     match variant {
         Some(BleCompatibilityVariant::GenericDefault) => "macos_chrome_proven_default",
         Some(BleCompatibilityVariant::GenericHogpStrict) => "apple_ios_discovery_experiment",
+        Some(BleCompatibilityVariant::GenericUnsigned6Axis) => {
+            "macos_chrome_six_axis_delivery_experiment"
+        }
         Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => "ios_keyboard_fallback_planned",
         Some(BleCompatibilityVariant::XboxCompatibility) => "xbox_like_hosts_experimental",
         None => "none",
@@ -869,6 +887,13 @@ fn ble_compatibility_variants_json() -> JsonResponse {
                 "description": "HOGP-conservative advertisement experiment: complete local name in primary advertisement and HID UUID in scan response."
             },
             {
+                "id": "generic_unsigned_6axis",
+                "persona": "generic_gamepad",
+                "implemented": true,
+                "experimental": true,
+                "description": "Unsigned 16-bit X/Y/Z/Rx/Ry/Rz report-map and encoder experiment for host delivery diagnostics."
+            },
+            {
                 "id": "ios_keyboard_icade_fallback",
                 "persona": "keyboard_icade",
                 "implemented": false,
@@ -905,18 +930,7 @@ where
     let active_persona = app.state().active_persona;
     let active_variant = app.state().active_ble_variant;
     let descriptor = active_persona.and_then(|persona| {
-        let encoder: &dyn PersonaEncoder = if persona == GENERIC_GAMEPAD_PERSONA_ID {
-            generic_encoder
-        } else if persona == XBOX_WIRELESS_CONTROLLER_PERSONA_ID {
-            xbox_encoder
-        } else {
-            return None;
-        };
-        let mut descriptor = encoder.descriptor(persona).ok()?;
-        if let Some(variant) = active_variant {
-            descriptor.compatibility_variant = variant;
-        }
-        Some(descriptor)
+        descriptor_for_persona_variant(persona, active_variant, generic_encoder, xbox_encoder)
     });
     let bonds_present = match app.handle_control_command(&ControlCommand::GetStatus) {
         ControlResponse::Status(status) => status.bonds_present,
@@ -955,6 +969,25 @@ where
             "share_usage": "consumer_record",
             "rumble_output_behavior": "descriptor_exposes_report_id_3; firmware parses as safe no-op only if surfaced by host stack",
             "claim_boundary": "BLE HID profile target, not Xbox console or proprietary Xbox Wireless compatibility"
+        })
+    });
+    let generic_reference = (active_persona == Some(GENERIC_GAMEPAD_PERSONA_ID)).then(|| {
+        let unsigned = active_variant == Some(BleCompatibilityVariant::GenericUnsigned6Axis);
+        serde_json::json!({
+            "axes_declared": ["x", "y", "z", "rx", "ry", "rz"],
+            "axis_value_type": if unsigned { "unsigned_16_centered" } else { "signed_16" },
+            "axis_logical_min": if unsigned { 0 } else { i32::from(i16::MIN) },
+            "axis_logical_max": if unsigned { u32::from(u16::MAX) as i64 } else { i64::from(i16::MAX) },
+            "axis_offsets": {
+                "x": 3,
+                "y": 5,
+                "z": 7,
+                "rx": 9,
+                "ry": 11,
+                "rz": 13
+            },
+            "variant_purpose": if unsigned { "experimental host-compatible six-axis delivery check" } else { "default Generic Gamepad path" },
+            "claim_boundary": "Generic BLE HID profile diagnostics; not broad host compatibility"
         })
     });
     let device_name = descriptor
@@ -1011,6 +1044,7 @@ where
         "services_not_verified_by_command": ["device_information_service", "battery_service", "cccd_notify", "service_changed"],
         "report_map_len": report_map_len,
         "report_ids": report_ids,
+        "generic_reference": generic_reference,
         "xbox_reference": xbox_reference,
         "security": {
             "mode": "bond",
@@ -1116,9 +1150,21 @@ where
     };
     if !matches!(
         variant,
-        BleCompatibilityVariant::GenericDefault | BleCompatibilityVariant::GenericHogpStrict
+        BleCompatibilityVariant::GenericDefault
+            | BleCompatibilityVariant::GenericHogpStrict
+            | BleCompatibilityVariant::GenericUnsigned6Axis
     ) {
         return ControlResponse::Error(ControlError::UnknownPersona);
+    }
+    if variant == BleCompatibilityVariant::GenericUnsigned6Axis {
+        return start_ble_persona(
+            app,
+            ble,
+            &GenericUnsigned6AxisEncoder,
+            GENERIC_GAMEPAD_PERSONA_ID,
+            None,
+            "start_generic_gamepad_variant",
+        );
     }
     start_ble_persona(
         app,
@@ -1491,6 +1537,47 @@ mod tests {
     }
 
     #[test]
+    fn generic_unsigned_six_axis_variant_reports_distinct_identity_and_profile() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepadVariant(
+                "generic_unsigned_6axis".to_string(),
+            )),
+            "start_generic_gamepad_variant",
+        );
+        match runtime.run(ControlCommand::GetBleAdvertisingInfo) {
+            ControlResponse::BleAdvertisingInfo(info) => {
+                assert_eq!(
+                    info.compatibility_variant,
+                    Some(BleCompatibilityVariant::GenericUnsigned6Axis)
+                );
+                assert_eq!(info.active_persona, Some(GENERIC_GAMEPAD_PERSONA_ID));
+                assert_eq!(info.device_name.as_deref(), Some("USB2BLE Gamepad U6"));
+                assert_eq!(info.advertised_uuids, vec!["1812".to_string()]);
+                assert!(info.scan_response_includes_name);
+            }
+            other => panic!("expected BLE advertising info, got {other:?}"),
+        }
+
+        match runtime.run(ControlCommand::GetBleCompatProfile) {
+            ControlResponse::Json(resp) => {
+                let value: serde_json::Value = serde_json::from_str(&resp.json).unwrap();
+                assert_eq!(value["active_variant"], "generic_unsigned_6axis");
+                assert_eq!(value["device_name"], "USB2BLE Gamepad U6");
+                assert_eq!(value["product_id"], 0x4002);
+                assert_eq!(
+                    value["generic_reference"]["axis_value_type"],
+                    "unsigned_16_centered"
+                );
+                assert_eq!(value["generic_reference"]["axis_logical_min"], 0);
+                assert_eq!(value["generic_reference"]["axis_logical_max"], 65_535);
+            }
+            other => panic!("expected profile JSON, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn ble_compatibility_profile_commands_return_json() {
         let mut runtime = Runtime::new();
 
@@ -1498,6 +1585,7 @@ mod tests {
             ControlResponse::Json(resp) => {
                 assert_eq!(resp.prefix, "BLE_COMPAT_VARIANTS_JSON");
                 assert!(resp.json.contains("generic_hogp_strict"));
+                assert!(resp.json.contains("generic_unsigned_6axis"));
                 assert!(resp.json.contains("ios_keyboard_icade_fallback"));
             }
             other => panic!("expected variants JSON, got {other:?}"),
@@ -1616,6 +1704,28 @@ mod tests {
         assert_eq!(report.persona_id, GENERIC_GAMEPAD_PERSONA_ID);
         assert_eq!(report.report_id.0, 1);
         assert_eq!(report.bytes.len(), 15);
+        assert_eq!(runtime.ble.published_reports().len(), 1);
+    }
+
+    #[test]
+    fn generic_unsigned_variant_publish_uses_unsigned_axis_center() {
+        let mut runtime = Runtime::with_button_input();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepadVariant(
+                "generic_unsigned_6axis".to_string(),
+            )),
+            "start_generic_gamepad_variant",
+        );
+        let report = assert_ble_report(
+            runtime.run(ControlCommand::PublishGenericGamepadReport),
+            "publish_generic_gamepad",
+        );
+
+        assert_eq!(report.persona_id, GENERIC_GAMEPAD_PERSONA_ID);
+        assert_eq!(report.report_id.0, 1);
+        assert_eq!(report.bytes.len(), 15);
+        assert_eq!(&report.bytes[3..5], &32_768_u16.to_le_bytes());
         assert_eq!(runtime.ble.published_reports().len(), 1);
     }
 
@@ -1747,6 +1857,28 @@ mod tests {
             .expect("bridge should publish a report");
         assert_eq!(report.persona_id, GENERIC_GAMEPAD_PERSONA_ID);
         assert_eq!(report.bytes.len(), 15);
+    }
+
+    #[test]
+    fn automatic_bridge_publish_uses_generic_unsigned_variant_reports() {
+        let mut runtime = Runtime::with_button_input();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepadVariant(
+                "generic_unsigned_6axis".to_string(),
+            )),
+            "start_generic_gamepad_variant",
+        );
+        assert_bridge_status(runtime.run(ControlCommand::StartBridge));
+
+        assert_eq!(runtime.poll_bridge(0), BridgePollOutcome::FirstPublish);
+        let report = runtime
+            .ble
+            .published_reports()
+            .last()
+            .expect("bridge should publish a report");
+        assert_eq!(report.persona_id, GENERIC_GAMEPAD_PERSONA_ID);
+        assert_eq!(&report.bytes[3..5], &32_768_u16.to_le_bytes());
     }
 
     #[test]

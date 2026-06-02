@@ -588,6 +588,8 @@ pub enum BleCompatibilityVariant {
     GenericDefault,
     /// Experimental HOGP-conservative Generic variant for Apple/iOS diagnostics.
     GenericHogpStrict,
+    /// Experimental Generic variant with unsigned 16-bit X/Y/Z/Rx/Ry/Rz axes.
+    GenericUnsigned6Axis,
     /// Experimental keyboard/iCade-style fallback stub, not a true gamepad.
     IosKeyboardIcadeFallback,
     /// Existing Xbox compatibility persona variant.
@@ -601,6 +603,7 @@ impl BleCompatibilityVariant {
         match self {
             Self::GenericDefault => "generic_default",
             Self::GenericHogpStrict => "generic_hogp_strict",
+            Self::GenericUnsigned6Axis => "generic_unsigned_6axis",
             Self::IosKeyboardIcadeFallback => "ios_keyboard_icade_fallback",
             Self::XboxCompatibility => "xbox_compatibility",
         }
@@ -612,6 +615,7 @@ impl BleCompatibilityVariant {
         match value {
             "generic_default" => Some(Self::GenericDefault),
             "generic_hogp_strict" => Some(Self::GenericHogpStrict),
+            "generic_unsigned_6axis" => Some(Self::GenericUnsigned6Axis),
             "ios_keyboard_icade_fallback" => Some(Self::IosKeyboardIcadeFallback),
             "xbox_compatibility" => Some(Self::XboxCompatibility),
             _ => None,
