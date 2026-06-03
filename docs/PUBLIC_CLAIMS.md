@@ -34,7 +34,10 @@ These claims are supported by checked-in evidence:
   narrows the incomplete Generic browser replay to macOS HID delivery for later
   axes. The follow-up descriptor diagnostic confirms the default descriptor and
   encoder declare/write all six axes as intended, but it is still not a
-  complete Generic virtual browser replay claim.
+  complete Generic virtual browser replay claim. The `generic_unsigned_6axis`
+  A/B diagnostic verified the experimental variant on target, but did not
+  improve the missing macOS HID/Chrome delivery, so it is not a supported
+  replacement for `generic_default`.
 
 ## Forbidden Overclaims
 

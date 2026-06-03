@@ -61,14 +61,17 @@ before status docs should change.
   confirmed the Generic default descriptor declares X/Y/Z/Rx/Ry/Rz at expected
   offsets, the encoder writes the intended fields, and macOS enumerates all six
   elements, so the current evidence does not justify changing the proven
-  default descriptor.
+  default descriptor. The `generic_unsigned_6axis` experiment verified an
+  unsigned six-axis variant on target, but A/B diagnostics did not improve the
+  missing macOS HID/Chrome delivery for later refined Generic axes.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
   Gamepad API slot state, HID callback events, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
 - Recommended next prompt type: add a deliberate experimental Generic delivery
-  path, such as symmetric endpoint values or a split/alternative axis descriptor
-  variant, then rerun the layered HID delivery diagnostic before attempting
+  path that changes descriptor shape rather than only signedness, such as a
+  compact four-axis-plus-trigger-style variant or a split-collection axis
+  descriptor, then rerun the layered HID delivery diagnostic before attempting
   Generic->Xbox->Generic switching again.
 - Risk: high, because BLE cache behavior is host-dependent.
 

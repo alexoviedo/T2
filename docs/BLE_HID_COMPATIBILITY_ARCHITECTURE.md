@@ -30,7 +30,7 @@ The proven default must remain unchanged:
 
 - `generic_default`: current Generic Gamepad path, evidence-backed on macOS/Chrome.
 - `generic_hogp_strict`: experimental Generic advertisement variant. It keeps the same logical persona/report map, but moves the complete local name into the primary advertisement and moves the HID UUID to scan response to stay within legacy advertisement payload limits.
-- `generic_unsigned_6axis`: implemented experimental descriptor/report-map variant for hosts that may dislike signed axes. It keeps six `X/Y/Z/Rx/Ry/Rz` axes, uses unsigned centered `0..65535` values, and advertises a distinct `USB2BLE Gamepad U6` / `303a:4002` identity for cache-safe A/B testing.
+- `generic_unsigned_6axis`: implemented experimental descriptor/report-map variant for hosts that may dislike signed axes. It keeps six `X/Y/Z/Rx/Ry/Rz` axes, uses unsigned centered `0..65535` values, and advertises a distinct `USB2BLE Gamepad U6` / `303a:4002` identity for cache-safe A/B testing. The 2026-06-02 A/B diagnostic verified the variant on target but did not improve the missing macOS HID/Chrome delivery for later refined Generic axes, so it remains non-default.
 - `generic_android_sim_controls`: planned descriptor variant for simulation-control-style throttle/brake/accelerator semantics.
 - `ios_keyboard_icade_fallback`: planned keyboard/iCade-style fallback, not a true Gamepad API path.
 - `xbox_compatibility`: Xbox Wireless Controller model 1914 / Series X|S BLE profile target, with profile diagnostics/checker evidence and broad compatibility still unclaimed.

@@ -23,6 +23,7 @@ USB2BLE keeps `generic_default` as the proven Generic BLE Gamepad path. Host-spe
 - Neutral axis value: `32768`
 - Purpose: test whether macOS/Chrome deliver all six refined Flight Pack axes more reliably when the Generic Desktop axes use an unsigned logical range.
 - Claim boundary: experimental macOS/Chrome delivery variant; not broad host compatibility and not physical USB movement evidence.
+- Hardware A/B result: `docs/milestone-evidence/GENERIC_COMPAT_VARIANT_DIAGNOSTIC_2026-06-02.md` verified the variant on target, but unsigned logical ranges did not improve the missing macOS HID/Chrome delivery for the later refined Generic axes. Keep this variant non-default.
 
 ## Candidate Experiments
 
