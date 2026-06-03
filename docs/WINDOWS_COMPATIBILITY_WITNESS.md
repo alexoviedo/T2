@@ -16,10 +16,14 @@ not itself compatibility evidence.
   (`2109:2813`), T.16000M (`044f:b10a`), and TWCS/RJ12 (`044f:b687`) on Alex's
   Windows PC after flashing an ESP-IDF v5.5.3 target build. This is target-side
   USB topology evidence only.
-- The next Windows hardware chunk should use the recovered target USB topology
-  as the baseline, then run one carefully scoped Windows host-visible persona
-  probe without claiming physical Flight Pack movement unless that movement is
-  separately captured.
+- 2026-06-03: `docs/milestone-evidence/WINDOWS_BLE_HOST_VISIBLE_DIAGNOSTIC_2026-06-03.md`
+  records a negative Windows host-visible BLE diagnostic after topology
+  recovery: Generic default, Generic HOGP-strict, Generic unsigned six-axis, and
+  Xbox personas reported target-side advertising intent, but Windows active BLE
+  scans, PnP/Raw Input/XInput, and Edge Gamepad API did not expose a USB2BLE
+  controller.
+- The next Windows hardware chunk should isolate the BLE advertising/discovery
+  layer before retrying Windows pairing or Gamepad API tests.
 
 ## Hardware Setup
 
