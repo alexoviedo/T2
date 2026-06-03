@@ -1,7 +1,8 @@
 # Windows Compatibility Witness
 
 Status: Windows hardware/game compatibility plan with one partial diagnostic
-attempt recorded. This document is not itself compatibility evidence.
+attempt and one target USB topology recovery witness recorded. This document is
+not itself compatibility evidence.
 
 ## Current Windows Evidence
 
@@ -10,9 +11,15 @@ attempt recorded. This document is not itself compatibility evidence.
   hub-only USB topology, target-side Generic/Xbox virtual bridge publication,
   and negative Windows Raw Input/XInput/Chrome Gamepad API visibility for that
   run.
-- The next Windows hardware chunk should first recover downstream target USB
-  enumeration for T.16000M (`044f:b10a`) and TWCS/RJ12 (`044f:b687`) before
-  claiming any physical Flight Pack path on Windows.
+- 2026-06-03: `docs/milestone-evidence/WINDOWS_USB_HOST_TOPOLOGY_WITNESS_2026-06-03.md`
+  records recovery of downstream target USB host enumeration for HooToo
+  (`2109:2813`), T.16000M (`044f:b10a`), and TWCS/RJ12 (`044f:b687`) on Alex's
+  Windows PC after flashing an ESP-IDF v5.5.3 target build. This is target-side
+  USB topology evidence only.
+- The next Windows hardware chunk should use the recovered target USB topology
+  as the baseline, then run one carefully scoped Windows host-visible persona
+  probe without claiming physical Flight Pack movement unless that movement is
+  separately captured.
 
 ## Hardware Setup
 

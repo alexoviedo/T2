@@ -369,7 +369,10 @@ mod target {
         esp_result(esp_bt_controller_init(&mut bt_cfg))?;
         esp_result(esp_bt_controller_enable(esp_bt_mode_t_ESP_BT_MODE_BLE))?;
 
-        let mut bluedroid_cfg = esp_bluedroid_config_t { ssp_en: true };
+        let mut bluedroid_cfg = esp_bluedroid_config_t {
+            ssp_en: true,
+            ..Default::default()
+        };
         esp_result(esp_bluedroid_init_with_cfg(&mut bluedroid_cfg))?;
         esp_result(esp_bluedroid_enable())?;
         esp_result(esp_ble_gap_register_callback(Some(gap_event_callback)))?;
@@ -587,6 +590,7 @@ mod target {
             ble_data_lenth_zero_aux: BT_BLE_ADV_DATA_LENGTH_ZERO_AUX as u8,
             ble_chan_ass_en: CONFIG_BT_CTRL_CHAN_ASS_EN as u8,
             ble_ping_en: CONFIG_BT_CTRL_LE_PING_EN as u8,
+            ..Default::default()
         }
     }
 
