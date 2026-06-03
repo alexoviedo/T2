@@ -170,7 +170,7 @@ def evaluate_persona(persona: str, artifact_dir: pathlib.Path | None = None) -> 
     if checker is None:
         checks.append(Check("source", "descriptor_checker", "warn", "not implemented yet"))
     else:
-        status = "pass" if pathlib.Path(checker).exists() and command_passes(["python3", checker, "--quiet"]) else "fail"
+        status = "pass" if pathlib.Path(checker).exists() and command_passes([sys.executable, checker, "--quiet"]) else "fail"
         checks.append(Check("source", "descriptor_checker", status, str(checker)))
 
     add_file_checks(checks, "evidence", "target_side_witness", spec["target_evidence"], claimed)

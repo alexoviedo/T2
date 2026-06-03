@@ -13,14 +13,18 @@ import select
 import socket
 import subprocess
 import sys
-import termios
 import time
-import tty
 from dataclasses import dataclass
 from typing import Any
 
+try:
+    import termios
+    import tty
+except ImportError:  # pragma: no cover - exercised by Windows import checks
+    termios = None  # type: ignore[assignment]
+    tty = None  # type: ignore[assignment]
 
-BAUD = termios.B115200
+BAUD = termios.B115200 if termios is not None else 115200
 DEFAULT_PORT = "/dev/cu.usbmodem5B5E0200881"
 DEFAULT_SOURCE = "auto"
 DEFAULT_STICK_VID = "044f"
@@ -69,6 +73,8 @@ class CommandRecord:
 
 class SerialPort:
     def __init__(self, path: str, baud: int = BAUD) -> None:
+        if termios is None or tty is None:
+            raise RuntimeError("POSIX termios serial support is not available on this platform")
         self.fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
         self._previous_attrs = termios.tcgetattr(self.fd)
 

@@ -79,6 +79,12 @@ The current public prerelease is
 ./scripts/check_target_build.sh
 ```
 
+On Windows, run the no-hardware checks through PowerShell:
+
+```powershell
+.\scripts\validate_no_hardware.ps1
+```
+
 The no-hardware validation is safe without an ESP32-S3, HOTAS, browser chooser,
 Bluetooth pairing, or physical controls. The target preflight requires the
 Xtensa/ESP-IDF toolchain.

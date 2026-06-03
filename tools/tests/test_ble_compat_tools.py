@@ -66,10 +66,14 @@ class BleHidProfileCheckerTests(unittest.TestCase):
 
     def test_loads_prefixed_profile_json(self) -> None:
         profile = check_ble_hid_profile.builtin_profile("generic_hogp_strict")
-        with tempfile.NamedTemporaryFile("w+", encoding="utf-8") as handle:
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as handle:
             handle.write("BLE_COMPAT_PROFILE_JSON:" + json.dumps(profile))
             handle.flush()
-            loaded = check_ble_hid_profile.load_profile_file(pathlib.Path(handle.name))
+            path = pathlib.Path(handle.name)
+        try:
+            loaded = check_ble_hid_profile.load_profile_file(path)
+        finally:
+            path.unlink(missing_ok=True)
 
         self.assertEqual(loaded["active_variant"], "generic_hogp_strict")
 

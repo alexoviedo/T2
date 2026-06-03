@@ -23,6 +23,18 @@ checks when `web/` exists.
 The web build expects Node `20.19+`. CI pins Node `20.19`; local older Node 20
 builds may fail even when the app code is fine.
 
+On Windows, use the PowerShell wrapper:
+
+```powershell
+.\scripts\validate_no_hardware.ps1
+```
+
+It mirrors the Bash checks as closely as practical while keeping target/hardware
+operations out of the no-hardware path. Rust host checks still require the
+Visual Studio C++ Build Tools or another valid MSVC linker/SDK setup. The
+original Bash script and CI/Linux checks remain authoritative for shell syntax
+and Unix-specific behavior.
+
 ## Target Preflight
 
 ESP32-S3 target preflight is separate because it depends on the local Xtensa
