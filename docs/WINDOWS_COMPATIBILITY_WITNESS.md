@@ -1,7 +1,18 @@
 # Windows Compatibility Witness
 
-Status: Windows hardware/game compatibility plan. This document is not Windows
-compatibility evidence.
+Status: Windows hardware/game compatibility plan with one partial diagnostic
+attempt recorded. This document is not itself compatibility evidence.
+
+## Current Windows Evidence
+
+- 2026-06-03: `docs/milestone-evidence/WINDOWS_HARDWARE_BRINGUP_WITNESS_2026-06-03.md`
+  records COM port autodetection, firmware flash, target control-plane health,
+  hub-only USB topology, target-side Generic/Xbox virtual bridge publication,
+  and negative Windows Raw Input/XInput/Chrome Gamepad API visibility for that
+  run.
+- The next Windows hardware chunk should first recover downstream target USB
+  enumeration for T.16000M (`044f:b10a`) and TWCS/RJ12 (`044f:b687`) before
+  claiming any physical Flight Pack path on Windows.
 
 ## Hardware Setup
 

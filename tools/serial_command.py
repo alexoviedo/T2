@@ -4,15 +4,11 @@
 from __future__ import annotations
 
 import argparse
-import os
-import select
 import sys
-import termios
 import time
-import tty
 
+from serial_backend import BAUD, NativeSerialPort
 
-BAUD = termios.B115200
 PREFIXES = (
     "INFO:",
     "STATUS:",
@@ -46,39 +42,16 @@ PREFIXES = (
 
 class SerialPort:
     def __init__(self, path: str, baud: int = BAUD) -> None:
-        self.fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
-        self._previous_attrs = termios.tcgetattr(self.fd)
-
-        attrs = termios.tcgetattr(self.fd)
-        tty.setraw(self.fd)
-        attrs = termios.tcgetattr(self.fd)
-        attrs[4] = baud
-        attrs[5] = baud
-        attrs[2] |= termios.CLOCAL | termios.CREAD
-        termios.tcsetattr(self.fd, termios.TCSANOW, attrs)
+        self._port = NativeSerialPort(path, baud)
 
     def close(self) -> None:
-        termios.tcsetattr(self.fd, termios.TCSANOW, self._previous_attrs)
-        os.close(self.fd)
+        self._port.close()
 
     def write_line(self, line: str) -> None:
-        os.write(self.fd, (line.rstrip("\r\n") + "\n").encode("utf-8"))
+        self._port.write_line(line)
 
     def read_text(self, timeout: float) -> str:
-        deadline = time.monotonic() + timeout
-        chunks: list[bytes] = []
-        while time.monotonic() < deadline:
-            remaining = max(0.0, deadline - time.monotonic())
-            readable, _, _ = select.select([self.fd], [], [], min(0.1, remaining))
-            if not readable:
-                continue
-            try:
-                chunk = os.read(self.fd, 8192)
-            except BlockingIOError:
-                continue
-            if chunk:
-                chunks.append(chunk)
-        return b"".join(chunks).decode("utf-8", errors="replace")
+        return self._port.read_text(timeout)
 
     def command_response(self, command: str, timeout: float) -> list[str]:
         self.read_text(0.2)

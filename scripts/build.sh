@@ -6,6 +6,8 @@ if [[ -n "${IDF_PATH:-}" || -n "${ESP_IDF_VERSION:-}" ]]; then
     echo "Warning: IDF_PATH or ESP_IDF_VERSION is set and will override the checked-in ESP-IDF pin."
 fi
 TARGET="xtensa-esp32s3-espidf"
+export ESP_IDF_SDKCONFIG_DEFAULTS="${ESP_IDF_SDKCONFIG_DEFAULTS:-$(pwd)/sdkconfig.defaults}"
+echo "ESP-IDF sdkconfig defaults: $ESP_IDF_SDKCONFIG_DEFAULTS"
 if ! command -v ldproxy &> /dev/null; then
     echo "Warning: ldproxy not found. This is usually needed for ESP-IDF builds."
     echo "Install with: cargo install ldproxy"

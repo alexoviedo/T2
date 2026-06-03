@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import queue
 import datetime as dt
 import json
 import os
@@ -13,18 +14,13 @@ import select
 import socket
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
 
-try:
-    import termios
-    import tty
-except ImportError:  # pragma: no cover - exercised by Windows import checks
-    termios = None  # type: ignore[assignment]
-    tty = None  # type: ignore[assignment]
+from serial_backend import BAUD, NativeSerialPort
 
-BAUD = termios.B115200 if termios is not None else 115200
 DEFAULT_PORT = "/dev/cu.usbmodem5B5E0200881"
 DEFAULT_SOURCE = "auto"
 DEFAULT_STICK_VID = "044f"
@@ -73,41 +69,16 @@ class CommandRecord:
 
 class SerialPort:
     def __init__(self, path: str, baud: int = BAUD) -> None:
-        if termios is None or tty is None:
-            raise RuntimeError("POSIX termios serial support is not available on this platform")
-        self.fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
-        self._previous_attrs = termios.tcgetattr(self.fd)
-
-        attrs = termios.tcgetattr(self.fd)
-        tty.setraw(self.fd)
-        attrs = termios.tcgetattr(self.fd)
-        attrs[4] = baud
-        attrs[5] = baud
-        attrs[2] |= termios.CLOCAL | termios.CREAD
-        termios.tcsetattr(self.fd, termios.TCSANOW, attrs)
+        self._port = NativeSerialPort(path, baud)
 
     def close(self) -> None:
-        termios.tcsetattr(self.fd, termios.TCSANOW, self._previous_attrs)
-        os.close(self.fd)
+        self._port.close()
 
     def write_line(self, line: str) -> None:
-        os.write(self.fd, (line.rstrip("\r\n") + "\n").encode("utf-8"))
+        self._port.write_line(line)
 
     def read_text(self, timeout: float) -> str:
-        deadline = time.monotonic() + timeout
-        chunks: list[bytes] = []
-        while time.monotonic() < deadline:
-            remaining = max(0.0, deadline - time.monotonic())
-            readable, _, _ = select.select([self.fd], [], [], min(0.1, remaining))
-            if not readable:
-                continue
-            try:
-                chunk = os.read(self.fd, 8192)
-            except BlockingIOError:
-                continue
-            if chunk:
-                chunks.append(chunk)
-        return b"".join(chunks).decode("utf-8", errors="replace")
+        return self._port.read_text(timeout)
 
     def command_response(self, command: str, timeout: float) -> list[str]:
         self.read_text(0.2)
@@ -301,6 +272,31 @@ def read_process_lines(
         return []
     deadline = time.monotonic() + timeout
     lines: list[str] = []
+    if os.name == "nt":
+        line_queue: queue.Queue[str | None] = queue.Queue()
+
+        def read_stdout() -> None:
+            try:
+                while True:
+                    line = process.stdout.readline()
+                    if not line:
+                        break
+                    line_queue.put(line)
+            finally:
+                line_queue.put(None)
+
+        threading.Thread(target=read_stdout, daemon=True).start()
+        while len(lines) < expected_lines and time.monotonic() < deadline:
+            remaining = max(0.0, deadline - time.monotonic())
+            try:
+                line = line_queue.get(timeout=min(0.1, remaining))
+            except queue.Empty:
+                continue
+            if line is None:
+                break
+            lines.append(line.rstrip("\n"))
+        return lines
+
     while len(lines) < expected_lines and time.monotonic() < deadline:
         readable, _, _ = select.select([process.stdout], [], [], 0.1)
         if not readable:

@@ -7,6 +7,8 @@ if [[ -n "${IDF_PATH:-}" || -n "${ESP_IDF_VERSION:-}" ]]; then
     echo "Warning: IDF_PATH or ESP_IDF_VERSION is set and will override the checked-in ESP-IDF pin."
 fi
 TARGET="xtensa-esp32s3-espidf"
+export ESP_IDF_SDKCONFIG_DEFAULTS="${ESP_IDF_SDKCONFIG_DEFAULTS:-$(pwd)/sdkconfig.defaults}"
+echo "ESP-IDF sdkconfig defaults: $ESP_IDF_SDKCONFIG_DEFAULTS"
 
 # Use the Espressif Rust toolchain explicitly when available (CI via xtensa-toolchain action).
 if cargo +esp --version >/dev/null 2>&1; then
