@@ -1,8 +1,9 @@
 //! BLE HID transport glue.
 
 use usb2ble_contracts::{
-    BleCompatibilityVariant, BleLinkState, BleTransport, BleTransportError, EncodedBleReport,
-    PersonaDescriptor, PersonaId,
+    BleCompatibilityVariant, BleIdentityStrategy, BleLinkState, BleTransport, BleTransportError,
+    EncodedBleReport, PersonaDescriptor, PersonaId, derive_persona_static_random_address,
+    format_ble_address,
 };
 
 #[cfg(not(target_os = "espidf"))]
@@ -12,6 +13,9 @@ pub struct BleHidTransport {
     state: BleLinkState,
     active_persona: Option<PersonaId>,
     active_variant: Option<BleCompatibilityVariant>,
+    identity_strategy: BleIdentityStrategy,
+    base_address: [u8; 6],
+    applied_address: Option<[u8; 6]>,
     published_reports: Vec<EncodedBleReport>,
 }
 
@@ -37,6 +41,9 @@ impl Default for BleHidTransport {
             state: BleLinkState::Idle,
             active_persona: None,
             active_variant: None,
+            identity_strategy: BleIdentityStrategy::LegacyPublic,
+            base_address: [0x90, 0x70, 0x69, 0x07, 0x0d, 0x7e],
+            applied_address: None,
             published_reports: Vec::new(),
         }
     }
@@ -61,6 +68,16 @@ impl BleTransport for BleHidTransport {
 
         self.active_persona = Some(descriptor.persona_id);
         self.active_variant = Some(descriptor.compatibility_variant);
+        self.applied_address =
+            if self.identity_strategy == BleIdentityStrategy::PersonaStaticRandomExperimental {
+                Some(derive_persona_static_random_address(
+                    self.base_address,
+                    descriptor.persona_id,
+                    descriptor.compatibility_variant,
+                ))
+            } else {
+                None
+            };
         self.state = BleLinkState::Advertising;
         Ok(())
     }
@@ -76,6 +93,73 @@ impl BleTransport for BleHidTransport {
 
     fn forget_bonds(&mut self) -> Result<(), BleTransportError> {
         Ok(())
+    }
+
+    fn set_identity_strategy(
+        &mut self,
+        strategy: BleIdentityStrategy,
+    ) -> Result<(), BleTransportError> {
+        if self.state != BleLinkState::Idle || self.active_persona.is_some() {
+            return Err(BleTransportError::PersonaAlreadyActive);
+        }
+        self.identity_strategy = strategy;
+        self.applied_address = None;
+        Ok(())
+    }
+
+    fn identity_strategy(&self) -> BleIdentityStrategy {
+        self.identity_strategy
+    }
+
+    fn identity_info_json(&self) -> String {
+        let applied = self.applied_address.map(format_ble_address);
+        format!(
+            "{{\"supported\":true,\"target\":\"host_stub\",\"strategy\":\"{}\",\"active_persona\":{},\"active_variant\":{},\"base_address\":\"{}\",\"current_address\":\"{}\",\"address_type\":\"{}\",\"derived_address\":{},\"identity_applied\":{}}}",
+            self.identity_strategy.id(),
+            self.active_persona
+                .map(|persona| format!("\"{}\"", persona.0))
+                .unwrap_or_else(|| "null".to_string()),
+            self.active_variant
+                .map(|variant| format!("\"{}\"", variant.id()))
+                .unwrap_or_else(|| "null".to_string()),
+            format_ble_address(self.base_address),
+            applied
+                .clone()
+                .unwrap_or_else(|| format_ble_address(self.base_address)),
+            self.identity_address_type(),
+            applied
+                .map(|address| format!("\"{address}\""))
+                .unwrap_or_else(|| "null".to_string()),
+            self.identity_is_applied()
+        )
+    }
+
+    fn identity_current_address(&self) -> Option<[u8; 6]> {
+        Some(self.applied_address.unwrap_or(self.base_address))
+    }
+
+    fn identity_applied_address(&self) -> Option<[u8; 6]> {
+        self.applied_address
+    }
+
+    fn identity_derived_address(&self, descriptor: &PersonaDescriptor) -> Option<[u8; 6]> {
+        Some(derive_persona_static_random_address(
+            self.base_address,
+            descriptor.persona_id,
+            descriptor.compatibility_variant,
+        ))
+    }
+
+    fn identity_address_type(&self) -> &'static str {
+        if self.identity_is_applied() {
+            "static_random"
+        } else {
+            "public"
+        }
+    }
+
+    fn identity_is_applied(&self) -> bool {
+        self.applied_address.is_some()
     }
 
     fn start_adv_smoke_test(&mut self, _name: &str) -> Result<(), BleTransportError> {
@@ -129,16 +213,18 @@ mod target {
         ESP_TASK_BT_CONTROLLER_STACK, MESH_DUPLICATE_SCAN_CACHE_SIZE,
         NORMAL_SCAN_DUPLICATE_CACHE_SIZE, SCAN_DUPLICATE_MODE, SCAN_DUPLICATE_TYPE_VALUE,
         SLAVE_CE_LEN_MIN_DEFAULT, esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC,
-        esp_ble_adv_channel_t_ADV_CHNL_ALL, esp_ble_adv_data_t,
-        esp_ble_adv_filter_t_ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY, esp_ble_adv_params_t,
-        esp_ble_adv_type_t_ADV_TYPE_IND, esp_ble_adv_type_t_ADV_TYPE_NONCONN_IND,
-        esp_ble_adv_type_t_ADV_TYPE_SCAN_IND, esp_ble_auth_req_t, esp_ble_bond_dev_t,
-        esp_ble_gap_cb_param_t, esp_ble_gap_config_adv_data, esp_ble_gap_config_adv_data_raw,
+        esp_ble_addr_type_t_BLE_ADDR_TYPE_RANDOM, esp_ble_adv_channel_t_ADV_CHNL_ALL,
+        esp_ble_adv_data_t, esp_ble_adv_filter_t_ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
+        esp_ble_adv_params_t, esp_ble_adv_type_t_ADV_TYPE_IND,
+        esp_ble_adv_type_t_ADV_TYPE_NONCONN_IND, esp_ble_adv_type_t_ADV_TYPE_SCAN_IND,
+        esp_ble_auth_req_t, esp_ble_bond_dev_t, esp_ble_gap_cb_param_t,
+        esp_ble_gap_config_adv_data, esp_ble_gap_config_adv_data_raw,
         esp_ble_gap_config_scan_rsp_data_raw, esp_ble_gap_register_callback,
-        esp_ble_gap_security_rsp, esp_ble_gap_set_device_name, esp_ble_gap_set_security_param,
-        esp_ble_gap_start_advertising, esp_ble_gap_stop_advertising,
-        esp_ble_gatts_register_callback, esp_ble_get_bond_device_list, esp_ble_get_bond_device_num,
-        esp_ble_io_cap_t, esp_ble_key_mask_t, esp_ble_remove_bond_device, esp_ble_sm_param_t,
+        esp_ble_gap_security_rsp, esp_ble_gap_set_device_name, esp_ble_gap_set_rand_addr,
+        esp_ble_gap_set_security_param, esp_ble_gap_start_advertising,
+        esp_ble_gap_stop_advertising, esp_ble_gatts_register_callback,
+        esp_ble_get_bond_device_list, esp_ble_get_bond_device_num, esp_ble_io_cap_t,
+        esp_ble_key_mask_t, esp_ble_remove_bond_device, esp_ble_sm_param_t,
         esp_ble_sm_param_t_ESP_BLE_SM_AUTHEN_REQ_MODE, esp_ble_sm_param_t_ESP_BLE_SM_IOCAP_MODE,
         esp_ble_sm_param_t_ESP_BLE_SM_MAX_KEY_SIZE, esp_ble_sm_param_t_ESP_BLE_SM_SET_INIT_KEY,
         esp_ble_sm_param_t_ESP_BLE_SM_SET_RSP_KEY, esp_bluedroid_config_t, esp_bluedroid_enable,
@@ -154,7 +240,7 @@ mod target {
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SEC_REQ_EVT, esp_gatt_if_t, esp_gatts_cb_event_t,
-        nvs_flash_erase, nvs_flash_init,
+        esp_mac_type_t_ESP_MAC_BT, esp_read_mac, nvs_flash_erase, nvs_flash_init,
     };
     use usb2ble_contracts::BlePersonaIdentity;
 
@@ -240,6 +326,28 @@ mod target {
     static LAST_ADV_OWN_ADDR_TYPE: AtomicU32 = AtomicU32::new(0);
     static LAST_ADV_CHANNEL_MAP: AtomicU32 = AtomicU32::new(0);
     static LAST_ADV_FILTER_POLICY: AtomicU32 = AtomicU32::new(0);
+    static IDENTITY_STRATEGY: AtomicU8 = AtomicU8::new(0);
+    static IDENTITY_APPLIED: AtomicBool = AtomicBool::new(false);
+    static IDENTITY_STOPPED_BEFORE_CHANGE: AtomicBool = AtomicBool::new(false);
+    static LAST_SET_RAND_ADDR_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static BASE_ADDRESS_VALID: AtomicBool = AtomicBool::new(false);
+    static APPLIED_ADDRESS_VALID: AtomicBool = AtomicBool::new(false);
+    static BASE_ADDRESS: [AtomicU8; 6] = [
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+    ];
+    static APPLIED_ADDRESS: [AtomicU8; 6] = [
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+    ];
     static SMOKE_ADV_RAW_LEN: AtomicU32 = AtomicU32::new(0);
     static SMOKE_SCAN_RSP_RAW_LEN: AtomicU32 = AtomicU32::new(0);
 
@@ -300,6 +408,7 @@ mod target {
     pub struct BleHidTransport {
         active_persona: Option<PersonaId>,
         active_variant: Option<BleCompatibilityVariant>,
+        identity_strategy: BleIdentityStrategy,
         report_map: Vec<u8>,
     }
 
@@ -310,6 +419,7 @@ mod target {
             Self {
                 active_persona: None,
                 active_variant: None,
+                identity_strategy: BleIdentityStrategy::LegacyPublic,
                 report_map: Vec::new(),
             }
         }
@@ -349,8 +459,9 @@ mod target {
             }
 
             self.report_map.clone_from(&descriptor.report_map);
-            BLE_OWNER.store(OWNER_HID, Ordering::SeqCst);
             unsafe {
+                apply_identity_for_descriptor(descriptor, self.identity_strategy)?;
+                BLE_OWNER.store(OWNER_HID, Ordering::SeqCst);
                 init_hid_device(
                     &self.report_map,
                     descriptor.identity,
@@ -441,6 +552,109 @@ mod target {
                 LINK_STATE.store(STATE_IDLE, Ordering::SeqCst);
             }
             Ok(())
+        }
+
+        fn set_identity_strategy(
+            &mut self,
+            strategy: BleIdentityStrategy,
+        ) -> Result<(), BleTransportError> {
+            if self.identity_strategy == strategy {
+                return Ok(());
+            }
+            if self.active_persona.is_some()
+                || matches!(
+                    self.current_state(),
+                    BleLinkState::Advertising | BleLinkState::Connected
+                )
+            {
+                return Err(BleTransportError::PersonaAlreadyActive);
+            }
+            self.identity_strategy = strategy;
+            IDENTITY_STRATEGY.store(identity_strategy_to_u8(strategy), Ordering::SeqCst);
+            IDENTITY_APPLIED.store(false, Ordering::SeqCst);
+            APPLIED_ADDRESS_VALID.store(false, Ordering::SeqCst);
+            LAST_SET_RAND_ADDR_RETURN.store(i32::MAX, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn identity_strategy(&self) -> BleIdentityStrategy {
+            self.identity_strategy
+        }
+
+        fn identity_info_json(&self) -> String {
+            let base =
+                load_address_if_valid(&BASE_ADDRESS, BASE_ADDRESS_VALID.load(Ordering::SeqCst))
+                    .map(format_ble_address);
+            let applied = load_address_if_valid(
+                &APPLIED_ADDRESS,
+                APPLIED_ADDRESS_VALID.load(Ordering::SeqCst),
+            )
+            .map(format_ble_address);
+            format!(
+                "{{\"supported\":true,\"strategy\":\"{}\",\"active_persona\":{},\"active_variant\":{},\"base_address\":{},\"current_address\":{},\"address_type\":\"{}\",\"applied_address\":{},\"identity_applied\":{},\"stopped_before_change\":{},\"last_set_random_address_return\":{}}}",
+                self.identity_strategy.id(),
+                self.active_persona
+                    .map(|persona| format!("\"{}\"", persona.0))
+                    .unwrap_or_else(|| "null".to_string()),
+                self.active_variant
+                    .map(|variant| format!("\"{}\"", variant.id()))
+                    .unwrap_or_else(|| "null".to_string()),
+                base.clone()
+                    .map(|address| format!("\"{address}\""))
+                    .unwrap_or_else(|| "null".to_string()),
+                self.identity_current_address()
+                    .map(format_ble_address)
+                    .map(|address| format!("\"{address}\""))
+                    .unwrap_or_else(|| "null".to_string()),
+                self.identity_address_type(),
+                applied
+                    .map(|address| format!("\"{address}\""))
+                    .unwrap_or_else(|| "null".to_string()),
+                self.identity_is_applied(),
+                IDENTITY_STOPPED_BEFORE_CHANGE.load(Ordering::SeqCst),
+                option_i32(LAST_SET_RAND_ADDR_RETURN.load(Ordering::SeqCst))
+            )
+        }
+
+        fn identity_current_address(&self) -> Option<[u8; 6]> {
+            if let Some(address) = load_address_if_valid(
+                &APPLIED_ADDRESS,
+                APPLIED_ADDRESS_VALID.load(Ordering::SeqCst),
+            ) {
+                return Some(address);
+            }
+            load_address_if_valid(&BASE_ADDRESS, BASE_ADDRESS_VALID.load(Ordering::SeqCst))
+        }
+
+        fn identity_applied_address(&self) -> Option<[u8; 6]> {
+            load_address_if_valid(
+                &APPLIED_ADDRESS,
+                APPLIED_ADDRESS_VALID.load(Ordering::SeqCst),
+            )
+        }
+
+        fn identity_derived_address(&self, descriptor: &PersonaDescriptor) -> Option<[u8; 6]> {
+            load_address_if_valid(&BASE_ADDRESS, BASE_ADDRESS_VALID.load(Ordering::SeqCst)).map(
+                |base| {
+                    derive_persona_static_random_address(
+                        base,
+                        descriptor.persona_id,
+                        descriptor.compatibility_variant,
+                    )
+                },
+            )
+        }
+
+        fn identity_address_type(&self) -> &'static str {
+            if self.identity_is_applied() {
+                "static_random"
+            } else {
+                "public"
+            }
+        }
+
+        fn identity_is_applied(&self) -> bool {
+            IDENTITY_APPLIED.load(Ordering::SeqCst)
         }
 
         fn adv_smoke_test_status_json(&self) -> String {
@@ -582,6 +796,54 @@ mod target {
         esp_result(esp_ble_gap_register_callback(Some(gap_event_callback)))?;
 
         STACK_STARTED.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    unsafe fn apply_identity_for_descriptor(
+        descriptor: &PersonaDescriptor,
+        strategy: BleIdentityStrategy,
+    ) -> Result<(), BleTransportError> {
+        ensure_base_address()?;
+        IDENTITY_STRATEGY.store(identity_strategy_to_u8(strategy), Ordering::SeqCst);
+        IDENTITY_STOPPED_BEFORE_CHANGE.store(
+            !advertising_may_be_active() && LINK_STATE.load(Ordering::SeqCst) != STATE_CONNECTED,
+            Ordering::SeqCst,
+        );
+        if strategy == BleIdentityStrategy::LegacyPublic {
+            IDENTITY_APPLIED.store(false, Ordering::SeqCst);
+            APPLIED_ADDRESS_VALID.store(false, Ordering::SeqCst);
+            LAST_SET_RAND_ADDR_RETURN.store(i32::MAX, Ordering::SeqCst);
+            return Ok(());
+        }
+
+        if advertising_may_be_active() || LINK_STATE.load(Ordering::SeqCst) == STATE_CONNECTED {
+            return Err(BleTransportError::PersonaAlreadyActive);
+        }
+
+        let base = load_address(&BASE_ADDRESS);
+        let mut address = derive_persona_static_random_address(
+            base,
+            descriptor.persona_id,
+            descriptor.compatibility_variant,
+        );
+        let ret = esp_ble_gap_set_rand_addr(address.as_mut_ptr());
+        LAST_SET_RAND_ADDR_RETURN.store(ret, Ordering::SeqCst);
+        esp_result_with_context(ret, b"set_rand_addr\0")?;
+        store_address(&APPLIED_ADDRESS, address);
+        APPLIED_ADDRESS_VALID.store(true, Ordering::SeqCst);
+        IDENTITY_APPLIED.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    unsafe fn ensure_base_address() -> Result<(), BleTransportError> {
+        if BASE_ADDRESS_VALID.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let mut address = [0_u8; 6];
+        let ret = esp_read_mac(address.as_mut_ptr(), esp_mac_type_t_ESP_MAC_BT);
+        esp_result_with_context(ret, b"read_bt_mac\0")?;
+        store_address(&BASE_ADDRESS, address);
+        BASE_ADDRESS_VALID.store(true, Ordering::SeqCst);
         Ok(())
     }
 
@@ -752,11 +1014,16 @@ mod target {
     }
 
     unsafe fn request_start_advertising() -> esp_err_t {
+        let own_addr_type = if IDENTITY_APPLIED.load(Ordering::SeqCst) {
+            esp_ble_addr_type_t_BLE_ADDR_TYPE_RANDOM
+        } else {
+            esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC
+        };
         let mut adv_params = esp_ble_adv_params_t {
             adv_int_min: 0x20,
             adv_int_max: 0x30,
             adv_type: smoke_adv_type(),
-            own_addr_type: esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC,
+            own_addr_type,
             peer_addr: [0_u8; 6],
             peer_addr_type: esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC,
             channel_map: esp_ble_adv_channel_t_ADV_CHNL_ALL,
@@ -1097,6 +1364,34 @@ mod target {
         } else {
             value.to_string()
         }
+    }
+
+    fn identity_strategy_to_u8(strategy: BleIdentityStrategy) -> u8 {
+        match strategy {
+            BleIdentityStrategy::LegacyPublic => 0,
+            BleIdentityStrategy::PersonaStaticRandomExperimental => 1,
+        }
+    }
+
+    fn store_address(target: &[AtomicU8; 6], address: [u8; 6]) {
+        for (slot, byte) in target.iter().zip(address) {
+            slot.store(byte, Ordering::SeqCst);
+        }
+    }
+
+    fn load_address(source: &[AtomicU8; 6]) -> [u8; 6] {
+        [
+            source[0].load(Ordering::SeqCst),
+            source[1].load(Ordering::SeqCst),
+            source[2].load(Ordering::SeqCst),
+            source[3].load(Ordering::SeqCst),
+            source[4].load(Ordering::SeqCst),
+            source[5].load(Ordering::SeqCst),
+        ]
+    }
+
+    fn load_address_if_valid(source: &[AtomicU8; 6], valid: bool) -> Option<[u8; 6]> {
+        valid.then(|| load_address(source))
     }
 
     fn owner_name(value: u8) -> &'static str {

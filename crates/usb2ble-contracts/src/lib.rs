@@ -623,6 +623,92 @@ impl BleCompatibilityVariant {
     }
 }
 
+/// Runtime BLE identity strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BleIdentityStrategy {
+    /// Current behavior: use the controller/public address for every persona.
+    LegacyPublic,
+    /// Experimental behavior: use stable static-random addresses derived per persona/variant.
+    PersonaStaticRandomExperimental,
+}
+
+impl BleIdentityStrategy {
+    /// Stable machine-readable strategy ID.
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::LegacyPublic => "legacy_public",
+            Self::PersonaStaticRandomExperimental => "persona_static_random_experimental",
+        }
+    }
+
+    /// Parse a stable strategy ID.
+    #[must_use]
+    pub fn from_id(value: &str) -> Option<Self> {
+        match value {
+            "legacy_public" => Some(Self::LegacyPublic),
+            "persona_static_random_experimental" => Some(Self::PersonaStaticRandomExperimental),
+            _ => None,
+        }
+    }
+}
+
+impl Default for BleIdentityStrategy {
+    fn default() -> Self {
+        Self::LegacyPublic
+    }
+}
+
+/// Format a BLE address in host-readable big-endian notation.
+#[must_use]
+pub fn format_ble_address(address: [u8; 6]) -> String {
+    format!(
+        "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+        address[0], address[1], address[2], address[3], address[4], address[5]
+    )
+}
+
+/// Derive a stable static-random BLE address for an experimental persona identity.
+///
+/// The returned address is formatted in conventional BLE display order and has
+/// bits 47:46 set to `0b11`, as required for a static random address.
+#[must_use]
+pub fn derive_persona_static_random_address(
+    base_address: [u8; 6],
+    persona_id: PersonaId,
+    variant: BleCompatibilityVariant,
+) -> [u8; 6] {
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    fn mix(mut hash: u64, bytes: &[u8]) -> u64 {
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+        hash
+    }
+
+    let mut hash = FNV_OFFSET;
+    hash = mix(hash, b"usb2ble-persona-static-random-v1");
+    hash = mix(hash, &base_address);
+    hash = mix(hash, persona_id.0.as_bytes());
+    hash = mix(hash, variant.id().as_bytes());
+
+    let mut out = [0_u8; 6];
+    let bytes = hash.to_be_bytes();
+    for index in 0..6 {
+        out[index] = bytes[index + 2] ^ base_address[index].rotate_left((index as u32) + 1);
+    }
+    out[0] = (out[0] & 0x3f) | 0xc0;
+    if out == base_address {
+        out[5] ^= 0x5a;
+        out[0] = (out[0] & 0x3f) | 0xc0;
+    }
+    out
+}
+
 /// BLE identity metadata for a HID persona.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlePersonaIdentity {
@@ -783,6 +869,53 @@ pub trait BleTransport {
 
     /// Clear all stored bonding information.
     fn forget_bonds(&mut self) -> Result<(), BleTransportError>;
+
+    /// Set the requested BLE identity strategy.
+    fn set_identity_strategy(
+        &mut self,
+        strategy: BleIdentityStrategy,
+    ) -> Result<(), BleTransportError> {
+        if strategy == BleIdentityStrategy::LegacyPublic {
+            Ok(())
+        } else {
+            Err(BleTransportError::Generic)
+        }
+    }
+
+    /// Return the requested BLE identity strategy.
+    fn identity_strategy(&self) -> BleIdentityStrategy {
+        BleIdentityStrategy::LegacyPublic
+    }
+
+    /// Return target BLE identity diagnostics as JSON.
+    fn identity_info_json(&self) -> String {
+        "{\"supported\":false,\"strategy\":\"legacy_public\"}".to_string()
+    }
+
+    /// Return the current target BLE address, when available.
+    fn identity_current_address(&self) -> Option<[u8; 6]> {
+        None
+    }
+
+    /// Return the currently applied target BLE address, when available.
+    fn identity_applied_address(&self) -> Option<[u8; 6]> {
+        None
+    }
+
+    /// Return the derived target BLE address for a descriptor, when available.
+    fn identity_derived_address(&self, _descriptor: &PersonaDescriptor) -> Option<[u8; 6]> {
+        None
+    }
+
+    /// Return the current BLE address type string.
+    fn identity_address_type(&self) -> &'static str {
+        "public"
+    }
+
+    /// Return whether a non-legacy identity has been applied.
+    fn identity_is_applied(&self) -> bool {
+        false
+    }
 
     /// Start a diagnostic raw GAP advertisement that bypasses HID persona setup.
     fn start_adv_smoke_test(&mut self, _name: &str) -> Result<(), BleTransportError> {
@@ -1132,6 +1265,14 @@ pub struct BleAdvertisingInfoResponse {
     pub advertising_type: &'static str,
     /// Address type used by the target BLE transport.
     pub own_address_type: &'static str,
+    /// Runtime BLE identity strategy used by the target.
+    pub identity_strategy: &'static str,
+    /// Current BLE address when the target can report it.
+    pub current_address: Option<String>,
+    /// Per-persona derived BLE address when an experimental identity is available.
+    pub derived_address: Option<String>,
+    /// Whether a non-legacy identity was applied before advertising.
+    pub identity_applied: bool,
     /// Security/bonding policy used by the target BLE transport.
     pub security: &'static str,
     /// IO capability used for pairing.
@@ -1296,6 +1437,12 @@ pub enum ControlCommand {
     PublishXboxTestReport(String),
     /// Clear BLE bond data.
     ForgetBleBonds,
+    /// List runtime BLE identity strategies known to the firmware.
+    ListBleIdentityStrategies,
+    /// Request runtime BLE identity diagnostics as JSON.
+    GetBleIdentityInfo,
+    /// Set the runtime BLE identity strategy.
+    SetBleIdentityStrategy(String),
     /// Request intended BLE advertising/security configuration.
     GetBleAdvertisingInfo,
     /// List BLE compatibility variants known to the firmware.
@@ -1640,5 +1787,52 @@ mod tests {
         };
         assert_eq!(key.device_id, DeviceId(1));
         assert_eq!(key.interface_id, Some(InterfaceId(0)));
+    }
+
+    #[test]
+    fn per_persona_static_random_addresses_are_stable_and_distinct() {
+        let base = [0x90, 0x70, 0x69, 0x07, 0x0d, 0x7e];
+        let generic = derive_persona_static_random_address(
+            base,
+            PersonaId(GENERIC_GAMEPAD_PERSONA_ID_STR),
+            BleCompatibilityVariant::GenericDefault,
+        );
+        let generic_again = derive_persona_static_random_address(
+            base,
+            PersonaId(GENERIC_GAMEPAD_PERSONA_ID_STR),
+            BleCompatibilityVariant::GenericDefault,
+        );
+        let u6 = derive_persona_static_random_address(
+            base,
+            PersonaId(GENERIC_GAMEPAD_PERSONA_ID_STR),
+            BleCompatibilityVariant::GenericUnsigned6Axis,
+        );
+        let xbox = derive_persona_static_random_address(
+            base,
+            PersonaId(XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR),
+            BleCompatibilityVariant::XboxCompatibility,
+        );
+
+        assert_eq!(generic, generic_again);
+        assert_ne!(generic, u6);
+        assert_ne!(generic, xbox);
+        assert_ne!(u6, xbox);
+        assert_eq!(generic[0] & 0xc0, 0xc0);
+        assert_eq!(u6[0] & 0xc0, 0xc0);
+        assert_eq!(xbox[0] & 0xc0, 0xc0);
+    }
+
+    #[test]
+    fn ble_identity_strategy_ids_parse_round_trip() {
+        assert_eq!(
+            BleIdentityStrategy::from_id("legacy_public"),
+            Some(BleIdentityStrategy::LegacyPublic)
+        );
+        assert_eq!(
+            BleIdentityStrategy::from_id("persona_static_random_experimental"),
+            Some(BleIdentityStrategy::PersonaStaticRandomExperimental)
+        );
+        assert_eq!(BleIdentityStrategy::LegacyPublic.id(), "legacy_public");
+        assert!(BleIdentityStrategy::from_id("unknown").is_none());
     }
 }

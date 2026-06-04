@@ -52,7 +52,34 @@ manual cache cleanup. They are likely needed for a smoother multi-persona
 workflow where Windows should evaluate Generic, U6, and Xbox without repeatedly
 forgetting the same BLE address.
 
-A future experimental design could use stable static-random identities such as:
+The experimental runtime strategy is:
+
+```text
+persona_static_random_experimental
+```
+
+The default strategy remains:
+
+```text
+legacy_public
+```
+
+`legacy_public` preserves release behavior: all personas use the controller's
+public BLE address. `persona_static_random_experimental` derives stable
+static-random BLE addresses from the board Bluetooth/public address plus the
+active persona/variant salt. The strategy is explicit, runtime-only, and must
+be selected before a persona is advertising or connected.
+
+Control-plane diagnostics:
+
+```text
+LIST_BLE_IDENTITY_STRATEGIES
+GET_BLE_IDENTITY_INFO
+SET_BLE_IDENTITY_STRATEGY legacy_public
+SET_BLE_IDENTITY_STRATEGY persona_static_random_experimental
+```
+
+Experimental address intents:
 
 | Persona | Address intent |
 | --- | --- |
@@ -60,7 +87,12 @@ A future experimental design could use stable static-random identities such as:
 | Generic unsigned six-axis | stable U6 identity |
 | Xbox BLE-compatible | stable Xbox identity |
 
-That would need explicit evidence for:
+The static-random address derivation sets bits 47:46 to `0b11`, as required for
+a BLE static random address. The target reports the selected strategy, base
+address when available, current address, applied address, address type, and last
+random-address return through `GET_BLE_IDENTITY_INFO`.
+
+This still needs explicit evidence for:
 
 - Windows pairing and reconnection behavior for each address.
 - Whether bond storage and `FORGET_BLE_BONDS` remain understandable.

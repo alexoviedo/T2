@@ -7,8 +7,8 @@
 
 use std::fmt::Write;
 use usb2ble_contracts::{
-    ControlCommand, ControlError, ControlPlane, ControlResponse, DescriptorKey, DeviceId,
-    InterfaceId,
+    BleIdentityStrategy, ControlCommand, ControlError, ControlPlane, ControlResponse,
+    DescriptorKey, DeviceId, InterfaceId,
 };
 
 /// Implementation of the newline-framed serial control plane.
@@ -86,6 +86,19 @@ impl ControlPlane for SerialControlPlane {
         }
         if s == "FORGET_BLE_BONDS" {
             return Ok(ControlCommand::ForgetBleBonds);
+        }
+        if s == "LIST_BLE_IDENTITY_STRATEGIES" {
+            return Ok(ControlCommand::ListBleIdentityStrategies);
+        }
+        if s == "GET_BLE_IDENTITY_INFO" {
+            return Ok(ControlCommand::GetBleIdentityInfo);
+        }
+        if let Some(rest) = s.strip_prefix("SET_BLE_IDENTITY_STRATEGY ") {
+            let strategy = rest.trim();
+            if BleIdentityStrategy::from_id(strategy).is_some() {
+                return Ok(ControlCommand::SetBleIdentityStrategy(strategy.to_string()));
+            }
+            return Err(ControlError::Generic);
         }
         if s == "GET_BLE_ADVERTISING_INFO" {
             return Ok(ControlCommand::GetBleAdvertisingInfo);
@@ -358,6 +371,18 @@ impl ControlPlane for SerialControlPlane {
                 let _ = write!(out, "flags=0x{:02x};", resp.flags);
                 let _ = write!(out, "adv_type={};", resp.advertising_type);
                 let _ = write!(out, "own_addr_type={};", resp.own_address_type);
+                let _ = write!(out, "identity_strategy={};", resp.identity_strategy);
+                if let Some(address) = &resp.current_address {
+                    let _ = write!(out, "current_addr={address};");
+                } else {
+                    out.push_str("current_addr=unknown;");
+                }
+                if let Some(address) = &resp.derived_address {
+                    let _ = write!(out, "derived_addr={address};");
+                } else {
+                    out.push_str("derived_addr=none;");
+                }
+                let _ = write!(out, "identity_applied={};", resp.identity_applied);
                 let _ = write!(out, "security={};", resp.security);
                 let _ = write!(out, "io_capability={};", resp.io_capability);
                 let _ = write!(out, "bonds={};", resp.bonds_present);
@@ -740,6 +765,21 @@ mod tests {
             ControlCommand::GetBleAdvertisingInfo
         );
         assert_eq!(
+            cp.decode_command(b"LIST_BLE_IDENTITY_STRATEGIES").unwrap(),
+            ControlCommand::ListBleIdentityStrategies
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_BLE_IDENTITY_INFO").unwrap(),
+            ControlCommand::GetBleIdentityInfo
+        );
+        assert_eq!(
+            cp.decode_command(b"SET_BLE_IDENTITY_STRATEGY persona_static_random_experimental")
+                .unwrap(),
+            ControlCommand::SetBleIdentityStrategy(
+                "persona_static_random_experimental".to_string()
+            )
+        );
+        assert_eq!(
             cp.decode_command(b"LIST_BLE_COMPAT_VARIANTS").unwrap(),
             ControlCommand::ListBleCompatibilityVariants
         );
@@ -1027,6 +1067,10 @@ mod tests {
                 flags: 0x06,
                 advertising_type: "ADV_TYPE_IND",
                 own_address_type: "public",
+                identity_strategy: "legacy_public",
+                current_address: Some("90:70:69:07:0D:7E".to_string()),
+                derived_address: None,
+                identity_applied: false,
                 security: "bond",
                 io_capability: "none",
                 bonds_present: false,
@@ -1035,7 +1079,7 @@ mod tests {
         let bytes = cp.encode_response(&resp).unwrap();
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
-            "BLE_ADVERTISING_INFO:persona=generic_gamepad;state=Advertising;variant=generic_default;device_name=USB2BLE Gamepad;appearance=0x03c4;advertised_uuids=1812;scan_rsp_uuids=;adv_name=false;scan_rsp_name=true;flags=0x06;adv_type=ADV_TYPE_IND;own_addr_type=public;security=bond;io_capability=none;bonds=false;raw_adv_bytes=false;\n"
+            "BLE_ADVERTISING_INFO:persona=generic_gamepad;state=Advertising;variant=generic_default;device_name=USB2BLE Gamepad;appearance=0x03c4;advertised_uuids=1812;scan_rsp_uuids=;adv_name=false;scan_rsp_name=true;flags=0x06;adv_type=ADV_TYPE_IND;own_addr_type=public;identity_strategy=legacy_public;current_addr=90:70:69:07:0D:7E;derived_addr=none;identity_applied=false;security=bond;io_capability=none;bonds=false;raw_adv_bytes=false;\n"
         );
 
         let resp = ControlResponse::BridgeStatus(BridgeStatusResponse {

@@ -9,12 +9,12 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 use usb2ble_app::App;
 use usb2ble_contracts::{
-    BleActionResponse, BleAdvertisingInfoResponse, BleCompatibilityVariant, BleTransport,
-    BleTransportError, BridgeStatusResponse, CONTRACT_VERSION, ConfigActionResponse,
+    BleActionResponse, BleAdvertisingInfoResponse, BleCompatibilityVariant, BleIdentityStrategy,
+    BleTransport, BleTransportError, BridgeStatusResponse, CONTRACT_VERSION, ConfigActionResponse,
     ConfigImportResponse, ControlCommand, ControlError, ControlPlane, ControlResponse,
     DescriptorKey, EncodedBleReport, JsonResponse, MAX_RUNTIME_CONFIG_JSON_BYTES,
     NormalizedControlValue, PersonaEncoder, PersonaId, PersonaInputFrame,
-    PersonaLogicalControlValue, RuntimeConfig, UsbIngress,
+    PersonaLogicalControlValue, RuntimeConfig, UsbIngress, format_ble_address,
 };
 use usb2ble_control::SerialControlPlane;
 use usb2ble_personas::{
@@ -660,6 +660,28 @@ where
             }),
             Err(_) => ControlResponse::Error(ControlError::Generic),
         },
+        ControlCommand::ListBleIdentityStrategies => ble_identity_strategies_json(),
+        ControlCommand::GetBleIdentityInfo => ControlResponse::Json(JsonResponse {
+            prefix: "BLE_IDENTITY_INFO_JSON",
+            json: ble.identity_info_json(),
+        }),
+        ControlCommand::SetBleIdentityStrategy(strategy_id) => {
+            let Some(strategy) = BleIdentityStrategy::from_id(strategy_id) else {
+                return ControlResponse::Error(ControlError::Generic);
+            };
+            match ble.set_identity_strategy(strategy) {
+                Ok(()) => ControlResponse::Json(JsonResponse {
+                    prefix: "BLE_IDENTITY_STRATEGY_JSON",
+                    json: serde_json::json!({
+                        "strategy": strategy.id(),
+                        "state": format!("{:?}", ble.current_state()),
+                        "applied": ble.identity_is_applied()
+                    })
+                    .to_string(),
+                }),
+                Err(err) => ControlResponse::Error(control_error_from_ble(err)),
+            }
+        }
         ControlCommand::GetBleAdvertisingInfo => {
             ble_advertising_info(app, ble, generic_encoder, xbox_encoder)
         }
@@ -839,7 +861,14 @@ where
             != Some(BleCompatibilityVariant::GenericHogpStrict),
         flags: 0x06,
         advertising_type: "ADV_TYPE_IND",
-        own_address_type: "public",
+        own_address_type: ble.identity_address_type(),
+        identity_strategy: ble.identity_strategy().id(),
+        current_address: ble.identity_current_address().map(format_ble_address),
+        derived_address: descriptor
+            .as_ref()
+            .and_then(|descriptor| ble.identity_derived_address(descriptor))
+            .map(format_ble_address),
+        identity_applied: ble.identity_is_applied(),
         security: "bond",
         io_capability: "none",
         bonds_present,
@@ -957,6 +986,29 @@ fn estimated_scan_rsp_len(
         Some(BleCompatibilityVariant::IosKeyboardIcadeFallback) => 0,
         _ => name_len,
     }
+}
+
+fn ble_identity_strategies_json() -> ControlResponse {
+    ControlResponse::Json(JsonResponse {
+        prefix: "BLE_IDENTITY_STRATEGIES_JSON",
+        json: serde_json::json!({
+            "strategies": [
+                {
+                    "id": BleIdentityStrategy::LegacyPublic.id(),
+                    "default": true,
+                    "experimental": false,
+                    "description": "Current release behavior: all personas use the controller/public BLE address."
+                },
+                {
+                    "id": BleIdentityStrategy::PersonaStaticRandomExperimental.id(),
+                    "default": false,
+                    "experimental": true,
+                    "description": "Diagnostic behavior: derive a stable static-random BLE address per persona/variant from the board Bluetooth address."
+                }
+            ]
+        })
+        .to_string(),
+    })
 }
 
 fn ble_compatibility_variants_json() -> JsonResponse {
@@ -1096,8 +1148,11 @@ where
         "vendor_id": descriptor.as_ref().map(|descriptor| descriptor.identity.vendor_id),
         "product_id": descriptor.as_ref().map(|descriptor| descriptor.identity.product_id),
         "appearance": descriptor.as_ref().map(|descriptor| format!("0x{:04x}", descriptor.identity.appearance)),
-        "address_type": "public",
-        "ble_address": "unavailable",
+        "identity_strategy": ble.identity_strategy().id(),
+        "address_type": ble.identity_address_type(),
+        "ble_address": ble.identity_current_address().map(format_ble_address),
+        "derived_address": descriptor.as_ref().and_then(|descriptor| ble.identity_derived_address(descriptor)).map(format_ble_address),
+        "identity_applied": ble.identity_is_applied(),
         "raw_advertisement_bytes_available": false,
         "primary_advertisement": {
             "flags": "0x06",
