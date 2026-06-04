@@ -37,9 +37,13 @@ not itself compatibility evidence.
   host, HIDD, personas, mapping, and bridge code. It reproduced the same async
   advertising-start status `13` after raw config success and immediate start
   return `0`; Windows did not see `BLE_SMOKE`.
-- The next Windows hardware chunk should investigate the ESP-IDF/Bluedroid GAP
-  advertising-start pending completion before retrying Windows pairing or
-  Gamepad API tests.
+- 2026-06-03: `docs/milestone-evidence/FIRMWARE_PROVENANCE_BLE_ADVERTISING_DIAGNOSTIC_2026-06-03.md`
+  records a firmware provenance A/B on this same board and Windows watcher.
+  Published `v0.1.0-alpha` firmware advertised `USB2BLE Gamepad` after
+  `START_BLE_GENERIC_GAMEPAD`, while public Pages/current and Windows-local
+  current firmware did not advertise for the tested raw-smoke or Generic paths.
+- The next Windows hardware chunk should isolate the post-alpha firmware
+  advertising regression before retrying Windows pairing or Gamepad API tests.
 
 ## Hardware Setup
 
