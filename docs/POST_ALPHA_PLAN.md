@@ -7,14 +7,20 @@ before status docs should change.
 ## 1. External Browser Or Native Game Compatibility Data Point
 
 - Why it matters: proves USB2BLE works in a real third-party app/game surface,
-  not only the repo-local browser app smoke.
+  not only the repo-local browser app smoke or Windows `joy.cpl` controller
+  panel.
 - Evidence needed: app/game name and version, host OS/browser, active persona,
   bridge counter deltas, screenshots or app logs showing recognized controls,
   orientation notes, and limitations.
-- Hardware/user action: likely required for pairing, app focus, and physical
-  control movements.
-- Recommended next prompt type: hardware/browser witness chunk following
-  `docs/GAME_COMPATIBILITY_WITNESS.md`.
+- Current best path: single-persona Windows Xbox BLE-compatible mode, because
+  `docs/milestone-evidence/WINDOWS_XBOX_XINPUT_WITNESS_2026-06-04.md` proves
+  pairing, HID `045e:0b13`, XInput slot 0, virtual mapping, and `joy.cpl`
+  controller-panel movement on Alex's PC.
+- Hardware/user action: likely required for pairing/app focus; physical
+  controls should wait until a virtual-input app/game smoke is understood.
+- Recommended next prompt type: Windows single-persona Xbox real app/game
+  witness following `docs/GAME_COMPATIBILITY_WITNESS.md`, starting with a
+  low-friction app/game target and virtual input before physical movement.
 - Risk: medium, because app input handling varies widely.
 
 ## 2. Xbox Stick-Press Gap And Physical Refined Live Mapping
@@ -68,17 +74,17 @@ before status docs should change.
   advertised addresses for Generic default, U6, and Xbox, but Alex still had to
   remove the previous Windows Bluetooth device before the next persona would
   connect. Cache-free Windows persona switching and coexistence are therefore
-  still unproven.
+  still unproven. The immediate product-progress path moved to single-persona
+  Windows Xbox testing, which is checked in separately as
+  `docs/milestone-evidence/WINDOWS_XBOX_XINPUT_WITNESS_2026-06-04.md`.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
   Gamepad API slot state, HID callback events, no-removal Windows pairing
   failure logs, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: controlled Windows BLE cache/bond lifecycle
-  witness using `persona_static_random_experimental`, first reproducing the
-  no-removal persona-switching failure with logs, then deciding whether the next
-  fix belongs in target identity/bond handling, Windows cleanup tooling, or HID
-  service/device metadata.
+- Recommended next prompt type: return to controlled Windows BLE cache/bond
+  lifecycle only after the single-persona Xbox product path has a real
+  app/game data point or after a specific identity/bond fix exists.
 - Risk: high, because BLE cache behavior is host-dependent.
 
 ## 4. Deadzone And Calibration Quality Tuning

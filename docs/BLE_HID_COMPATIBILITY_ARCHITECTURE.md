@@ -18,8 +18,8 @@ USB2BLE compatibility work is split into layers so a failure can be diagnosed wi
 
 - macOS + Chrome with the `generic_default` path is proven for the refined practical RJ12 Flight Pack Generic profile. See `docs/EVIDENCE_INDEX.md`.
 - iPhone did not discover the current Generic advertisement in Bluetooth settings, so Safari/Gamepad API cannot be tested yet.
-- Android and Windows are untested. ESP32-BLE-Gamepad documents host-specific axis/trigger behavior differences and says iOS is not supported by that generic library, which is a useful warning for USB2BLE.
-- Windows game compatibility often expects XInput-like semantics rather than a generic HID gamepad. USB2BLE has an Xbox persona slice, but refined Xbox host-visible mapping is not proven.
+- Android is untested. ESP32-BLE-Gamepad documents host-specific axis/trigger behavior differences and says iOS is not supported by that generic library, which is a useful warning for USB2BLE.
+- Windows evidence is narrow and host-specific. Alex's PC has diagnostic evidence for Generic/U6/Xbox pairing after manual cache cleanup, and a single-persona Xbox path now exposes HID `045e:0b13`, XInput slot 0, deterministic Xbox reports, virtual Flight Pack Xbox mapping, and `joy.cpl` controller-panel movement. This is not broad Windows or real game compatibility.
 - Linux/BlueZ is valuable as a diagnostic host because tools such as `btmon`, `bluetoothctl`, and kernel HID logs can expose lower-level behavior than iOS Settings.
 - Older iOS-friendly controller hacks often used keyboard/iCade-style input. USB2BLE may eventually provide an experimental `ios_keyboard_icade_fallback`, but it must be labeled as a keyboard fallback, not a true gamepad.
 - Consumer-grade iPhone controller support often involves MFi or known platform-specific identities. USB2BLE should not impersonate vendor identities in default/public mode without careful evidence and legal review.

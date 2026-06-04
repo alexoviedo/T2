@@ -59,10 +59,17 @@ not itself compatibility evidence.
   deterministic reports. It does not prove cache-free switching or coexistence:
   Alex reported that the previous persona still had to be removed before the
   next persona would connect.
-- The next Windows hardware chunk should diagnose Windows cache/bond lifecycle
-  with a controlled no-removal persona-switching matrix. Do not treat
-  advertisement visibility as pairing, input delivery, app/game compatibility,
-  or cache-free switching evidence.
+- 2026-06-04: `docs/milestone-evidence/WINDOWS_XBOX_XINPUT_WITNESS_2026-06-04.md`
+  records the product-progress path after the cache-free switching diagnostic:
+  single-persona Xbox BLE-compatible mode paired as `Xbox Wireless Controller`,
+  exposed HID `045e:0b13`, connected XInput slot 0, drove deterministic and
+  virtual Flight Pack Xbox mappings through XInput, and showed movement in
+  `joy.cpl` Properties. This is still a single-PC diagnostic and controller
+  panel smoke, not broad Windows or real game compatibility.
+- The next Windows hardware chunk should build from the single-persona Xbox
+  path, not reopen cache-free Generic/U6/Xbox switching unless a specific
+  identity/bond fix exists. Do not treat advertisement visibility as pairing,
+  input delivery, app/game compatibility, or cache-free switching evidence.
 
 ## Hardware Setup
 

@@ -45,6 +45,11 @@ These claims are supported by checked-in evidence:
   XInput slot 0 deterministic reports. This is partial diagnostic evidence only:
   Alex reported manual removal of the previous persona was still required before
   the next persona would connect.
+- On Alex's Windows PC, single-persona Xbox BLE-compatible mode can pair as
+  `Xbox Wireless Controller`, expose HID `045e:0b13`, connect XInput slot 0,
+  drive deterministic and virtual Flight Pack Xbox mappings through XInput, and
+  show movement in `joy.cpl` Properties. This is a single-PC Windows XInput and
+  controller-panel witness, not broad Windows or real game compatibility.
 
 ## Forbidden Overclaims
 
@@ -52,6 +57,7 @@ Do not claim any of these until matching checked-in evidence exists:
 
 - broad game/app compatibility,
 - external/native game compatibility,
+- treating `joy.cpl` controller-panel movement as game compatibility,
 - iPhone compatibility,
 - physical Xbox host-visible refined Flight Pack movement from real USB input,
 - complete Xbox standard button layout, including stick-press buttons,
