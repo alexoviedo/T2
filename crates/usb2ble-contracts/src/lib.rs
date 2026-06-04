@@ -624,10 +624,11 @@ impl BleCompatibilityVariant {
 }
 
 /// Runtime BLE identity strategy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BleIdentityStrategy {
     /// Current behavior: use the controller/public address for every persona.
+    #[default]
     LegacyPublic,
     /// Experimental behavior: use stable static-random addresses derived per persona/variant.
     PersonaStaticRandomExperimental,
@@ -651,12 +652,6 @@ impl BleIdentityStrategy {
             "persona_static_random_experimental" => Some(Self::PersonaStaticRandomExperimental),
             _ => None,
         }
-    }
-}
-
-impl Default for BleIdentityStrategy {
-    fn default() -> Self {
-        Self::LegacyPublic
     }
 }
 
@@ -698,8 +693,8 @@ pub fn derive_persona_static_random_address(
 
     let mut out = [0_u8; 6];
     let bytes = hash.to_be_bytes();
-    for index in 0..6 {
-        out[index] = bytes[index + 2] ^ base_address[index].rotate_left((index as u32) + 1);
+    for (index, shift) in [1_u32, 2, 3, 4, 5, 6].into_iter().enumerate() {
+        out[index] = bytes[index + 2] ^ base_address[index].rotate_left(shift);
     }
     out[0] = (out[0] & 0x3f) | 0xc0;
     if out == base_address {
