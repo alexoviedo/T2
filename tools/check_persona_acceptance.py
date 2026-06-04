@@ -83,10 +83,17 @@ PERSONAS: dict[str, dict[str, Any]] = {
         "persona_switching_hygiene_proven": False,
         "host_evidence": [
             "docs/milestone-evidence/XBOX_STANDARD_LAYOUT_DIAGNOSTIC_2026-05-29.md",
+            "docs/milestone-evidence/WINDOWS_XBOX_XINPUT_WITNESS_2026-06-04.md",
         ],
-        "game_app_evidence": [],
+        "game_app_evidence": [
+            "docs/milestone-evidence/WINDOWS_XBOX_APP_COMPATIBILITY_WITNESS_2026-06-04_SPYRO_REIGNITED_TRILOGY.md",
+        ],
         "matrix_terms": ["xbox_wireless_controller", "Xbox Wireless Controller"],
-        "claim_terms": ["Xbox BLE Profile v1", "Xbox macOS/Chrome deterministic diagnostic"],
+        "claim_terms": [
+            "Xbox BLE Profile v1",
+            "Xbox macOS/Chrome deterministic diagnostic",
+            "Spyro Reignited Trilogy",
+        ],
     },
     "ble_keyboard": {
         "descriptor_checker": None,

@@ -50,13 +50,19 @@ These claims are supported by checked-in evidence:
   drive deterministic and virtual Flight Pack Xbox mappings through XInput, and
   show movement in `joy.cpl` Properties. This is a single-PC Windows XInput and
   controller-panel witness, not broad Windows or real game compatibility.
+- On Alex's Windows PC, the same single-persona Xbox BLE-compatible path has one
+  installed-game data point: Spyro Reignited Trilogy 1.0.1.0 stayed open while
+  virtual Flight Pack Xbox mapping and deterministic Xbox reports moved XInput,
+  and Alex observed controls moving plus menu items being selected in Spyro.
+  This is one PC and one game target, with virtual input only.
 
 ## Forbidden Overclaims
 
 Do not claim any of these until matching checked-in evidence exists:
 
 - broad game/app compatibility,
-- external/native game compatibility,
+- broad external/native game compatibility,
+- physical HOTAS movement in Spyro or other games,
 - treating `joy.cpl` controller-panel movement as game compatibility,
 - iPhone compatibility,
 - physical Xbox host-visible refined Flight Pack movement from real USB input,

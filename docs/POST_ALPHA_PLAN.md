@@ -4,23 +4,28 @@ This queue keeps post-`v0.1.0-alpha` work evidence-backed and scoped. It does
 not create new compatibility claims; each item defines the evidence needed
 before status docs should change.
 
-## 1. External Browser Or Native Game Compatibility Data Point
+## 1. Second App/Game Or Physical-Input Follow-Up
 
-- Why it matters: proves USB2BLE works in a real third-party app/game surface,
-  not only the repo-local browser app smoke or Windows `joy.cpl` controller
-  panel.
+- Current evidence: `docs/milestone-evidence/WINDOWS_XBOX_APP_COMPATIBILITY_WITNESS_2026-06-04_SPYRO_REIGNITED_TRILOGY.md`
+  records one Windows Xbox-path installed-game data point on Alex's PC. Spyro
+  Reignited Trilogy 1.0.1.0 launched, XInput slot 0 stayed connected while
+  virtual Xbox mapping and deterministic reports ran, and Alex observed controls
+  moving plus menu items being selected. This is virtual input only and does not
+  prove broad game compatibility.
+- Why it matters: the first real installed-game data point exists, but it is
+  one PC, one game, and no physical HOTAS movement.
 - Evidence needed: app/game name and version, host OS/browser, active persona,
   bridge counter deltas, screenshots or app logs showing recognized controls,
   orientation notes, and limitations.
-- Current best path: single-persona Windows Xbox BLE-compatible mode, because
-  `docs/milestone-evidence/WINDOWS_XBOX_XINPUT_WITNESS_2026-06-04.md` proves
-  pairing, HID `045e:0b13`, XInput slot 0, virtual mapping, and `joy.cpl`
-  controller-panel movement on Alex's PC.
-- Hardware/user action: likely required for pairing/app focus; physical
-  controls should wait until a virtual-input app/game smoke is understood.
-- Recommended next prompt type: Windows single-persona Xbox real app/game
-  witness following `docs/GAME_COMPATIBILITY_WITNESS.md`, starting with a
-  low-friction app/game target and virtual input before physical movement.
+- Current best path: continue the single-persona Windows Xbox BLE-compatible
+  mode. Either repeat a second low-friction installed game/app target, or extend
+  the Spyro witness with a small physical-input confirmation after explicit
+  operator prompts.
+- Hardware/user action: likely required for app focus and any physical
+  confirmation.
+- Recommended next prompt type: Windows single-persona Xbox second app witness
+  or Spyro physical HOTAS micro-witness, with the same claim boundaries and no
+  Generic/U6 persona-switching work.
 - Risk: medium, because app input handling varies widely.
 
 ## 2. Xbox Stick-Press Gap And Physical Refined Live Mapping

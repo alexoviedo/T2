@@ -218,6 +218,18 @@ class PersonaAcceptanceGateTests(unittest.TestCase):
         self.assertEqual(len(virtual_checks), 1)
         self.assertIn("VIRTUAL_INPUT_XBOX_BRIDGE_WITNESS_2026-05-30.md", virtual_checks[0]["note"])
 
+        game_app_checks = [
+            check
+            for check in summary["checks"]
+            if check["layer"] == "evidence" and check["item"] == "game_app_witness"
+        ]
+        self.assertEqual(len(game_app_checks), 1)
+        self.assertEqual(game_app_checks[0]["status"], "pass")
+        self.assertIn(
+            "WINDOWS_XBOX_APP_COMPATIBILITY_WITNESS_2026-06-04_SPYRO_REIGNITED_TRILOGY.md",
+            game_app_checks[0]["note"],
+        )
+
     def test_acceptance_gate_distinguishes_evidence_types(self) -> None:
         summary = check_persona_acceptance.evaluate_persona("generic_gamepad")
         items = {check["item"]: check for check in summary["checks"] if check["layer"] == "evidence"}

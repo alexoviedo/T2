@@ -1,7 +1,14 @@
 # Game/App Compatibility Witness
 
-Status: **manual evidence workflow; compatibility is not claimed until a real
-app/game run is captured and checked in.**
+Status: **manual evidence workflow plus one checked-in installed-game data
+point.** USB2BLE has a scoped Windows Xbox/Spyro witness, but broad app/game
+compatibility is not claimed.
+
+Checked-in game/app examples:
+
+- `docs/milestone-evidence/WINDOWS_XBOX_APP_COMPATIBILITY_WITNESS_2026-06-04_SPYRO_REIGNITED_TRILOGY.md`
+  records one Windows Xbox-path Spyro Reignited Trilogy data point on Alex's PC
+  using virtual input only.
 
 Browser Gamepad API evidence is useful because it proves host-visible HID
 reports, but it is not a substitute for a real app/game compatibility witness.
