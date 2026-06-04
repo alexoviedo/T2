@@ -32,6 +32,11 @@ not itself compatibility evidence.
   status `13` as `ESP_BT_STATUS_PENDING`; raw payload config and immediate
   start returns succeeded, but async start-complete still reported status `13`
   and Windows did not see USB2BLE advertisements.
+- 2026-06-03: `docs/milestone-evidence/MINIMAL_BLE_ADVERTISING_ISOLATION_2026-06-03.md`
+  records a standalone ESP32-S3 BLE advertiser that avoids USB2BLE app, USB
+  host, HIDD, personas, mapping, and bridge code. It reproduced the same async
+  advertising-start status `13` after raw config success and immediate start
+  return `0`; Windows did not see `BLE_SMOKE`.
 - The next Windows hardware chunk should investigate the ESP-IDF/Bluedroid GAP
   advertising-start pending completion before retrying Windows pairing or
   Gamepad API tests.
