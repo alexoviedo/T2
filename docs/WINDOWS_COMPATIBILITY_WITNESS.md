@@ -27,9 +27,14 @@ not itself compatibility evidence.
   counters. Raw GAP smoke advertising and Generic/Xbox HID persona advertising
   all failed at GAP advertising start status `13`, while Windows captured
   ambient BLE advertisements.
+- 2026-06-03: `docs/milestone-evidence/BLE_ADVERTISING_START_DIAGNOSTIC_2026-06-03.md`
+  records follow-up raw GAP smoke experiments. Local ESP-IDF bindings identify
+  status `13` as `ESP_BT_STATUS_PENDING`; raw payload config and immediate
+  start returns succeeded, but async start-complete still reported status `13`
+  and Windows did not see USB2BLE advertisements.
 - The next Windows hardware chunk should investigate the ESP-IDF/Bluedroid GAP
-  advertising-start failure before retrying Windows pairing or Gamepad API
-  tests.
+  advertising-start pending completion before retrying Windows pairing or
+  Gamepad API tests.
 
 ## Hardware Setup
 

@@ -4,7 +4,10 @@ Status: BLE advertising isolation diagnostic on Alex's Windows PC. This
 evidence proves that Windows' native BLE advertisement watcher was receiving
 ambient advertisements and that USB2BLE's raw GAP smoke advertisement plus
 Generic/Xbox HID persona advertisement paths all failed at the target GAP
-advertising-start layer with status `13` (`0x0d`, command disallowed). It does
+advertising-start layer with status `13`. Follow-up local ESP-IDF binding
+inspection identified `13` as `ESP_BT_STATUS_PENDING`, not HCI command
+disallowed. This lab still treats the numeric callback status as a target GAP
+advertising-start failure. It does
 not prove Windows controller compatibility, game/app compatibility, physical
 HOTAS movement, BLE bond persistence, broad host support, Xbox console support,
 proprietary Xbox Wireless support, or final Flight Pack calibration.

@@ -107,7 +107,7 @@ mod target {
     use super::*;
     use core::ffi::{c_char, c_void};
     use core::ptr;
-    use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU8, AtomicU32, Ordering};
+    use core::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU8, AtomicU32, Ordering};
     use esp_idf_sys::{
         AGC_RECORRECT_EN, BLE_HW_TARGET_CODE_CHIP_ECO0, BT_BLE_ADV_DATA_LENGTH_ZERO_AUX,
         BT_BLE_CCA_MODE, BT_CTRL_50_FEATURE_SUPPORT, BT_CTRL_SCAN_BACKOFF_UPPERLIMITMAX, CFG_MASK,
@@ -128,8 +128,10 @@ mod target {
         SLAVE_CE_LEN_MIN_DEFAULT, esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC,
         esp_ble_adv_channel_t_ADV_CHNL_ALL, esp_ble_adv_data_t,
         esp_ble_adv_filter_t_ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY, esp_ble_adv_params_t,
-        esp_ble_adv_type_t_ADV_TYPE_IND, esp_ble_auth_req_t, esp_ble_bond_dev_t,
-        esp_ble_gap_cb_param_t, esp_ble_gap_config_adv_data, esp_ble_gap_register_callback,
+        esp_ble_adv_type_t_ADV_TYPE_IND, esp_ble_adv_type_t_ADV_TYPE_NONCONN_IND,
+        esp_ble_adv_type_t_ADV_TYPE_SCAN_IND, esp_ble_auth_req_t, esp_ble_bond_dev_t,
+        esp_ble_gap_cb_param_t, esp_ble_gap_config_adv_data, esp_ble_gap_config_adv_data_raw,
+        esp_ble_gap_config_scan_rsp_data_raw, esp_ble_gap_register_callback,
         esp_ble_gap_security_rsp, esp_ble_gap_set_device_name, esp_ble_gap_set_security_param,
         esp_ble_gap_start_advertising, esp_ble_gap_stop_advertising,
         esp_ble_gatts_register_callback, esp_ble_get_bond_device_list, esp_ble_get_bond_device_num,
@@ -141,13 +143,15 @@ mod target {
         esp_bt_controller_init, esp_bt_controller_mem_release, esp_bt_hci_tl_t, esp_bt_mode_t,
         esp_bt_mode_t_ESP_BT_MODE_BLE, esp_bt_mode_t_ESP_BT_MODE_CLASSIC_BT,
         esp_bt_status_t_ESP_BT_STATUS_SUCCESS, esp_err_t, esp_event_base_t, esp_event_handler_t,
-        esp_gap_ble_cb_event_t, esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT,
+        esp_gap_ble_cb_event_t, esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT,
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_START_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_NC_REQ_EVT,
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SEC_REQ_EVT, esp_gatt_if_t, esp_gatts_cb_event_t,
-        nvs_flash_erase, nvs_flash_init, vTaskDelay,
+        nvs_flash_erase, nvs_flash_init,
     };
     use usb2ble_contracts::BlePersonaIdentity;
 
@@ -157,6 +161,23 @@ mod target {
     const STATE_CONNECTED: u8 = 3;
     const STATE_ERROR: u8 = 4;
 
+    const OWNER_NONE: u8 = 0;
+    const OWNER_RAW_SMOKE: u8 = 1;
+    const OWNER_HID: u8 = 2;
+
+    const SMOKE_STATE_IDLE: u8 = 0;
+    const SMOKE_STATE_STOPPING_EXISTING_ADV: u8 = 1;
+    const SMOKE_STATE_CONFIGURING_ADV_DATA: u8 = 2;
+    const SMOKE_STATE_CONFIGURING_SCAN_RSP: u8 = 3;
+    const SMOKE_STATE_READY_TO_START: u8 = 4;
+    const SMOKE_STATE_STARTING: u8 = 5;
+    const SMOKE_STATE_ADVERTISING: u8 = 6;
+    const SMOKE_STATE_FAILED: u8 = 7;
+
+    const SMOKE_MODE_CONNECTABLE: u8 = 0;
+    const SMOKE_MODE_SCAN_RSP: u8 = 1;
+    const SMOKE_MODE_NONCONNECTABLE: u8 = 2;
+
     const ESP_HID_TRANSPORT_BLE: u32 = 1;
     const ESP_HIDD_START_EVENT: i32 = 0;
     const ESP_HIDD_CONNECT_EVENT: i32 = 1;
@@ -164,12 +185,16 @@ mod target {
     const ESP_HIDD_STOP_EVENT: i32 = 7;
     const GAP_ADV_DATA_SET_COMPLETE_EVT: esp_gap_ble_cb_event_t =
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT;
+    const GAP_ADV_DATA_RAW_SET_COMPLETE_EVT: esp_gap_ble_cb_event_t =
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT;
     const GAP_ADV_START_COMPLETE_EVT: esp_gap_ble_cb_event_t =
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_START_COMPLETE_EVT;
     const GAP_ADV_STOP_COMPLETE_EVT: esp_gap_ble_cb_event_t =
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT;
     const GAP_SCAN_RSP_DATA_SET_COMPLETE_EVT: esp_gap_ble_cb_event_t =
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT;
+    const GAP_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT: esp_gap_ble_cb_event_t =
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT;
     const GAP_SEC_REQ_EVT: esp_gap_ble_cb_event_t = esp_gap_ble_cb_event_t_ESP_GAP_BLE_SEC_REQ_EVT;
     const GAP_NC_REQ_EVT: esp_gap_ble_cb_event_t = esp_gap_ble_cb_event_t_ESP_GAP_BLE_NC_REQ_EVT;
 
@@ -177,8 +202,16 @@ mod target {
     static HID_DEV: AtomicPtr<EspHiddDev> = AtomicPtr::new(ptr::null_mut());
     static LINK_STATE: AtomicU8 = AtomicU8::new(STATE_IDLE);
     static SMOKE_ACTIVE: AtomicBool = AtomicBool::new(false);
+    static BLE_OWNER: AtomicU8 = AtomicU8::new(OWNER_NONE);
+    static SMOKE_STATE: AtomicU8 = AtomicU8::new(SMOKE_STATE_IDLE);
+    static SMOKE_MODE: AtomicU8 = AtomicU8::new(SMOKE_MODE_CONNECTABLE);
+    static SMOKE_ADV_RAW_READY: AtomicBool = AtomicBool::new(false);
+    static SMOKE_SCAN_RSP_REQUIRED: AtomicBool = AtomicBool::new(false);
+    static SMOKE_SCAN_RSP_RAW_READY: AtomicBool = AtomicBool::new(false);
     static GAP_ADV_CONFIG_DONE: AtomicU32 = AtomicU32::new(0);
+    static GAP_ADV_RAW_CONFIG_DONE: AtomicU32 = AtomicU32::new(0);
     static GAP_SCAN_RSP_CONFIG_DONE: AtomicU32 = AtomicU32::new(0);
+    static GAP_SCAN_RSP_RAW_CONFIG_DONE: AtomicU32 = AtomicU32::new(0);
     static GAP_ADV_START_COMPLETE: AtomicU32 = AtomicU32::new(0);
     static GAP_ADV_STOP_COMPLETE: AtomicU32 = AtomicU32::new(0);
     static HIDD_START_COUNT: AtomicU32 = AtomicU32::new(0);
@@ -186,9 +219,29 @@ mod target {
     static HIDD_DISCONNECT_COUNT: AtomicU32 = AtomicU32::new(0);
     static HIDD_STOP_COUNT: AtomicU32 = AtomicU32::new(0);
     static LAST_ADV_CONFIG_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_ADV_RAW_CONFIG_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
     static LAST_SCAN_RSP_CONFIG_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_SCAN_RSP_RAW_CONFIG_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
     static LAST_ADV_START_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
     static LAST_ADV_STOP_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_SET_NAME_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static LAST_ADV_CONFIG_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static LAST_SCAN_RSP_CONFIG_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static LAST_ADV_START_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static LAST_ADV_STOP_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static LAST_GAP_EVENT: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_GAP_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_ADV_INT_MIN: AtomicU32 = AtomicU32::new(0);
+    static LAST_ADV_INT_MAX: AtomicU32 = AtomicU32::new(0);
+    static LAST_ADV_TYPE: AtomicU32 = AtomicU32::new(0);
+    static LAST_ADV_OWN_ADDR_TYPE: AtomicU32 = AtomicU32::new(0);
+    static LAST_ADV_CHANNEL_MAP: AtomicU32 = AtomicU32::new(0);
+    static LAST_ADV_FILTER_POLICY: AtomicU32 = AtomicU32::new(0);
+    static SMOKE_ADV_RAW_LEN: AtomicU32 = AtomicU32::new(0);
+    static SMOKE_SCAN_RSP_RAW_LEN: AtomicU32 = AtomicU32::new(0);
+
+    static mut SMOKE_ADV_RAW_DATA: [u8; 31] = [0; 31];
+    static mut SMOKE_SCAN_RSP_RAW_DATA: [u8; 31] = [0; 31];
 
     static HID_SERVICE_UUID_128: [u8; 16] = [
         0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0x12, 0x18, 0x00,
@@ -267,6 +320,7 @@ mod target {
 
     impl BleTransport for BleHidTransport {
         fn current_state(&self) -> BleLinkState {
+            unsafe { drive_smoke_state_machine() };
             let dev = HID_DEV.load(Ordering::SeqCst);
             if !dev.is_null() && unsafe { esp_hidd_dev_connected(dev) } {
                 return BleLinkState::Connected;
@@ -292,6 +346,7 @@ mod target {
             }
 
             self.report_map.clone_from(&descriptor.report_map);
+            BLE_OWNER.store(OWNER_HID, Ordering::SeqCst);
             unsafe {
                 init_hid_device(
                     &self.report_map,
@@ -350,20 +405,35 @@ mod target {
             }
             unsafe {
                 start_stack()?;
+                reset_smoke_diagnostics();
+                if advertising_may_be_active() {
+                    SMOKE_STATE.store(SMOKE_STATE_STOPPING_EXISTING_ADV, Ordering::SeqCst);
+                    let stop_ret = esp_ble_gap_stop_advertising();
+                    LAST_ADV_STOP_RETURN.store(stop_ret, Ordering::SeqCst);
+                    if stop_ret != ESP_OK && stop_ret != ESP_ERR_INVALID_STATE {
+                        SMOKE_STATE.store(SMOKE_STATE_FAILED, Ordering::SeqCst);
+                        BLE_OWNER.store(OWNER_NONE, Ordering::SeqCst);
+                        return esp_result(stop_ret);
+                    }
+                }
+                BLE_OWNER.store(OWNER_RAW_SMOKE, Ordering::SeqCst);
                 configure_smoke_advertising(name)?;
-                vTaskDelay(50);
-                start_advertising()?;
             }
-            SMOKE_ACTIVE.store(true, Ordering::SeqCst);
             Ok(())
         }
 
         fn stop_adv_smoke_test(&mut self) -> Result<(), BleTransportError> {
+            let should_stop = advertising_may_be_active();
             SMOKE_ACTIVE.store(false, Ordering::SeqCst);
-            let ret = unsafe { esp_ble_gap_stop_advertising() };
-            if ret != ESP_OK && ret != ESP_ERR_INVALID_STATE {
-                return esp_result(ret);
+            if should_stop {
+                let ret = unsafe { esp_ble_gap_stop_advertising() };
+                LAST_ADV_STOP_RETURN.store(ret, Ordering::SeqCst);
+                if ret != ESP_OK && ret != ESP_ERR_INVALID_STATE {
+                    return esp_result(ret);
+                }
             }
+            BLE_OWNER.store(OWNER_NONE, Ordering::SeqCst);
+            SMOKE_STATE.store(SMOKE_STATE_IDLE, Ordering::SeqCst);
             if LINK_STATE.load(Ordering::SeqCst) != STATE_CONNECTED {
                 LINK_STATE.store(STATE_IDLE, Ordering::SeqCst);
             }
@@ -372,30 +442,60 @@ mod target {
 
         fn adv_smoke_test_status_json(&self) -> String {
             format!(
-                "{{\"supported\":true,\"active\":{},\"name\":\"USB2BLE_ADV_TEST\",\"connectable\":true,\"state\":\"{:?}\",\"last_adv_config_status\":{},\"last_adv_start_status\":{},\"last_adv_stop_status\":{}}}",
+                "{{\"supported\":true,\"active\":{},\"name\":\"USB2BLE_ADV_TEST\",\"connectable\":{},\"state\":\"{:?}\",\"smoke_state\":\"{}\",\"smoke_mode\":\"{}\",\"owner\":\"{}\",\"adv_payload_len\":{},\"scan_rsp_payload_len\":{},\"last_set_name_return\":{},\"last_adv_config_return\":{},\"last_adv_raw_config_status\":{},\"last_adv_start_return\":{},\"last_adv_start_status\":{},\"last_adv_stop_return\":{},\"last_adv_stop_status\":{}}}",
                 SMOKE_ACTIVE.load(Ordering::SeqCst),
+                SMOKE_MODE.load(Ordering::SeqCst) == SMOKE_MODE_CONNECTABLE,
                 self.current_state(),
-                option_status(LAST_ADV_CONFIG_STATUS.load(Ordering::SeqCst)),
+                smoke_state_name(SMOKE_STATE.load(Ordering::SeqCst)),
+                smoke_mode_name(SMOKE_MODE.load(Ordering::SeqCst)),
+                owner_name(BLE_OWNER.load(Ordering::SeqCst)),
+                SMOKE_ADV_RAW_LEN.load(Ordering::SeqCst),
+                SMOKE_SCAN_RSP_RAW_LEN.load(Ordering::SeqCst),
+                option_i32(LAST_SET_NAME_RETURN.load(Ordering::SeqCst)),
+                option_i32(LAST_ADV_CONFIG_RETURN.load(Ordering::SeqCst)),
+                option_status(LAST_ADV_RAW_CONFIG_STATUS.load(Ordering::SeqCst)),
+                option_i32(LAST_ADV_START_RETURN.load(Ordering::SeqCst)),
                 option_status(LAST_ADV_START_STATUS.load(Ordering::SeqCst)),
+                option_i32(LAST_ADV_STOP_RETURN.load(Ordering::SeqCst)),
                 option_status(LAST_ADV_STOP_STATUS.load(Ordering::SeqCst))
             )
         }
 
         fn advertising_events_json(&self) -> String {
             format!(
-                "{{\"supported\":true,\"adv_config_done\":{},\"scan_rsp_config_done\":{},\"adv_start_complete\":{},\"adv_stop_complete\":{},\"hidd_start\":{},\"hidd_connect\":{},\"hidd_disconnect\":{},\"hidd_stop\":{},\"last_adv_config_status\":{},\"last_scan_rsp_config_status\":{},\"last_adv_start_status\":{},\"last_adv_stop_status\":{},\"smoke_active\":{},\"state\":\"{:?}\"}}",
+                "{{\"supported\":true,\"owner\":\"{}\",\"smoke_state\":\"{}\",\"smoke_mode\":\"{}\",\"adv_config_done\":{},\"adv_raw_config_done\":{},\"scan_rsp_config_done\":{},\"scan_rsp_raw_config_done\":{},\"adv_start_complete\":{},\"adv_stop_complete\":{},\"hidd_start\":{},\"hidd_connect\":{},\"hidd_disconnect\":{},\"hidd_stop\":{},\"last_gap_event\":{},\"last_gap_status\":{},\"last_set_name_return\":{},\"last_adv_config_return\":{},\"last_scan_rsp_config_return\":{},\"last_adv_start_return\":{},\"last_adv_stop_return\":{},\"last_adv_config_status\":{},\"last_adv_raw_config_status\":{},\"last_scan_rsp_config_status\":{},\"last_scan_rsp_raw_config_status\":{},\"last_adv_start_status\":{},\"last_adv_stop_status\":{},\"adv_params\":{{\"interval_min\":{},\"interval_max\":{},\"adv_type\":{},\"own_addr_type\":{},\"channel_map\":{},\"filter_policy\":{}}},\"smoke_active\":{},\"state\":\"{:?}\"}}",
+                owner_name(BLE_OWNER.load(Ordering::SeqCst)),
+                smoke_state_name(SMOKE_STATE.load(Ordering::SeqCst)),
+                smoke_mode_name(SMOKE_MODE.load(Ordering::SeqCst)),
                 GAP_ADV_CONFIG_DONE.load(Ordering::SeqCst),
+                GAP_ADV_RAW_CONFIG_DONE.load(Ordering::SeqCst),
                 GAP_SCAN_RSP_CONFIG_DONE.load(Ordering::SeqCst),
+                GAP_SCAN_RSP_RAW_CONFIG_DONE.load(Ordering::SeqCst),
                 GAP_ADV_START_COMPLETE.load(Ordering::SeqCst),
                 GAP_ADV_STOP_COMPLETE.load(Ordering::SeqCst),
                 HIDD_START_COUNT.load(Ordering::SeqCst),
                 HIDD_CONNECT_COUNT.load(Ordering::SeqCst),
                 HIDD_DISCONNECT_COUNT.load(Ordering::SeqCst),
                 HIDD_STOP_COUNT.load(Ordering::SeqCst),
+                option_status(LAST_GAP_EVENT.load(Ordering::SeqCst)),
+                option_status(LAST_GAP_STATUS.load(Ordering::SeqCst)),
+                option_i32(LAST_SET_NAME_RETURN.load(Ordering::SeqCst)),
+                option_i32(LAST_ADV_CONFIG_RETURN.load(Ordering::SeqCst)),
+                option_i32(LAST_SCAN_RSP_CONFIG_RETURN.load(Ordering::SeqCst)),
+                option_i32(LAST_ADV_START_RETURN.load(Ordering::SeqCst)),
+                option_i32(LAST_ADV_STOP_RETURN.load(Ordering::SeqCst)),
                 option_status(LAST_ADV_CONFIG_STATUS.load(Ordering::SeqCst)),
+                option_status(LAST_ADV_RAW_CONFIG_STATUS.load(Ordering::SeqCst)),
                 option_status(LAST_SCAN_RSP_CONFIG_STATUS.load(Ordering::SeqCst)),
+                option_status(LAST_SCAN_RSP_RAW_CONFIG_STATUS.load(Ordering::SeqCst)),
                 option_status(LAST_ADV_START_STATUS.load(Ordering::SeqCst)),
                 option_status(LAST_ADV_STOP_STATUS.load(Ordering::SeqCst)),
+                LAST_ADV_INT_MIN.load(Ordering::SeqCst),
+                LAST_ADV_INT_MAX.load(Ordering::SeqCst),
+                LAST_ADV_TYPE.load(Ordering::SeqCst),
+                LAST_ADV_OWN_ADDR_TYPE.load(Ordering::SeqCst),
+                LAST_ADV_CHANNEL_MAP.load(Ordering::SeqCst),
+                LAST_ADV_FILTER_POLICY.load(Ordering::SeqCst),
                 SMOKE_ACTIVE.load(Ordering::SeqCst),
                 self.current_state()
             )
@@ -506,9 +606,9 @@ mod target {
         let mut key_size = 16_u8;
         set_security_param(esp_ble_sm_param_t_ESP_BLE_SM_MAX_KEY_SIZE, &mut key_size, 1)?;
 
-        esp_result(esp_ble_gap_set_device_name(
-            identity.device_name.as_ptr().cast(),
-        ))?;
+        let set_name_ret = esp_ble_gap_set_device_name(identity.device_name.as_ptr().cast());
+        LAST_SET_NAME_RETURN.store(set_name_ret, Ordering::SeqCst);
+        esp_result(set_name_ret)?;
 
         let strict_hogp = variant == BleCompatibilityVariant::GenericHogpStrict;
         let (adv_service_uuid, adv_service_uuid_len, scan_service_uuid, scan_service_uuid_len) =
@@ -543,7 +643,9 @@ mod target {
             p_service_uuid: adv_service_uuid,
             flag: 0x06,
         };
-        esp_result_with_context(esp_ble_gap_config_adv_data(&mut adv_data), b"config_adv\0")?;
+        let adv_ret = esp_ble_gap_config_adv_data(&mut adv_data);
+        LAST_ADV_CONFIG_RETURN.store(adv_ret, Ordering::SeqCst);
+        esp_result_with_context(adv_ret, b"config_adv\0")?;
 
         let mut scan_rsp_data = esp_ble_adv_data_t {
             set_scan_rsp: true,
@@ -560,10 +662,9 @@ mod target {
             p_service_uuid: scan_service_uuid,
             flag: 0,
         };
-        esp_result_with_context(
-            esp_ble_gap_config_adv_data(&mut scan_rsp_data),
-            b"config_scan_rsp\0",
-        )
+        let scan_ret = esp_ble_gap_config_adv_data(&mut scan_rsp_data);
+        LAST_SCAN_RSP_CONFIG_RETURN.store(scan_ret, Ordering::SeqCst);
+        esp_result_with_context(scan_ret, b"config_scan_rsp\0")
     }
 
     unsafe fn set_security_param<T>(
@@ -579,55 +680,174 @@ mod target {
     }
 
     unsafe fn configure_smoke_advertising(name: &str) -> Result<(), BleTransportError> {
+        SMOKE_STATE.store(SMOKE_STATE_CONFIGURING_ADV_DATA, Ordering::SeqCst);
+        let mode = smoke_mode_from_name(name);
+        SMOKE_MODE.store(mode, Ordering::SeqCst);
+        SMOKE_SCAN_RSP_REQUIRED.store(mode == SMOKE_MODE_SCAN_RSP, Ordering::SeqCst);
         let mut device_name = name
             .as_bytes()
             .iter()
             .copied()
-            .filter(|byte| *byte != 0)
-            .take(24)
+            .filter(|byte| *byte != 0 && (*byte).is_ascii_graphic())
+            .take(16)
             .collect::<Vec<u8>>();
         if device_name.is_empty() {
             device_name.extend_from_slice(b"USB2BLE_ADV_TEST");
         }
         device_name.push(0);
-        esp_result_with_context(
-            esp_ble_gap_set_device_name(device_name.as_ptr().cast()),
-            b"smoke_set_name\0",
-        )?;
+        let set_name_ret = esp_ble_gap_set_device_name(device_name.as_ptr().cast());
+        LAST_SET_NAME_RETURN.store(set_name_ret, Ordering::SeqCst);
+        esp_result_with_context(set_name_ret, b"smoke_set_name\0")?;
 
-        let mut adv_data = esp_ble_adv_data_t {
-            set_scan_rsp: false,
-            include_name: true,
-            include_txpower: true,
-            min_interval: 0,
-            max_interval: 0,
-            appearance: 0,
-            manufacturer_len: 0,
-            p_manufacturer_data: ptr::null_mut(),
-            service_data_len: 0,
-            p_service_data: ptr::null_mut(),
-            service_uuid_len: 0,
-            p_service_uuid: ptr::null_mut(),
-            flag: 0x06,
+        let name_len = device_name.len().saturating_sub(1).min(16);
+        let raw = core::ptr::addr_of_mut!(SMOKE_ADV_RAW_DATA).cast::<u8>();
+        *raw.add(0) = 0x02;
+        *raw.add(1) = 0x01;
+        *raw.add(2) = 0x06;
+        let raw_len = if mode == SMOKE_MODE_SCAN_RSP {
+            3
+        } else {
+            *raw.add(3) = (name_len + 1) as u8;
+            *raw.add(4) = 0x09;
+            for (index, byte) in device_name.iter().take(name_len).enumerate() {
+                *raw.add(5 + index) = *byte;
+            }
+            5 + name_len
         };
-        esp_result_with_context(
-            esp_ble_gap_config_adv_data(&mut adv_data),
-            b"smoke_config_adv\0",
-        )
+        if mode == SMOKE_MODE_SCAN_RSP {
+            let scan_rsp = core::ptr::addr_of_mut!(SMOKE_SCAN_RSP_RAW_DATA).cast::<u8>();
+            *scan_rsp.add(0) = (name_len + 1) as u8;
+            *scan_rsp.add(1) = 0x09;
+            for (index, byte) in device_name.iter().take(name_len).enumerate() {
+                *scan_rsp.add(2 + index) = *byte;
+            }
+            SMOKE_SCAN_RSP_RAW_LEN.store((2 + name_len) as u32, Ordering::SeqCst);
+        } else {
+            SMOKE_SCAN_RSP_RAW_LEN.store(0, Ordering::SeqCst);
+        }
+        SMOKE_ADV_RAW_LEN.store(raw_len as u32, Ordering::SeqCst);
+        let adv_ret = esp_ble_gap_config_adv_data_raw(raw, raw_len as u32);
+        LAST_ADV_CONFIG_RETURN.store(adv_ret, Ordering::SeqCst);
+        esp_result_with_context(adv_ret, b"smoke_config_adv_raw\0")?;
+        if mode == SMOKE_MODE_SCAN_RSP {
+            SMOKE_STATE.store(SMOKE_STATE_CONFIGURING_SCAN_RSP, Ordering::SeqCst);
+            let scan_rsp = core::ptr::addr_of_mut!(SMOKE_SCAN_RSP_RAW_DATA).cast::<u8>();
+            let scan_ret = esp_ble_gap_config_scan_rsp_data_raw(
+                scan_rsp,
+                SMOKE_SCAN_RSP_RAW_LEN.load(Ordering::SeqCst),
+            );
+            LAST_SCAN_RSP_CONFIG_RETURN.store(scan_ret, Ordering::SeqCst);
+            esp_result_with_context(scan_ret, b"smoke_config_scan_rsp_raw\0")?;
+        }
+        Ok(())
     }
 
     unsafe fn start_advertising() -> Result<(), BleTransportError> {
+        let ret = request_start_advertising();
+        esp_result(ret)
+    }
+
+    unsafe fn request_start_advertising() -> esp_err_t {
         let mut adv_params = esp_ble_adv_params_t {
             adv_int_min: 0x20,
             adv_int_max: 0x30,
-            adv_type: esp_ble_adv_type_t_ADV_TYPE_IND,
+            adv_type: smoke_adv_type(),
             own_addr_type: esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC,
             peer_addr: [0_u8; 6],
             peer_addr_type: esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC,
             channel_map: esp_ble_adv_channel_t_ADV_CHNL_ALL,
             adv_filter_policy: esp_ble_adv_filter_t_ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
         };
-        esp_result(esp_ble_gap_start_advertising(&mut adv_params))
+        LAST_ADV_INT_MIN.store(u32::from(adv_params.adv_int_min), Ordering::SeqCst);
+        LAST_ADV_INT_MAX.store(u32::from(adv_params.adv_int_max), Ordering::SeqCst);
+        LAST_ADV_TYPE.store(adv_params.adv_type as u32, Ordering::SeqCst);
+        LAST_ADV_OWN_ADDR_TYPE.store(adv_params.own_addr_type as u32, Ordering::SeqCst);
+        LAST_ADV_CHANNEL_MAP.store(adv_params.channel_map as u32, Ordering::SeqCst);
+        LAST_ADV_FILTER_POLICY.store(adv_params.adv_filter_policy as u32, Ordering::SeqCst);
+        let ret = esp_ble_gap_start_advertising(&mut adv_params);
+        LAST_ADV_START_RETURN.store(ret, Ordering::SeqCst);
+        ret
+    }
+
+    unsafe fn start_smoke_after_config() {
+        if BLE_OWNER.load(Ordering::SeqCst) != OWNER_RAW_SMOKE {
+            return;
+        }
+        if !SMOKE_ADV_RAW_READY.load(Ordering::SeqCst) {
+            return;
+        }
+        if SMOKE_SCAN_RSP_REQUIRED.load(Ordering::SeqCst)
+            && !SMOKE_SCAN_RSP_RAW_READY.load(Ordering::SeqCst)
+        {
+            return;
+        }
+        let state = SMOKE_STATE.load(Ordering::SeqCst);
+        if state != SMOKE_STATE_CONFIGURING_ADV_DATA && state != SMOKE_STATE_CONFIGURING_SCAN_RSP {
+            return;
+        }
+        SMOKE_STATE.store(SMOKE_STATE_READY_TO_START, Ordering::SeqCst);
+    }
+
+    unsafe fn drive_smoke_state_machine() {
+        if BLE_OWNER.load(Ordering::SeqCst) != OWNER_RAW_SMOKE
+            || SMOKE_STATE.load(Ordering::SeqCst) != SMOKE_STATE_READY_TO_START
+        {
+            return;
+        }
+        let ret = request_start_advertising();
+        if ret == ESP_OK {
+            SMOKE_STATE.store(SMOKE_STATE_STARTING, Ordering::SeqCst);
+        } else {
+            SMOKE_ACTIVE.store(false, Ordering::SeqCst);
+            SMOKE_STATE.store(SMOKE_STATE_FAILED, Ordering::SeqCst);
+            LINK_STATE.store(STATE_ERROR, Ordering::SeqCst);
+        }
+    }
+
+    fn reset_smoke_diagnostics() {
+        SMOKE_ACTIVE.store(false, Ordering::SeqCst);
+        SMOKE_STATE.store(SMOKE_STATE_IDLE, Ordering::SeqCst);
+        SMOKE_ADV_RAW_READY.store(false, Ordering::SeqCst);
+        SMOKE_SCAN_RSP_REQUIRED.store(false, Ordering::SeqCst);
+        SMOKE_SCAN_RSP_RAW_READY.store(false, Ordering::SeqCst);
+        LAST_ADV_RAW_CONFIG_STATUS.store(u32::MAX, Ordering::SeqCst);
+        LAST_SCAN_RSP_RAW_CONFIG_STATUS.store(u32::MAX, Ordering::SeqCst);
+        LAST_ADV_START_STATUS.store(u32::MAX, Ordering::SeqCst);
+        LAST_ADV_STOP_STATUS.store(u32::MAX, Ordering::SeqCst);
+        LAST_SET_NAME_RETURN.store(i32::MAX, Ordering::SeqCst);
+        LAST_ADV_CONFIG_RETURN.store(i32::MAX, Ordering::SeqCst);
+        LAST_SCAN_RSP_CONFIG_RETURN.store(i32::MAX, Ordering::SeqCst);
+        LAST_ADV_START_RETURN.store(i32::MAX, Ordering::SeqCst);
+        LAST_ADV_STOP_RETURN.store(i32::MAX, Ordering::SeqCst);
+        LAST_GAP_EVENT.store(u32::MAX, Ordering::SeqCst);
+        LAST_GAP_STATUS.store(u32::MAX, Ordering::SeqCst);
+        SMOKE_ADV_RAW_LEN.store(0, Ordering::SeqCst);
+        SMOKE_SCAN_RSP_RAW_LEN.store(0, Ordering::SeqCst);
+    }
+
+    fn advertising_may_be_active() -> bool {
+        BLE_OWNER.load(Ordering::SeqCst) != OWNER_NONE
+            || SMOKE_ACTIVE.load(Ordering::SeqCst)
+            || LINK_STATE.load(Ordering::SeqCst) == STATE_ADVERTISING
+    }
+
+    fn smoke_mode_from_name(name: &str) -> u8 {
+        let upper = name.to_ascii_uppercase();
+        if upper.contains("NONCONN") || upper.contains("NON_CONN") {
+            SMOKE_MODE_NONCONNECTABLE
+        } else if upper.contains("SCANRSP") || upper.contains("SCAN_RSP") {
+            SMOKE_MODE_SCAN_RSP
+        } else {
+            SMOKE_MODE_CONNECTABLE
+        }
+    }
+
+    fn smoke_adv_type() -> esp_idf_sys::esp_ble_adv_type_t {
+        match SMOKE_MODE.load(Ordering::SeqCst) {
+            SMOKE_MODE_SCAN_RSP => esp_ble_adv_type_t_ADV_TYPE_SCAN_IND,
+            SMOKE_MODE_NONCONNECTABLE => esp_ble_adv_type_t_ADV_TYPE_NONCONN_IND,
+            _ => esp_ble_adv_type_t_ADV_TYPE_IND,
+        }
     }
 
     unsafe extern "C" fn hidd_event_callback(
@@ -663,19 +883,54 @@ mod target {
         event: esp_gap_ble_cb_event_t,
         param: *mut esp_ble_gap_cb_param_t,
     ) {
+        LAST_GAP_EVENT.store(event as u32, Ordering::SeqCst);
         match event {
             GAP_ADV_DATA_SET_COMPLETE_EVT => {
                 GAP_ADV_CONFIG_DONE.fetch_add(1, Ordering::SeqCst);
                 if !param.is_null() {
-                    LAST_ADV_CONFIG_STATUS
-                        .store((*param).adv_data_cmpl.status as u32, Ordering::SeqCst);
+                    let status = (*param).adv_data_cmpl.status as u32;
+                    LAST_ADV_CONFIG_STATUS.store(status, Ordering::SeqCst);
+                    LAST_GAP_STATUS.store(status, Ordering::SeqCst);
+                }
+            }
+            GAP_ADV_DATA_RAW_SET_COMPLETE_EVT => {
+                GAP_ADV_RAW_CONFIG_DONE.fetch_add(1, Ordering::SeqCst);
+                if !param.is_null() {
+                    let status = (*param).adv_data_raw_cmpl.status as u32;
+                    LAST_ADV_RAW_CONFIG_STATUS.store(status, Ordering::SeqCst);
+                    LAST_GAP_STATUS.store(status, Ordering::SeqCst);
+                    if status == esp_bt_status_t_ESP_BT_STATUS_SUCCESS as u32 {
+                        SMOKE_ADV_RAW_READY.store(true, Ordering::SeqCst);
+                        start_smoke_after_config();
+                    } else if BLE_OWNER.load(Ordering::SeqCst) == OWNER_RAW_SMOKE {
+                        SMOKE_ACTIVE.store(false, Ordering::SeqCst);
+                        SMOKE_STATE.store(SMOKE_STATE_FAILED, Ordering::SeqCst);
+                        LINK_STATE.store(STATE_ERROR, Ordering::SeqCst);
+                    }
                 }
             }
             GAP_SCAN_RSP_DATA_SET_COMPLETE_EVT => {
                 GAP_SCAN_RSP_CONFIG_DONE.fetch_add(1, Ordering::SeqCst);
                 if !param.is_null() {
-                    LAST_SCAN_RSP_CONFIG_STATUS
-                        .store((*param).scan_rsp_data_cmpl.status as u32, Ordering::SeqCst);
+                    let status = (*param).scan_rsp_data_cmpl.status as u32;
+                    LAST_SCAN_RSP_CONFIG_STATUS.store(status, Ordering::SeqCst);
+                    LAST_GAP_STATUS.store(status, Ordering::SeqCst);
+                }
+            }
+            GAP_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT => {
+                GAP_SCAN_RSP_RAW_CONFIG_DONE.fetch_add(1, Ordering::SeqCst);
+                if !param.is_null() {
+                    let status = (*param).scan_rsp_data_raw_cmpl.status as u32;
+                    LAST_SCAN_RSP_RAW_CONFIG_STATUS.store(status, Ordering::SeqCst);
+                    LAST_GAP_STATUS.store(status, Ordering::SeqCst);
+                    if status == esp_bt_status_t_ESP_BT_STATUS_SUCCESS as u32 {
+                        SMOKE_SCAN_RSP_RAW_READY.store(true, Ordering::SeqCst);
+                        start_smoke_after_config();
+                    } else if BLE_OWNER.load(Ordering::SeqCst) == OWNER_RAW_SMOKE {
+                        SMOKE_ACTIVE.store(false, Ordering::SeqCst);
+                        SMOKE_STATE.store(SMOKE_STATE_FAILED, Ordering::SeqCst);
+                        LINK_STATE.store(STATE_ERROR, Ordering::SeqCst);
+                    }
                 }
             }
             GAP_ADV_START_COMPLETE_EVT => {
@@ -684,24 +939,34 @@ mod target {
                     || (*param).adv_start_cmpl.status == esp_bt_status_t_ESP_BT_STATUS_SUCCESS
                 {
                     if !param.is_null() {
-                        LAST_ADV_START_STATUS
-                            .store((*param).adv_start_cmpl.status as u32, Ordering::SeqCst);
+                        let status = (*param).adv_start_cmpl.status as u32;
+                        LAST_ADV_START_STATUS.store(status, Ordering::SeqCst);
+                        LAST_GAP_STATUS.store(status, Ordering::SeqCst);
+                    }
+                    if BLE_OWNER.load(Ordering::SeqCst) == OWNER_RAW_SMOKE {
+                        SMOKE_ACTIVE.store(true, Ordering::SeqCst);
+                        SMOKE_STATE.store(SMOKE_STATE_ADVERTISING, Ordering::SeqCst);
                     }
                     if LINK_STATE.load(Ordering::SeqCst) != STATE_CONNECTED {
                         LINK_STATE.store(STATE_ADVERTISING, Ordering::SeqCst);
                     }
                 } else {
-                    LAST_ADV_START_STATUS
-                        .store((*param).adv_start_cmpl.status as u32, Ordering::SeqCst);
+                    let status = (*param).adv_start_cmpl.status as u32;
+                    LAST_ADV_START_STATUS.store(status, Ordering::SeqCst);
+                    LAST_GAP_STATUS.store(status, Ordering::SeqCst);
                     SMOKE_ACTIVE.store(false, Ordering::SeqCst);
+                    if BLE_OWNER.load(Ordering::SeqCst) == OWNER_RAW_SMOKE {
+                        SMOKE_STATE.store(SMOKE_STATE_FAILED, Ordering::SeqCst);
+                    }
                     LINK_STATE.store(STATE_ERROR, Ordering::SeqCst);
                 }
             }
             GAP_ADV_STOP_COMPLETE_EVT => {
                 GAP_ADV_STOP_COMPLETE.fetch_add(1, Ordering::SeqCst);
                 if !param.is_null() {
-                    LAST_ADV_STOP_STATUS
-                        .store((*param).adv_stop_cmpl.status as u32, Ordering::SeqCst);
+                    let status = (*param).adv_stop_cmpl.status as u32;
+                    LAST_ADV_STOP_STATUS.store(status, Ordering::SeqCst);
+                    LAST_GAP_STATUS.store(status, Ordering::SeqCst);
                 }
             }
             GAP_SEC_REQ_EVT => {
@@ -810,6 +1075,43 @@ mod target {
             "null".to_string()
         } else {
             value.to_string()
+        }
+    }
+
+    fn option_i32(value: i32) -> String {
+        if value == i32::MAX {
+            "null".to_string()
+        } else {
+            value.to_string()
+        }
+    }
+
+    fn owner_name(value: u8) -> &'static str {
+        match value {
+            OWNER_RAW_SMOKE => "raw_smoke",
+            OWNER_HID => "hid",
+            _ => "none",
+        }
+    }
+
+    fn smoke_state_name(value: u8) -> &'static str {
+        match value {
+            SMOKE_STATE_STOPPING_EXISTING_ADV => "stopping_existing_adv",
+            SMOKE_STATE_CONFIGURING_ADV_DATA => "configuring_adv_data",
+            SMOKE_STATE_CONFIGURING_SCAN_RSP => "configuring_scan_rsp",
+            SMOKE_STATE_READY_TO_START => "ready_to_start",
+            SMOKE_STATE_STARTING => "starting",
+            SMOKE_STATE_ADVERTISING => "advertising",
+            SMOKE_STATE_FAILED => "failed",
+            _ => "idle",
+        }
+    }
+
+    fn smoke_mode_name(value: u8) -> &'static str {
+        match value {
+            SMOKE_MODE_SCAN_RSP => "scan_response_name",
+            SMOKE_MODE_NONCONNECTABLE => "nonconnectable",
+            _ => "connectable",
         }
     }
 
