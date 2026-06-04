@@ -109,8 +109,11 @@ mod target {
     use core::ptr;
     use core::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU8, AtomicU32, Ordering};
     use esp_idf_sys::{
-        AGC_RECORRECT_EN, BLE_HW_TARGET_CODE_CHIP_ECO0, BT_BLE_ADV_DATA_LENGTH_ZERO_AUX,
-        BT_BLE_CCA_MODE, BT_CTRL_50_FEATURE_SUPPORT, BT_CTRL_SCAN_BACKOFF_UPPERLIMITMAX, CFG_MASK,
+        AGC_RECORRECT_EN, BLE_CTRL_CHECK_CONNECT_IND_ACCESS_ADDRESS_ENABLED,
+        BLE_HW_TARGET_CODE_CHIP_ECO0, BLE_SECURITY_ENABLE, BT_BLE_ADV_DATA_LENGTH_ZERO_AUX,
+        BT_BLE_CCA_MODE, BT_CTRL_50_FEATURE_SUPPORT, BT_CTRL_BLE_ADV, BT_CTRL_BLE_LLCP_DISC_FLAG,
+        BT_CTRL_BLE_MASTER, BT_CTRL_BLE_SCAN, BT_CTRL_BLE_TEST, BT_CTRL_DTM_ENABLE,
+        BT_CTRL_RUN_IN_FLASH_ONLY, BT_CTRL_SCAN_BACKOFF_UPPERLIMITMAX, CFG_MASK,
         CONFIG_BT_CTRL_ADV_DUP_FILT_MAX, CONFIG_BT_CTRL_BLE_MAX_ACT_EFF,
         CONFIG_BT_CTRL_BLE_STATIC_ACL_TX_BUF_NB, CONFIG_BT_CTRL_CE_LENGTH_TYPE_EFF,
         CONFIG_BT_CTRL_CHAN_ASS_EN, CONFIG_BT_CTRL_COEX_PHY_CODED_TX_RX_TLIM_EFF,
@@ -571,6 +574,7 @@ mod target {
 
         let mut bluedroid_cfg = esp_bluedroid_config_t {
             ssp_en: true,
+            sc_en: false,
             ..Default::default()
         };
         esp_result(esp_bluedroid_init_with_cfg(&mut bluedroid_cfg))?;
@@ -1026,6 +1030,15 @@ mod target {
             ble_data_lenth_zero_aux: BT_BLE_ADV_DATA_LENGTH_ZERO_AUX as u8,
             ble_chan_ass_en: CONFIG_BT_CTRL_CHAN_ASS_EN as u8,
             ble_ping_en: CONFIG_BT_CTRL_LE_PING_EN as u8,
+            ble_llcp_disc_flag: BT_CTRL_BLE_LLCP_DISC_FLAG as u8,
+            run_in_flash: BT_CTRL_RUN_IN_FLASH_ONLY != 0,
+            dtm_en: BT_CTRL_DTM_ENABLE != 0,
+            enc_en: BLE_SECURITY_ENABLE != 0,
+            qa_test: BT_CTRL_BLE_TEST != 0,
+            connect_en: BT_CTRL_BLE_MASTER != 0,
+            scan_en: BT_CTRL_BLE_SCAN != 0,
+            ble_aa_check: BLE_CTRL_CHECK_CONNECT_IND_ACCESS_ADDRESS_ENABLED != 0,
+            adv_en: BT_CTRL_BLE_ADV != 0,
             ..Default::default()
         }
     }

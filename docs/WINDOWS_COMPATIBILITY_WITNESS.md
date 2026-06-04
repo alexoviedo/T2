@@ -42,8 +42,14 @@ not itself compatibility evidence.
   Published `v0.1.0-alpha` firmware advertised `USB2BLE Gamepad` after
   `START_BLE_GENERIC_GAMEPAD`, while public Pages/current and Windows-local
   current firmware did not advertise for the tested raw-smoke or Generic paths.
-- The next Windows hardware chunk should isolate the post-alpha firmware
-  advertising regression before retrying Windows pairing or Gamepad API tests.
+- 2026-06-03: `docs/milestone-evidence/BLE_ADVERTISING_REGRESSION_FIX_WITNESS_2026-06-03.md`
+  records source-built alpha and bisect evidence for the post-alpha advertising
+  regression, then verifies fixed current firmware advertisements for raw
+  smoke, Generic default, and Xbox persona modes with the native Windows BLE
+  watcher.
+- The next Windows hardware chunk may proceed to Bluetooth pairing and
+  host-visible controller diagnostics. Do not treat advertisement visibility as
+  pairing, input delivery, or app/game compatibility evidence.
 
 ## Hardware Setup
 
