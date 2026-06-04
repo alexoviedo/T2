@@ -38,6 +38,13 @@ These claims are supported by checked-in evidence:
   A/B diagnostic verified the experimental variant on target, but did not
   improve the missing macOS HID/Chrome delivery, so it is not a supported
   replacement for `generic_default`.
+- On Alex's Windows 11 PC, the explicit
+  `persona_static_random_experimental` strategy produced distinct stable
+  advertised addresses for Generic default, U6, and Xbox. Each persona could be
+  paired individually after Windows Settings intervention, and Xbox exposed
+  XInput slot 0 deterministic reports. This is partial diagnostic evidence only:
+  Alex reported manual removal of the previous persona was still required before
+  the next persona would connect.
 
 ## Forbidden Overclaims
 
@@ -49,6 +56,7 @@ Do not claim any of these until matching checked-in evidence exists:
 - physical Xbox host-visible refined Flight Pack movement from real USB input,
 - complete Xbox standard button layout, including stick-press buttons,
 - BLE bond persistence or reconnect robustness,
+- cache-free Windows persona switching or Generic/U6/Xbox coexistence,
 - final product-quality calibration or deadzone feel,
 - broad host/browser support,
 - three-separate-USB Flight Pack streaming,

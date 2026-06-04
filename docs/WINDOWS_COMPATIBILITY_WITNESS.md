@@ -47,9 +47,22 @@ not itself compatibility evidence.
   regression, then verifies fixed current firmware advertisements for raw
   smoke, Generic default, and Xbox persona modes with the native Windows BLE
   watcher.
-- The next Windows hardware chunk may proceed to Bluetooth pairing and
-  host-visible controller diagnostics. Do not treat advertisement visibility as
-  pairing, input delivery, or app/game compatibility evidence.
+- 2026-06-04: `docs/milestone-evidence/WINDOWS_BLUETOOTH_PAIRING_DIAGNOSTIC_2026-06-04.md`
+  and `docs/milestone-evidence/WINDOWS_BLE_IDENTITY_CACHE_DIAGNOSTIC_2026-06-04.md`
+  record Windows pairing/cache diagnostics for same-address personas, including
+  Generic/U6 host-visible HID and Xbox XInput evidence when Windows cache was
+  cleaned between tests.
+- 2026-06-04: `docs/milestone-evidence/WINDOWS_PER_PERSONA_STATIC_RANDOM_IDENTITY_DIAGNOSTIC_2026-06-04.md`
+  records that `persona_static_random_experimental` produced distinct
+  advertised addresses for Generic default, U6, and Xbox. Each persona paired
+  individually after Windows Settings intervention, and Xbox exposed XInput
+  deterministic reports. It does not prove cache-free switching or coexistence:
+  Alex reported that the previous persona still had to be removed before the
+  next persona would connect.
+- The next Windows hardware chunk should diagnose Windows cache/bond lifecycle
+  with a controlled no-removal persona-switching matrix. Do not treat
+  advertisement visibility as pairing, input delivery, app/game compatibility,
+  or cache-free switching evidence.
 
 ## Hardware Setup
 

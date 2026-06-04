@@ -385,13 +385,25 @@ def summarize_browser_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def run_browser_probe(browser: str, run_dir: pathlib.Path, host: str, port: int, duration: float, sample_ms: int) -> dict[str, Any]:
+def run_browser_probe(
+    browser: str,
+    run_dir: pathlib.Path,
+    host: str,
+    port: int,
+    duration: float,
+    sample_ms: int,
+    temp_browser_profile: bool,
+) -> dict[str, Any]:
     browser_path = find_browser(browser)
     if browser_path is None:
         return {"enabled": True, "ok": False, "browser": browser, "reason": f"{browser} executable was not found."}
 
+    run_dir.mkdir(parents=True, exist_ok=True)
     sample_file = run_dir / "browser_gamepad_samples.jsonl"
     sample_file.touch()
+    user_data_dir = run_dir / "browser_user_data" if temp_browser_profile else None
+    if user_data_dir is not None:
+        user_data_dir.mkdir(parents=True, exist_ok=True)
     BrowserProbeHandler.sample_file = sample_file
     with ReusableThreadingTCPServer((host, port), BrowserProbeHandler) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -406,6 +418,8 @@ def run_browser_probe(browser: str, run_dir: pathlib.Path, host: str, port: int,
             "--disable-background-timer-throttling",
             url,
         ]
+        if user_data_dir is not None:
+            command.insert(-1, f"--user-data-dir={user_data_dir}")
         launch = run_command(command, timeout=10.0)
         deadline = time.monotonic() + duration
         while time.monotonic() < deadline:
@@ -421,6 +435,8 @@ def run_browser_probe(browser: str, run_dir: pathlib.Path, host: str, port: int,
         "browser_path": browser_path,
         "launch": launch,
         "sample_file": str(sample_file),
+        "temp_browser_profile": temp_browser_profile,
+        "browser_user_data_dir": str(user_data_dir) if user_data_dir is not None else None,
         "summary": summarize_browser_samples(samples),
     }
 
@@ -470,7 +486,15 @@ def build_summary(args: argparse.Namespace, run_dir: pathlib.Path) -> dict[str, 
     if args.browser == "none":
         browser = {"enabled": False, "reason": "Browser probe not requested."}
     else:
-        browser = run_browser_probe(args.browser, run_dir, args.host, args.port, args.browser_duration, args.sample_ms)
+        browser = run_browser_probe(
+            args.browser,
+            run_dir,
+            args.host,
+            args.port,
+            args.browser_duration,
+            args.sample_ms,
+            args.temp_browser_profile,
+        )
     return {
         "captured_at": utc_stamp(),
         "platform": sys.platform,
@@ -501,6 +525,11 @@ def main() -> int:
     parser.add_argument("--browser", choices=["none", "edge", "chrome"], default="none")
     parser.add_argument("--browser-duration", type=float, default=8.0)
     parser.add_argument("--sample-ms", type=int, default=100)
+    parser.add_argument(
+        "--temp-browser-profile",
+        action="store_true",
+        help="Launch the browser with a fresh user-data directory under the probe output folder.",
+    )
     args = parser.parse_args()
 
     stamp = utc_stamp()

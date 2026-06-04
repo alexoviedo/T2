@@ -48,9 +48,10 @@ not remove unrelated Bluetooth controllers. On Alex's PC, automated
 ## Per-Persona Address Option
 
 Per-persona BLE addresses are not required to prove one persona at a time with
-manual cache cleanup. They are likely needed for a smoother multi-persona
-workflow where Windows should evaluate Generic, U6, and Xbox without repeatedly
-forgetting the same BLE address.
+manual cache cleanup. They are useful for separating advertised identities, but
+the first Windows static-random witness did not prove a smooth multi-persona
+workflow where Windows can evaluate Generic, U6, and Xbox without repeatedly
+forgetting/removing devices.
 
 The experimental runtime strategy is:
 
@@ -92,12 +93,35 @@ a BLE static random address. The target reports the selected strategy, base
 address when available, current address, applied address, address type, and last
 random-address return through `GET_BLE_IDENTITY_INFO`.
 
+## Static-Random Windows Diagnostic
+
+The 2026-06-04 Windows static-random diagnostic proved advertisement identity
+separation on Alex's Windows PC:
+
+| Persona | Experimental address | Windows watcher result |
+| --- | --- | --- |
+| Generic default | `CE:A6:57:5C:AA:6A` | `USB2BLE Gamepad`, HID `1812` seen |
+| Generic unsigned six-axis | `F8:34:F8:E8:CB:A0` | `USB2BLE Gamepad U6`, HID `1812` seen |
+| Xbox BLE-compatible | `CB:B3:AE:FA:FC:EF` | `Xbox Wireless Controller`, HID `1812` seen |
+
+Each persona could be paired individually through Windows Bluetooth Settings
+after automated WinRT pairing failed. Windows PnP/HID then exposed the intended
+VID/PID for each persona, and Xbox exposed XInput slot 0 deterministic report
+changes. However, Alex reported that every new persona connection required
+removing the previous persona first, otherwise the next persona would not
+connect.
+
+Conclusion: `persona_static_random_experimental` remains useful diagnostic
+infrastructure, but it does not yet solve Windows cache-free switching or
+coexistence. It must remain explicit and non-default.
+
 This still needs explicit evidence for:
 
-- Windows pairing and reconnection behavior for each address.
-- Whether bond storage and `FORGET_BLE_BONDS` remain understandable.
-- Whether host caches become easier to manage without creating stale device
-  clutter.
+- A controlled no-removal Windows pairing matrix that captures the exact blocker
+  when the previous persona is left paired.
+- BLE bond storage and whether `FORGET_BLE_BONDS` remains understandable under
+  per-persona addresses.
+- Whether host caches can be managed without creating stale device clutter.
 - Whether existing macOS Generic/Xbox live bridge evidence remains preserved.
 
 Do not make per-persona addresses the default without a dedicated witness run.
@@ -105,7 +129,10 @@ Do not make per-persona addresses the default without a dedicated witness run.
 ## Limitations
 
 - This note is based on Alex's Windows PC and checked-in evidence from
-  `docs/milestone-evidence/WINDOWS_BLE_IDENTITY_CACHE_DIAGNOSTIC_2026-06-04.md`.
+  `docs/milestone-evidence/WINDOWS_BLE_IDENTITY_CACHE_DIAGNOSTIC_2026-06-04.md`
+  and
+  `docs/milestone-evidence/WINDOWS_PER_PERSONA_STATIC_RANDOM_IDENTITY_DIAGNOSTIC_2026-06-04.md`.
+- It does not prove cache-free Windows persona switching or coexistence.
 - It does not prove BLE bond persistence.
 - It does not prove physical HOTAS movement.
 - It does not prove broad Windows, game/app, Xbox console, or proprietary Xbox

@@ -63,16 +63,22 @@ before status docs should change.
   elements, so the current evidence does not justify changing the proven
   default descriptor. The `generic_unsigned_6axis` experiment verified an
   unsigned six-axis variant on target, but A/B diagnostics did not improve the
-  missing macOS HID/Chrome delivery for later refined Generic axes.
+  missing macOS HID/Chrome delivery for later refined Generic axes. The
+  2026-06-04 Windows per-persona static-random diagnostic proved distinct
+  advertised addresses for Generic default, U6, and Xbox, but Alex still had to
+  remove the previous Windows Bluetooth device before the next persona would
+  connect. Cache-free Windows persona switching and coexistence are therefore
+  still unproven.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
-  Gamepad API slot state, HID callback events, and failure modes.
+  Gamepad API slot state, HID callback events, no-removal Windows pairing
+  failure logs, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: add a deliberate experimental Generic delivery
-  path that changes descriptor shape rather than only signedness, such as a
-  compact four-axis-plus-trigger-style variant or a split-collection axis
-  descriptor, then rerun the layered HID delivery diagnostic before attempting
-  Generic->Xbox->Generic switching again.
+- Recommended next prompt type: controlled Windows BLE cache/bond lifecycle
+  witness using `persona_static_random_experimental`, first reproducing the
+  no-removal persona-switching failure with logs, then deciding whether the next
+  fix belongs in target identity/bond handling, Windows cleanup tooling, or HID
+  service/device metadata.
 - Risk: high, because BLE cache behavior is host-dependent.
 
 ## 4. Deadzone And Calibration Quality Tuning

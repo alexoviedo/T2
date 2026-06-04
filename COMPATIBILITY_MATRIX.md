@@ -48,6 +48,13 @@ This matrix tracks the support status for devices, personas, and milestones.
 
 - Browser Gamepad API evidence is host-visible HID support, not a real game/app
   witness.
+- Windows per-persona static-random identity evidence is checked in at
+  `docs/milestone-evidence/WINDOWS_PER_PERSONA_STATIC_RANDOM_IDENTITY_DIAGNOSTIC_2026-06-04.md`.
+  It proves distinct advertised addresses for Generic default, U6, and Xbox on
+  Alex's Windows 11 PC, plus individual Windows Settings pairing and Xbox XInput
+  deterministic reports. It does not prove cache-free Windows persona switching
+  or coexistence, because Alex reported manual removal of the previous persona
+  was still required before the next persona would connect.
 - Broad game/app compatibility remains unclaimed until evidence following
   `docs/GAME_COMPATIBILITY_WITNESS.md` is checked in.
 - Xbox support is limited to the checked-in macOS/browser compatibility evidence
