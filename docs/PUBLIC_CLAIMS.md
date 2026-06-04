@@ -55,6 +55,12 @@ These claims are supported by checked-in evidence:
   virtual Flight Pack Xbox mapping and deterministic Xbox reports moved XInput,
   and Alex observed controls moving plus menu items being selected in Spyro.
   This is one PC and one game target, with virtual input only.
+- On Alex's Windows PC, a follow-up single-persona Xbox reconnect diagnostic
+  showed the current reset/reconnect gap: after target soft reset, Windows and
+  the target could show an apparently connected Xbox path, but deterministic
+  reports did not resume XInput movement and later target publish attempts
+  returned `ERROR:Generic`. This is failure/diagnostic evidence, not reconnect
+  robustness.
 
 ## Forbidden Overclaims
 

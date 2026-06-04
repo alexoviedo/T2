@@ -66,10 +66,28 @@ not itself compatibility evidence.
   virtual Flight Pack Xbox mappings through XInput, and showed movement in
   `joy.cpl` Properties. This is still a single-PC diagnostic and controller
   panel smoke, not broad Windows or real game compatibility.
+- 2026-06-04:
+  `docs/milestone-evidence/WINDOWS_XBOX_APP_COMPATIBILITY_WITNESS_2026-06-04_SPYRO_REIGNITED_TRILOGY.md`
+  records one installed-game data point for the same single-persona Xbox path:
+  Spyro Reignited Trilogy 1.0.1.0 stayed open while virtual Xbox mapping and
+  deterministic reports moved XInput, and Alex observed controls moving plus
+  menu items being selected. This is one PC, one game, and virtual input only.
+- 2026-06-04: `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_DIAGNOSTIC_2026-06-04.md`
+  records the next reconnect diagnostic. Baseline manual Windows pairing still
+  exposed `Xbox Wireless Controller`, HID `045e:0b13`, and XInput slot 0 with
+  deterministic report movement. After target soft reset, however, the target
+  returned to `legacy_public` with no active persona and `bonds=false`;
+  reapplying the Xbox persona restored apparent Windows/target connection state
+  but deterministic reports did not move XInput and later publish attempts
+  returned `ERROR:Generic`. Durable BLE bond persistence and reconnect/report
+  delivery robustness remain unproven.
 - The next Windows hardware chunk should build from the single-persona Xbox
-  path, not reopen cache-free Generic/U6/Xbox switching unless a specific
-  identity/bond fix exists. Do not treat advertisement visibility as pairing,
-  input delivery, app/game compatibility, or cache-free switching evidence.
+  path, but it should address reconnect/report delivery before assuming the
+  user can reset or power-cycle without manual Windows recovery. Do not reopen
+  cache-free Generic/U6/Xbox switching unless a specific identity/bond fix
+  exists. Do not treat advertisement visibility, apparent XInput connection, or
+  PnP presence as report delivery, app/game compatibility, durable bond
+  persistence, or cache-free switching evidence.
 
 ## Hardware Setup
 

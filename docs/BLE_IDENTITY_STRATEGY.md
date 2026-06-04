@@ -115,12 +115,35 @@ Conclusion: `persona_static_random_experimental` remains useful diagnostic
 infrastructure, but it does not yet solve Windows cache-free switching or
 coexistence. It must remain explicit and non-default.
 
-This still needs explicit evidence for:
+## Single-Persona Xbox Reconnect Diagnostic
+
+The later 2026-06-04 single-persona Xbox reconnect diagnostic used the same
+explicit experimental Xbox address:
+
+```text
+CB:B3:AE:FA:FC:EF
+```
+
+Baseline manual Windows Settings pairing still worked and deterministic Xbox
+reports drove XInput. After target soft reset, the runtime identity strategy
+and active persona were not persisted: the target returned to `legacy_public`,
+no active persona, and `bonds=false`. Reapplying
+`persona_static_random_experimental` plus `START_BLE_XBOX_CONTROLLER` restored
+apparent target/Windows/XInput connection state, but deterministic reports did
+not move XInput and later publish attempts returned `ERROR:Generic`.
+
+This means the static-random address is useful for identity separation, but it
+does not by itself prove durable BLE bond persistence or reliable reconnect
+report delivery.
+
+This still needs explicit evidence or fixes for:
 
 - A controlled no-removal Windows pairing matrix that captures the exact blocker
   when the previous persona is left paired.
-- BLE bond storage and whether `FORGET_BLE_BONDS` remains understandable under
-  per-persona addresses.
+- BLE bond storage and why the target reports `bonds=false`/`bond_count=0`
+  after Windows Settings pairing.
+- Reconnect/report delivery after reset or power-cycle without requiring manual
+  Windows recovery.
 - Whether host caches can be managed without creating stale device clutter.
 - Whether existing macOS Generic/Xbox live bridge evidence remains preserved.
 
@@ -133,7 +156,9 @@ Do not make per-persona addresses the default without a dedicated witness run.
   and
   `docs/milestone-evidence/WINDOWS_PER_PERSONA_STATIC_RANDOM_IDENTITY_DIAGNOSTIC_2026-06-04.md`.
 - It does not prove cache-free Windows persona switching or coexistence.
-- It does not prove BLE bond persistence.
+- It does not prove BLE bond persistence or reliable reconnect/report delivery;
+  see
+  `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_DIAGNOSTIC_2026-06-04.md`.
 - It does not prove physical HOTAS movement.
 - It does not prove broad Windows, game/app, Xbox console, or proprietary Xbox
   Wireless compatibility.

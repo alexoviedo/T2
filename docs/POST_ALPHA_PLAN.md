@@ -82,14 +82,23 @@ before status docs should change.
   still unproven. The immediate product-progress path moved to single-persona
   Windows Xbox testing, which is checked in separately as
   `docs/milestone-evidence/WINDOWS_XBOX_XINPUT_WITNESS_2026-06-04.md`.
+  The follow-up Spyro witness added one installed-game data point for that
+  manually paired Xbox path, but the reconnect diagnostic at
+  `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_DIAGNOSTIC_2026-06-04.md`
+  showed the product-quality gap remains: after target soft reset, runtime
+  identity/persona were not persisted, target bond diagnostics still reported
+  `bonds=false`, and reapplying the Xbox persona restored apparent
+  Windows/XInput connection state without restoring deterministic report
+  delivery.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
   Gamepad API slot state, HID callback events, no-removal Windows pairing
   failure logs, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: return to controlled Windows BLE cache/bond
-  lifecycle only after the single-persona Xbox product path has a real
-  app/game data point or after a specific identity/bond fix exists.
+- Recommended next prompt type: focused Windows Xbox reconnect/report-delivery
+  fix or diagnostic. Start with target bond/security diagnostics, BLE HID
+  reconnect notification readiness, and a true BLE persona stop/disconnect
+  command before more game/app testing.
 - Risk: high, because BLE cache behavior is host-dependent.
 
 ## 4. Deadzone And Calibration Quality Tuning

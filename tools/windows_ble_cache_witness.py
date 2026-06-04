@@ -18,6 +18,7 @@ USB2BLE_VID_PID_RE = re.compile(r"(?:VID&02)?303A_PID&400[12]|VID_303A|PID&400[1
 XBOX_USB2BLE_RE = re.compile(r"045E_PID&0B13|VID_045E.*PID_0B13", re.IGNORECASE)
 USB2BLE_NAME_RE = re.compile(r"USB2BLE|USB2BLE Gamepad U6", re.IGNORECASE)
 XBOX_NAME_RE = re.compile(r"Xbox Wireless Controller", re.IGNORECASE)
+NON_HEX_RE = re.compile(r"[^0-9a-f]", re.IGNORECASE)
 SERVICE_NAME_RE = re.compile(
     r"Device Information Service|Bluetooth LE Generic Attribute Service|Generic Access Profile|Generic Attribute Profile|Bluetooth Low Energy GATT compliant HID device|HID-compliant game controller",
     re.IGNORECASE,
@@ -98,13 +99,26 @@ def device_text(device: dict[str, Any]) -> str:
     )
 
 
+def address_fragment(address: str) -> str:
+    return NON_HEX_RE.sub("", address).lower()
+
+
+def normalize_associated_addresses(addresses: list[str] | tuple[str, ...] | None) -> tuple[str, ...]:
+    if not addresses:
+        return ()
+    fragments = sorted({address_fragment(address) for address in addresses if len(address_fragment(address)) == 12})
+    return tuple(fragments)
+
+
 def instance_id(device: dict[str, Any]) -> str:
     return str(device.get("InstanceId") or device.get("DeviceID") or "")
 
 
-def candidate_reason(device: dict[str, Any]) -> str | None:
+def candidate_reason(device: dict[str, Any], associated_addresses: tuple[str, ...] = ()) -> str | None:
     text = device_text(device)
+    text_hex = NON_HEX_RE.sub("", text).lower()
     has_usb2ble_address = bool(USB2BLE_ADDRESS_RE.search(text))
+    has_associated_address = any(fragment in text_hex for fragment in associated_addresses)
     has_usb2ble_vid_pid = bool(USB2BLE_VID_PID_RE.search(text))
     has_usb2ble_name = bool(USB2BLE_NAME_RE.search(text))
     has_xbox_name = bool(XBOX_NAME_RE.search(text))
@@ -114,20 +128,24 @@ def candidate_reason(device: dict[str, Any]) -> str | None:
         return "safe_name_match"
     if has_xbox_name and has_usb2ble_address:
         return "xbox_name_with_usb2ble_address"
+    if has_xbox_name and has_associated_address:
+        return "xbox_name_with_associated_address"
     if has_usb2ble_address and (has_usb2ble_vid_pid or has_service_name):
         return "usb2ble_address_and_hid_or_service_match"
+    if has_associated_address and (has_usb2ble_vid_pid or has_service_name or bool(XBOX_USB2BLE_RE.search(text))):
+        return "associated_address_and_hid_or_service_match"
     if has_xbox_usb2ble:
         return "xbox_vid_pid_with_usb2ble_address"
     return None
 
 
-def find_candidates(inventory: dict[str, Any]) -> list[dict[str, Any]]:
+def find_candidates(inventory: dict[str, Any], associated_addresses: tuple[str, ...] = ()) -> list[dict[str, Any]]:
     by_instance: dict[str, dict[str, Any]] = {}
     for section_name, section in inventory.items():
         for device in section.get("devices", []):
             if not isinstance(device, dict):
                 continue
-            reason = candidate_reason(device)
+            reason = candidate_reason(device, associated_addresses)
             inst = instance_id(device)
             if not reason or not inst:
                 continue
@@ -205,6 +223,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", type=pathlib.Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--remove", action="store_true", help="Remove matching USB2BLE-related devices with pnputil.")
     parser.add_argument("--dry-run", action="store_true", help="Do not remove devices; show candidates only.")
+    parser.add_argument(
+        "--associated-address",
+        action="append",
+        default=[],
+        help="Additional BLE address known to belong to USB2BLE for this run, such as a derived static-random address.",
+    )
     return parser.parse_args()
 
 
@@ -212,13 +236,15 @@ def main() -> int:
     args = parse_args()
     run_dir = args.out_dir / f"windows_ble_cache_{utc_stamp()}"
     before = collect_inventory()
-    candidates = find_candidates(before)
+    associated_addresses = normalize_associated_addresses(args.associated_address)
+    candidates = find_candidates(before, associated_addresses)
     removal_results = remove_candidates(candidates, dry_run=args.dry_run or not args.remove) if candidates else []
     after = collect_inventory() if args.remove and not args.dry_run else None
     summary = {
         "captured_at": utc_stamp(),
         "run_dir": str(run_dir),
         "dry_run": bool(args.dry_run or not args.remove),
+        "associated_addresses": associated_addresses,
         "removal_attempted": bool(args.remove and not args.dry_run),
         "inventory_before": before,
         "candidates": candidates,

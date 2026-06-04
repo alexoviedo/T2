@@ -58,6 +58,29 @@ class WindowsBleCacheWitnessTests(unittest.TestCase):
 
         self.assertEqual(cache_witness.candidate_reason(device), "xbox_name_with_usb2ble_address")
 
+    def test_candidate_matches_xbox_name_with_explicit_associated_address(self) -> None:
+        device = {
+            "Class": "Bluetooth",
+            "FriendlyName": "Xbox Wireless Controller",
+            "InstanceId": r"BTHLE\DEV_CBB3AEFAFCEF\8&3B2CE00F&0&CBB3AEFAFCEF",
+        }
+
+        associated = cache_witness.normalize_associated_addresses(["CB:B3:AE:FA:FC:EF"])
+
+        self.assertEqual(
+            cache_witness.candidate_reason(device, associated),
+            "xbox_name_with_associated_address",
+        )
+
+    def test_associated_address_is_not_used_without_explicit_opt_in(self) -> None:
+        device = {
+            "Class": "Bluetooth",
+            "FriendlyName": "Xbox Wireless Controller",
+            "InstanceId": r"BTHLE\DEV_CBB3AEFAFCEF\8&3B2CE00F&0&CBB3AEFAFCEF",
+        }
+
+        self.assertIsNone(cache_witness.candidate_reason(device))
+
     def test_removal_order_puts_child_nodes_before_root(self) -> None:
         inventory = {
             "devices": {
