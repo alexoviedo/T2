@@ -96,6 +96,23 @@ impl ControlPlane for SerialControlPlane {
         if s == "GET_BLE_COMPAT_PROFILE" {
             return Ok(ControlCommand::GetBleCompatProfile);
         }
+        if let Some(rest) = s.strip_prefix("START_BLE_ADV_SMOKE_TEST") {
+            let name = rest.trim();
+            return Ok(ControlCommand::StartBleAdvSmokeTest(if name.is_empty() {
+                "USB2BLE_ADV_TEST".to_string()
+            } else {
+                name.to_string()
+            }));
+        }
+        if s == "STOP_BLE_ADV_SMOKE_TEST" {
+            return Ok(ControlCommand::StopBleAdvSmokeTest);
+        }
+        if s == "GET_BLE_ADV_SMOKE_TEST_STATUS" {
+            return Ok(ControlCommand::GetBleAdvSmokeTestStatus);
+        }
+        if s == "GET_BLE_ADVERTISING_EVENTS" {
+            return Ok(ControlCommand::GetBleAdvertisingEvents);
+        }
         if s == "START_BRIDGE" {
             return Ok(ControlCommand::StartBridge);
         }
@@ -729,6 +746,27 @@ mod tests {
         assert_eq!(
             cp.decode_command(b"GET_BLE_COMPAT_PROFILE").unwrap(),
             ControlCommand::GetBleCompatProfile
+        );
+        assert_eq!(
+            cp.decode_command(b"START_BLE_ADV_SMOKE_TEST").unwrap(),
+            ControlCommand::StartBleAdvSmokeTest("USB2BLE_ADV_TEST".to_string())
+        );
+        assert_eq!(
+            cp.decode_command(b"START_BLE_ADV_SMOKE_TEST USB2BLE_ADV_TEST")
+                .unwrap(),
+            ControlCommand::StartBleAdvSmokeTest("USB2BLE_ADV_TEST".to_string())
+        );
+        assert_eq!(
+            cp.decode_command(b"STOP_BLE_ADV_SMOKE_TEST").unwrap(),
+            ControlCommand::StopBleAdvSmokeTest
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_BLE_ADV_SMOKE_TEST_STATUS").unwrap(),
+            ControlCommand::GetBleAdvSmokeTestStatus
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_BLE_ADVERTISING_EVENTS").unwrap(),
+            ControlCommand::GetBleAdvertisingEvents
         );
     }
 

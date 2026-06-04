@@ -77,6 +77,27 @@ impl BleTransport for BleHidTransport {
     fn forget_bonds(&mut self) -> Result<(), BleTransportError> {
         Ok(())
     }
+
+    fn start_adv_smoke_test(&mut self, _name: &str) -> Result<(), BleTransportError> {
+        self.state = BleLinkState::Advertising;
+        Ok(())
+    }
+
+    fn stop_adv_smoke_test(&mut self) -> Result<(), BleTransportError> {
+        self.state = BleLinkState::Idle;
+        Ok(())
+    }
+
+    fn adv_smoke_test_status_json(&self) -> String {
+        format!(
+            "{{\"supported\":true,\"active\":{},\"target\":\"host_stub\"}}",
+            self.state == BleLinkState::Advertising
+        )
+    }
+
+    fn advertising_events_json(&self) -> String {
+        "{\"supported\":true,\"target\":\"host_stub\"}".to_string()
+    }
 }
 
 #[cfg(target_os = "espidf")]
@@ -86,7 +107,7 @@ mod target {
     use super::*;
     use core::ffi::{c_char, c_void};
     use core::ptr;
-    use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU8, Ordering};
+    use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU8, AtomicU32, Ordering};
     use esp_idf_sys::{
         AGC_RECORRECT_EN, BLE_HW_TARGET_CODE_CHIP_ECO0, BT_BLE_ADV_DATA_LENGTH_ZERO_AUX,
         BT_BLE_CCA_MODE, BT_CTRL_50_FEATURE_SUPPORT, BT_CTRL_SCAN_BACKOFF_UPPERLIMITMAX, CFG_MASK,
@@ -110,9 +131,9 @@ mod target {
         esp_ble_adv_type_t_ADV_TYPE_IND, esp_ble_auth_req_t, esp_ble_bond_dev_t,
         esp_ble_gap_cb_param_t, esp_ble_gap_config_adv_data, esp_ble_gap_register_callback,
         esp_ble_gap_security_rsp, esp_ble_gap_set_device_name, esp_ble_gap_set_security_param,
-        esp_ble_gap_start_advertising, esp_ble_gatts_register_callback,
-        esp_ble_get_bond_device_list, esp_ble_get_bond_device_num, esp_ble_io_cap_t,
-        esp_ble_key_mask_t, esp_ble_remove_bond_device, esp_ble_sm_param_t,
+        esp_ble_gap_start_advertising, esp_ble_gap_stop_advertising,
+        esp_ble_gatts_register_callback, esp_ble_get_bond_device_list, esp_ble_get_bond_device_num,
+        esp_ble_io_cap_t, esp_ble_key_mask_t, esp_ble_remove_bond_device, esp_ble_sm_param_t,
         esp_ble_sm_param_t_ESP_BLE_SM_AUTHEN_REQ_MODE, esp_ble_sm_param_t_ESP_BLE_SM_IOCAP_MODE,
         esp_ble_sm_param_t_ESP_BLE_SM_MAX_KEY_SIZE, esp_ble_sm_param_t_ESP_BLE_SM_SET_INIT_KEY,
         esp_ble_sm_param_t_ESP_BLE_SM_SET_RSP_KEY, esp_bluedroid_config_t, esp_bluedroid_enable,
@@ -120,10 +141,13 @@ mod target {
         esp_bt_controller_init, esp_bt_controller_mem_release, esp_bt_hci_tl_t, esp_bt_mode_t,
         esp_bt_mode_t_ESP_BT_MODE_BLE, esp_bt_mode_t_ESP_BT_MODE_CLASSIC_BT,
         esp_bt_status_t_ESP_BT_STATUS_SUCCESS, esp_err_t, esp_event_base_t, esp_event_handler_t,
-        esp_gap_ble_cb_event_t, esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_START_COMPLETE_EVT,
+        esp_gap_ble_cb_event_t, esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT,
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_START_COMPLETE_EVT,
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_NC_REQ_EVT,
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SEC_REQ_EVT, esp_gatt_if_t, esp_gatts_cb_event_t,
-        nvs_flash_erase, nvs_flash_init,
+        nvs_flash_erase, nvs_flash_init, vTaskDelay,
     };
     use usb2ble_contracts::BlePersonaIdentity;
 
@@ -138,14 +162,33 @@ mod target {
     const ESP_HIDD_CONNECT_EVENT: i32 = 1;
     const ESP_HIDD_DISCONNECT_EVENT: i32 = 6;
     const ESP_HIDD_STOP_EVENT: i32 = 7;
+    const GAP_ADV_DATA_SET_COMPLETE_EVT: esp_gap_ble_cb_event_t =
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT;
     const GAP_ADV_START_COMPLETE_EVT: esp_gap_ble_cb_event_t =
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_START_COMPLETE_EVT;
+    const GAP_ADV_STOP_COMPLETE_EVT: esp_gap_ble_cb_event_t =
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT;
+    const GAP_SCAN_RSP_DATA_SET_COMPLETE_EVT: esp_gap_ble_cb_event_t =
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT;
     const GAP_SEC_REQ_EVT: esp_gap_ble_cb_event_t = esp_gap_ble_cb_event_t_ESP_GAP_BLE_SEC_REQ_EVT;
     const GAP_NC_REQ_EVT: esp_gap_ble_cb_event_t = esp_gap_ble_cb_event_t_ESP_GAP_BLE_NC_REQ_EVT;
 
     static STACK_STARTED: AtomicBool = AtomicBool::new(false);
     static HID_DEV: AtomicPtr<EspHiddDev> = AtomicPtr::new(ptr::null_mut());
     static LINK_STATE: AtomicU8 = AtomicU8::new(STATE_IDLE);
+    static SMOKE_ACTIVE: AtomicBool = AtomicBool::new(false);
+    static GAP_ADV_CONFIG_DONE: AtomicU32 = AtomicU32::new(0);
+    static GAP_SCAN_RSP_CONFIG_DONE: AtomicU32 = AtomicU32::new(0);
+    static GAP_ADV_START_COMPLETE: AtomicU32 = AtomicU32::new(0);
+    static GAP_ADV_STOP_COMPLETE: AtomicU32 = AtomicU32::new(0);
+    static HIDD_START_COUNT: AtomicU32 = AtomicU32::new(0);
+    static HIDD_CONNECT_COUNT: AtomicU32 = AtomicU32::new(0);
+    static HIDD_DISCONNECT_COUNT: AtomicU32 = AtomicU32::new(0);
+    static HIDD_STOP_COUNT: AtomicU32 = AtomicU32::new(0);
+    static LAST_ADV_CONFIG_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_SCAN_RSP_CONFIG_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_ADV_START_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_ADV_STOP_STATUS: AtomicU32 = AtomicU32::new(u32::MAX);
 
     static HID_SERVICE_UUID_128: [u8; 16] = [
         0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0x12, 0x18, 0x00,
@@ -299,6 +342,63 @@ mod target {
                 esp_result(unsafe { esp_ble_remove_bond_device(dev.bd_addr.as_mut_ptr()) })?;
             }
             Ok(())
+        }
+
+        fn start_adv_smoke_test(&mut self, name: &str) -> Result<(), BleTransportError> {
+            if self.active_persona.is_some() {
+                return Err(BleTransportError::PersonaAlreadyActive);
+            }
+            unsafe {
+                start_stack()?;
+                configure_smoke_advertising(name)?;
+                vTaskDelay(50);
+                start_advertising()?;
+            }
+            SMOKE_ACTIVE.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn stop_adv_smoke_test(&mut self) -> Result<(), BleTransportError> {
+            SMOKE_ACTIVE.store(false, Ordering::SeqCst);
+            let ret = unsafe { esp_ble_gap_stop_advertising() };
+            if ret != ESP_OK && ret != ESP_ERR_INVALID_STATE {
+                return esp_result(ret);
+            }
+            if LINK_STATE.load(Ordering::SeqCst) != STATE_CONNECTED {
+                LINK_STATE.store(STATE_IDLE, Ordering::SeqCst);
+            }
+            Ok(())
+        }
+
+        fn adv_smoke_test_status_json(&self) -> String {
+            format!(
+                "{{\"supported\":true,\"active\":{},\"name\":\"USB2BLE_ADV_TEST\",\"connectable\":true,\"state\":\"{:?}\",\"last_adv_config_status\":{},\"last_adv_start_status\":{},\"last_adv_stop_status\":{}}}",
+                SMOKE_ACTIVE.load(Ordering::SeqCst),
+                self.current_state(),
+                option_status(LAST_ADV_CONFIG_STATUS.load(Ordering::SeqCst)),
+                option_status(LAST_ADV_START_STATUS.load(Ordering::SeqCst)),
+                option_status(LAST_ADV_STOP_STATUS.load(Ordering::SeqCst))
+            )
+        }
+
+        fn advertising_events_json(&self) -> String {
+            format!(
+                "{{\"supported\":true,\"adv_config_done\":{},\"scan_rsp_config_done\":{},\"adv_start_complete\":{},\"adv_stop_complete\":{},\"hidd_start\":{},\"hidd_connect\":{},\"hidd_disconnect\":{},\"hidd_stop\":{},\"last_adv_config_status\":{},\"last_scan_rsp_config_status\":{},\"last_adv_start_status\":{},\"last_adv_stop_status\":{},\"smoke_active\":{},\"state\":\"{:?}\"}}",
+                GAP_ADV_CONFIG_DONE.load(Ordering::SeqCst),
+                GAP_SCAN_RSP_CONFIG_DONE.load(Ordering::SeqCst),
+                GAP_ADV_START_COMPLETE.load(Ordering::SeqCst),
+                GAP_ADV_STOP_COMPLETE.load(Ordering::SeqCst),
+                HIDD_START_COUNT.load(Ordering::SeqCst),
+                HIDD_CONNECT_COUNT.load(Ordering::SeqCst),
+                HIDD_DISCONNECT_COUNT.load(Ordering::SeqCst),
+                HIDD_STOP_COUNT.load(Ordering::SeqCst),
+                option_status(LAST_ADV_CONFIG_STATUS.load(Ordering::SeqCst)),
+                option_status(LAST_SCAN_RSP_CONFIG_STATUS.load(Ordering::SeqCst)),
+                option_status(LAST_ADV_START_STATUS.load(Ordering::SeqCst)),
+                option_status(LAST_ADV_STOP_STATUS.load(Ordering::SeqCst)),
+                SMOKE_ACTIVE.load(Ordering::SeqCst),
+                self.current_state()
+            )
         }
     }
 
@@ -478,6 +578,44 @@ mod target {
         ))
     }
 
+    unsafe fn configure_smoke_advertising(name: &str) -> Result<(), BleTransportError> {
+        let mut device_name = name
+            .as_bytes()
+            .iter()
+            .copied()
+            .filter(|byte| *byte != 0)
+            .take(24)
+            .collect::<Vec<u8>>();
+        if device_name.is_empty() {
+            device_name.extend_from_slice(b"USB2BLE_ADV_TEST");
+        }
+        device_name.push(0);
+        esp_result_with_context(
+            esp_ble_gap_set_device_name(device_name.as_ptr().cast()),
+            b"smoke_set_name\0",
+        )?;
+
+        let mut adv_data = esp_ble_adv_data_t {
+            set_scan_rsp: false,
+            include_name: true,
+            include_txpower: true,
+            min_interval: 0,
+            max_interval: 0,
+            appearance: 0,
+            manufacturer_len: 0,
+            p_manufacturer_data: ptr::null_mut(),
+            service_data_len: 0,
+            p_service_data: ptr::null_mut(),
+            service_uuid_len: 0,
+            p_service_uuid: ptr::null_mut(),
+            flag: 0x06,
+        };
+        esp_result_with_context(
+            esp_ble_gap_config_adv_data(&mut adv_data),
+            b"smoke_config_adv\0",
+        )
+    }
+
     unsafe fn start_advertising() -> Result<(), BleTransportError> {
         let mut adv_params = esp_ble_adv_params_t {
             adv_int_min: 0x20,
@@ -500,17 +638,21 @@ mod target {
     ) {
         match event_id {
             ESP_HIDD_START_EVENT => {
+                HIDD_START_COUNT.fetch_add(1, Ordering::SeqCst);
                 LINK_STATE.store(STATE_ADVERTISING, Ordering::SeqCst);
                 let _ = start_advertising();
             }
             ESP_HIDD_CONNECT_EVENT => {
+                HIDD_CONNECT_COUNT.fetch_add(1, Ordering::SeqCst);
                 LINK_STATE.store(STATE_CONNECTED, Ordering::SeqCst);
             }
             ESP_HIDD_DISCONNECT_EVENT => {
+                HIDD_DISCONNECT_COUNT.fetch_add(1, Ordering::SeqCst);
                 LINK_STATE.store(STATE_ADVERTISING, Ordering::SeqCst);
                 let _ = start_advertising();
             }
             ESP_HIDD_STOP_EVENT => {
+                HIDD_STOP_COUNT.fetch_add(1, Ordering::SeqCst);
                 LINK_STATE.store(STATE_IDLE, Ordering::SeqCst);
             }
             _ => {}
@@ -522,15 +664,44 @@ mod target {
         param: *mut esp_ble_gap_cb_param_t,
     ) {
         match event {
+            GAP_ADV_DATA_SET_COMPLETE_EVT => {
+                GAP_ADV_CONFIG_DONE.fetch_add(1, Ordering::SeqCst);
+                if !param.is_null() {
+                    LAST_ADV_CONFIG_STATUS
+                        .store((*param).adv_data_cmpl.status as u32, Ordering::SeqCst);
+                }
+            }
+            GAP_SCAN_RSP_DATA_SET_COMPLETE_EVT => {
+                GAP_SCAN_RSP_CONFIG_DONE.fetch_add(1, Ordering::SeqCst);
+                if !param.is_null() {
+                    LAST_SCAN_RSP_CONFIG_STATUS
+                        .store((*param).scan_rsp_data_cmpl.status as u32, Ordering::SeqCst);
+                }
+            }
             GAP_ADV_START_COMPLETE_EVT => {
+                GAP_ADV_START_COMPLETE.fetch_add(1, Ordering::SeqCst);
                 if param.is_null()
                     || (*param).adv_start_cmpl.status == esp_bt_status_t_ESP_BT_STATUS_SUCCESS
                 {
+                    if !param.is_null() {
+                        LAST_ADV_START_STATUS
+                            .store((*param).adv_start_cmpl.status as u32, Ordering::SeqCst);
+                    }
                     if LINK_STATE.load(Ordering::SeqCst) != STATE_CONNECTED {
                         LINK_STATE.store(STATE_ADVERTISING, Ordering::SeqCst);
                     }
                 } else {
+                    LAST_ADV_START_STATUS
+                        .store((*param).adv_start_cmpl.status as u32, Ordering::SeqCst);
+                    SMOKE_ACTIVE.store(false, Ordering::SeqCst);
                     LINK_STATE.store(STATE_ERROR, Ordering::SeqCst);
+                }
+            }
+            GAP_ADV_STOP_COMPLETE_EVT => {
+                GAP_ADV_STOP_COMPLETE.fetch_add(1, Ordering::SeqCst);
+                if !param.is_null() {
+                    LAST_ADV_STOP_STATUS
+                        .store((*param).adv_stop_cmpl.status as u32, Ordering::SeqCst);
                 }
             }
             GAP_SEC_REQ_EVT => {
@@ -631,6 +802,14 @@ mod target {
             STATE_CONNECTED => BleLinkState::Connected,
             STATE_ERROR => BleLinkState::Error,
             _ => BleLinkState::Idle,
+        }
+    }
+
+    fn option_status(value: u32) -> String {
+        if value == u32::MAX {
+            "null".to_string()
+        } else {
+            value.to_string()
         }
     }
 

@@ -237,6 +237,10 @@ where
             | ControlCommand::StartBleGenericGamepadVariant(_)
             | ControlCommand::ListBleCompatibilityVariants
             | ControlCommand::GetBleCompatProfile
+            | ControlCommand::StartBleAdvSmokeTest(_)
+            | ControlCommand::StopBleAdvSmokeTest
+            | ControlCommand::GetBleAdvSmokeTestStatus
+            | ControlCommand::GetBleAdvertisingEvents
             | ControlCommand::StartBridge
             | ControlCommand::StopBridge
             | ControlCommand::GetBridgeStatus

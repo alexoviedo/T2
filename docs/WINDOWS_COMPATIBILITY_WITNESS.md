@@ -22,8 +22,14 @@ not itself compatibility evidence.
   Xbox personas reported target-side advertising intent, but Windows active BLE
   scans, PnP/Raw Input/XInput, and Edge Gamepad API did not expose a USB2BLE
   controller.
-- The next Windows hardware chunk should isolate the BLE advertising/discovery
-  layer before retrying Windows pairing or Gamepad API tests.
+- 2026-06-03: `docs/milestone-evidence/WINDOWS_BLE_ADVERTISING_LAB_2026-06-03.md`
+  records native Windows BLE advertisement watching plus target GAP lifecycle
+  counters. Raw GAP smoke advertising and Generic/Xbox HID persona advertising
+  all failed at GAP advertising start status `13`, while Windows captured
+  ambient BLE advertisements.
+- The next Windows hardware chunk should investigate the ESP-IDF/Bluedroid GAP
+  advertising-start failure before retrying Windows pairing or Gamepad API
+  tests.
 
 ## Hardware Setup
 

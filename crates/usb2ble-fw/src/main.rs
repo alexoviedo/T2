@@ -77,6 +77,21 @@ struct ConfigImportRuntime {
 }
 
 #[derive(Debug)]
+struct SmokeAdvRuntime {
+    active: bool,
+    requested_name: String,
+}
+
+impl Default for SmokeAdvRuntime {
+    fn default() -> Self {
+        Self {
+            active: false,
+            requested_name: "USB2BLE_ADV_TEST".to_string(),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct PendingConfigJson {
     bytes: Vec<u8>,
     checksum: Option<String>,
@@ -360,6 +375,7 @@ pub fn main() {
     let mut self_test = SelfTestState::default();
     let mut bridge = BridgeRuntime::new();
     let mut config_import = ConfigImportRuntime::default();
+    let mut smoke_adv = SmokeAdvRuntime::default();
     let bridge_clock = std::time::Instant::now();
 
     // 4. Print startup banner
@@ -497,6 +513,7 @@ pub fn main() {
                             &mut self_test,
                             &mut bridge,
                             &mut config_import,
+                            &mut smoke_adv,
                         );
                         if let Ok(resp_bytes) = control.encode_response(&resp) {
                             uart.write_all(&resp_bytes);
@@ -569,6 +586,7 @@ fn handle_control_command<S>(
     self_test: &mut SelfTestState,
     bridge: &mut BridgeRuntime,
     config_import: &mut ConfigImportRuntime,
+    smoke_adv: &mut SmokeAdvRuntime,
 ) -> ControlResponse
 where
     S: usb2ble_contracts::ProfileStore
@@ -578,25 +596,32 @@ where
     app.set_ble_state(ble.current_state());
 
     let resp = match cmd {
-        ControlCommand::StartBleGenericGamepad => start_ble_persona(
-            app,
-            ble,
-            generic_encoder,
-            GENERIC_GAMEPAD_PERSONA_ID,
-            None,
-            "start_generic_gamepad",
-        ),
+        ControlCommand::StartBleGenericGamepad => {
+            stop_smoke_before_persona(ble, smoke_adv);
+            start_ble_persona(
+                app,
+                ble,
+                generic_encoder,
+                GENERIC_GAMEPAD_PERSONA_ID,
+                None,
+                "start_generic_gamepad",
+            )
+        }
         ControlCommand::StartBleGenericGamepadVariant(variant_id) => {
+            stop_smoke_before_persona(ble, smoke_adv);
             start_ble_generic_variant(app, ble, generic_encoder, variant_id)
         }
-        ControlCommand::StartBleXboxController => start_ble_persona(
-            app,
-            ble,
-            xbox_encoder,
-            XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
-            None,
-            "start_xbox_controller",
-        ),
+        ControlCommand::StartBleXboxController => {
+            stop_smoke_before_persona(ble, smoke_adv);
+            start_ble_persona(
+                app,
+                ble,
+                xbox_encoder,
+                XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+                None,
+                "start_xbox_controller",
+            )
+        }
         ControlCommand::PublishGenericGamepadReport => match app.generic_gamepad_report() {
             Ok(report) => publish_ble_report(ble, report, "publish_generic_gamepad"),
             Err(err) => ControlResponse::Error(err),
@@ -644,6 +669,33 @@ where
         ControlCommand::GetBleCompatProfile => {
             ble_compat_profile_json(app, ble, generic_encoder, xbox_encoder)
         }
+        ControlCommand::StartBleAdvSmokeTest(name) => {
+            if app.state().active_persona.is_some() {
+                ControlResponse::Error(ControlError::PersonaAlreadyActive)
+            } else {
+                bridge.stop();
+                smoke_adv.requested_name = sanitized_smoke_name(name);
+                match ble.start_adv_smoke_test(&smoke_adv.requested_name) {
+                    Ok(()) => {
+                        smoke_adv.active = true;
+                        ble_adv_smoke_status_json(smoke_adv, ble)
+                    }
+                    Err(err) => ControlResponse::Error(control_error_from_ble(err)),
+                }
+            }
+        }
+        ControlCommand::StopBleAdvSmokeTest => match ble.stop_adv_smoke_test() {
+            Ok(()) => {
+                smoke_adv.active = false;
+                ble_adv_smoke_status_json(smoke_adv, ble)
+            }
+            Err(err) => ControlResponse::Error(control_error_from_ble(err)),
+        },
+        ControlCommand::GetBleAdvSmokeTestStatus => ble_adv_smoke_status_json(smoke_adv, ble),
+        ControlCommand::GetBleAdvertisingEvents => ControlResponse::Json(JsonResponse {
+            prefix: "BLE_ADVERTISING_EVENTS_JSON",
+            json: ble.advertising_events_json(),
+        }),
         ControlCommand::StartBridge => match bridge.start(app.state().active_persona) {
             Ok(()) => ControlResponse::BridgeStatus(bridge.status(app.state().active_persona)),
             Err(err) => ControlResponse::Error(err),
@@ -701,6 +753,44 @@ where
 
     app.set_ble_state(ble.current_state());
     resp
+}
+
+fn stop_smoke_before_persona(ble: &mut impl BleTransport, smoke_adv: &mut SmokeAdvRuntime) {
+    if smoke_adv.active {
+        let _ = ble.stop_adv_smoke_test();
+        smoke_adv.active = false;
+    }
+}
+
+fn sanitized_smoke_name(name: &str) -> String {
+    let trimmed = name.trim();
+    let chosen = if trimmed.is_empty() {
+        "USB2BLE_ADV_TEST"
+    } else {
+        trimmed
+    };
+    chosen
+        .chars()
+        .filter(|ch| ch.is_ascii_graphic() || *ch == ' ')
+        .take(24)
+        .collect()
+}
+
+fn ble_adv_smoke_status_json(
+    smoke_adv: &SmokeAdvRuntime,
+    ble: &impl BleTransport,
+) -> ControlResponse {
+    ControlResponse::Json(JsonResponse {
+        prefix: "BLE_ADV_SMOKE_TEST_STATUS_JSON",
+        json: serde_json::json!({
+            "supported": true,
+            "active": smoke_adv.active,
+            "requested_name": smoke_adv.requested_name,
+            "connection_state": format!("{:?}", ble.current_state()),
+            "transport_status": serde_json::from_str::<serde_json::Value>(&ble.adv_smoke_test_status_json()).unwrap_or_else(|_| serde_json::json!({"parse_error": true}))
+        })
+        .to_string(),
+    })
 }
 
 fn ble_advertising_info<S>(
@@ -1423,6 +1513,7 @@ mod tests {
         self_test: SelfTestState,
         bridge: BridgeRuntime,
         config_import: ConfigImportRuntime,
+        smoke_adv: SmokeAdvRuntime,
     }
 
     impl Runtime {
@@ -1435,6 +1526,7 @@ mod tests {
                 self_test: SelfTestState::default(),
                 bridge: BridgeRuntime::new(),
                 config_import: ConfigImportRuntime::default(),
+                smoke_adv: SmokeAdvRuntime::default(),
             }
         }
 
@@ -1454,6 +1546,7 @@ mod tests {
                 &mut self.self_test,
                 &mut self.bridge,
                 &mut self.config_import,
+                &mut self.smoke_adv,
             )
         }
 

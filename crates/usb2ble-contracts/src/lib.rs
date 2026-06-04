@@ -783,6 +783,26 @@ pub trait BleTransport {
 
     /// Clear all stored bonding information.
     fn forget_bonds(&mut self) -> Result<(), BleTransportError>;
+
+    /// Start a diagnostic raw GAP advertisement that bypasses HID persona setup.
+    fn start_adv_smoke_test(&mut self, _name: &str) -> Result<(), BleTransportError> {
+        Err(BleTransportError::Generic)
+    }
+
+    /// Stop the diagnostic raw GAP advertisement.
+    fn stop_adv_smoke_test(&mut self) -> Result<(), BleTransportError> {
+        Err(BleTransportError::Generic)
+    }
+
+    /// Return diagnostic raw GAP advertisement state as JSON.
+    fn adv_smoke_test_status_json(&self) -> String {
+        "{\"supported\":false,\"active\":false}".to_string()
+    }
+
+    /// Return BLE GAP/HID lifecycle event counters as JSON.
+    fn advertising_events_json(&self) -> String {
+        "{\"supported\":false}".to_string()
+    }
 }
 
 // --- Storage ---
@@ -1282,6 +1302,14 @@ pub enum ControlCommand {
     ListBleCompatibilityVariants,
     /// Request the active BLE compatibility profile as JSON.
     GetBleCompatProfile,
+    /// Start a diagnostic raw GAP advertisement.
+    StartBleAdvSmokeTest(String),
+    /// Stop a diagnostic raw GAP advertisement.
+    StopBleAdvSmokeTest,
+    /// Request diagnostic raw GAP advertisement status.
+    GetBleAdvSmokeTestStatus,
+    /// Request BLE GAP/HID lifecycle event counters.
+    GetBleAdvertisingEvents,
     /// Start automatic USB-to-BLE bridge publication.
     StartBridge,
     /// Stop automatic USB-to-BLE bridge publication.
