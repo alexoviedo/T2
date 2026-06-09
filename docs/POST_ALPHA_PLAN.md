@@ -89,16 +89,27 @@ before status docs should change.
   identity/persona were not persisted, target bond diagnostics still reported
   `bonds=false`, and reapplying the Xbox persona restored apparent
   Windows/XInput connection state without restoring deterministic report
-  delivery.
+  delivery. The 2026-06-09 follow-up at
+  `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_FIX_DIAGNOSTIC_2026-06-09.md`
+  added explicit stop/connection/bond diagnostics. After one manual baseline
+  Windows pairing, `STOP_BLE_PERSONA` plus Xbox restart and target soft reset
+  plus explicit Xbox strategy/persona reapply both restored XInput report
+  delivery without Windows cache cleanup. The remaining gaps are narrower but
+  still product-relevant: direct host disconnect is unsupported, runtime
+  identity/persona still do not persist across reset, bond security events are
+  not fully surfaced, no hard power-cycle witness was run, and durable BLE bond
+  persistence is not fully proven.
 - Evidence needed: before/after bond state, reboot/power-cycle transcript,
   reconnect timing, bridge status counters, host connection state, stale
   Gamepad API slot state, HID callback events, no-removal Windows pairing
   failure logs, and failure modes.
 - Hardware/user action: likely required for Bluetooth UI and power/reset steps.
-- Recommended next prompt type: focused Windows Xbox reconnect/report-delivery
-  fix or diagnostic. Start with target bond/security diagnostics, BLE HID
-  reconnect notification readiness, and a true BLE persona stop/disconnect
-  command before more game/app testing.
+- Recommended next prompt type: focused Xbox startup persistence and
+  bond/security/disconnect hardening diagnostic. Preserve the witnessed
+  reset/reapply report-delivery path, then decide whether explicit Xbox
+  strategy/persona startup should be persisted as user config and whether
+  direct host disconnect can be implemented or should remain documented
+  unsupported.
 - Risk: high, because BLE cache behavior is host-dependent.
 
 ## 4. Deadzone And Calibration Quality Tuning

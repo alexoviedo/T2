@@ -61,6 +61,14 @@ These claims are supported by checked-in evidence:
   reports did not resume XInput movement and later target publish attempts
   returned `ERROR:Generic`. This is failure/diagnostic evidence, not reconnect
   robustness.
+- On Alex's Windows PC, the 2026-06-09 single-persona Xbox
+  reconnect/report-delivery fix diagnostic added `STOP_BLE_PERSONA`,
+  `GET_BLE_CONNECTION_INFO`, and `GET_BLE_BOND_INFO`. After one manual baseline
+  Windows pairing, stop/start persona and target soft reset plus explicit Xbox
+  strategy/persona reapply restored XInput report delivery without Windows cache
+  cleanup. This is a narrow single-PC diagnostic: direct host disconnect remains
+  unsupported, runtime identity/persona still do not persist across reset, and
+  durable BLE bond persistence is not fully proven.
 
 ## Forbidden Overclaims
 

@@ -33,6 +33,8 @@ TOPOLOGY_IDS = {("2109", "2813"), ("044f", "b10a"), ("044f", "b687")}
 TARGET_DIAGNOSTIC_COMMANDS = [
     "GET_STATUS",
     "GET_BLE_IDENTITY_INFO",
+    "GET_BLE_CONNECTION_INFO",
+    "GET_BLE_BOND_INFO",
     "GET_BLE_ADVERTISING_INFO",
     "GET_BLE_COMPAT_PROFILE",
     "GET_BRIDGE_STATUS",
@@ -459,7 +461,7 @@ def prepare_xbox(
     transcript: list[dict[str, Any]],
     clear_bonds: bool,
 ) -> dict[str, Any]:
-    commands = ["STOP_BRIDGE", "STOP_VIRTUAL_INPUT"]
+    commands = ["STOP_BRIDGE", "STOP_VIRTUAL_INPUT", "STOP_BLE_PERSONA"]
     if clear_bonds:
         commands.append("FORGET_BLE_BONDS")
     commands.extend(
@@ -467,6 +469,8 @@ def prepare_xbox(
             "SET_BLE_IDENTITY_STRATEGY persona_static_random_experimental",
             "START_BLE_XBOX_CONTROLLER",
             "GET_BLE_IDENTITY_INFO",
+            "GET_BLE_CONNECTION_INFO",
+            "GET_BLE_BOND_INFO",
             "GET_BLE_ADVERTISING_INFO",
             "GET_STATUS",
         ]
@@ -614,19 +618,81 @@ def run(args: argparse.Namespace) -> int:
 
         test_a_dir = run_dir / "test_a_stop_start"
         test_a_dir.mkdir(exist_ok=True)
+        test_a_transcript: list[dict[str, Any]] = []
+        target_before = collect_target_diagnostics(serial, args.serial_timeout, test_a_transcript)
+        stop_result = send(serial, "STOP_BLE_PERSONA", args.serial_timeout, test_a_transcript)
+        target_after_stop = collect_target_diagnostics(serial, args.serial_timeout, test_a_transcript)
+        start_result = send(serial, "START_BLE_XBOX_CONTROLLER", args.serial_timeout, test_a_transcript)
+        target_after_start = collect_target_diagnostics(serial, args.serial_timeout, test_a_transcript)
+        wait_summary = wait_for_xinput(test_a_dir, args.reconnect_wait_seconds, 1.0, "stop_start")
+        sanity = None
+        if wait_summary.get("slot0_connected"):
+            sanity = run_xinput_sanity(serial, test_a_dir, args.serial_timeout, test_a_transcript, "stop_start")
         summary["tests"]["test_a_stop_start"] = {
-            "classification": "not_exercisable_no_stop_persona_command",
-            "detail": "Current control plane has STOP_BRIDGE/STOP_VIRTUAL_INPUT but no BLE persona stop/disconnect command; idempotent START_BLE_XBOX_CONTROLLER does not exercise reconnect.",
-            "target_before": collect_target_diagnostics(serial, args.serial_timeout, transcript),
+            "target_before": target_before,
+            "stop_result": stop_result,
+            "target_after_stop": target_after_stop,
+            "start_result": start_result,
+            "target_after_start": target_after_start,
+            "xinput_wait": wait_summary,
+            "xinput_sanity": sanity,
+            "manual_windows_action": False,
+            "classification": classify_reconnect(
+                wait_summary,
+                sanity,
+                manual_windows_action=False,
+                target_restart_required=True,
+            ),
         }
+        (test_a_dir / "serial_transcript.json").write_text(
+            json.dumps(test_a_transcript, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        test_b_dir = run_dir / "test_b_disconnect_reconnect"
+        test_b_dir.mkdir(exist_ok=True)
+        test_b_transcript: list[dict[str, Any]] = []
+        disconnect_target_before = collect_target_diagnostics(serial, args.serial_timeout, test_b_transcript)
+        disconnect_result = send(serial, "DISCONNECT_BLE_HOST", args.serial_timeout, test_b_transcript)
+        disconnect_target_after = collect_target_diagnostics(serial, args.serial_timeout, test_b_transcript)
+        disconnect_wait = wait_for_xinput(test_b_dir, args.reconnect_wait_seconds, 1.0, "disconnect_reconnect")
+        disconnect_sanity = None
+        if disconnect_wait.get("slot0_connected"):
+            disconnect_sanity = run_xinput_sanity(
+                serial,
+                test_b_dir,
+                args.serial_timeout,
+                test_b_transcript,
+                "disconnect_reconnect",
+            )
+        summary["tests"]["test_b_disconnect_reconnect"] = {
+            "target_before": disconnect_target_before,
+            "disconnect_result": disconnect_result,
+            "target_after_disconnect": disconnect_target_after,
+            "xinput_wait": disconnect_wait,
+            "xinput_sanity": disconnect_sanity,
+            "manual_windows_action": False,
+            "classification": "disconnect_unsupported"
+            if not disconnect_result.get("ok")
+            else classify_reconnect(
+                disconnect_wait,
+                disconnect_sanity,
+                manual_windows_action=False,
+                target_restart_required=False,
+            ),
+        }
+        (test_b_dir / "serial_transcript.json").write_text(
+            json.dumps(test_b_transcript, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     finally:
         serial.close()
 
-    test_b_dir = run_dir / "test_b_soft_reset"
-    test_b_dir.mkdir(exist_ok=True)
+    test_c_dir = run_dir / "test_c_soft_reset"
+    test_c_dir.mkdir(exist_ok=True)
     pre_reset_state = collect_windows_state()
     reset_result = run_reset(port, args.reset_command, args.post_reset_wait_seconds)
-    summary["tests"]["test_b_soft_reset"] = {
+    summary["tests"]["test_c_soft_reset"] = {
         "pre_reset_windows": pre_reset_state,
         "reset_result": reset_result,
         "manual_windows_action": False,
@@ -640,24 +706,24 @@ def run(args: argparse.Namespace) -> int:
             post_reset_target_after = collect_target_diagnostics(serial, args.serial_timeout, post_reset_transcript)
         finally:
             serial.close()
-        (test_b_dir / "serial_transcript.json").write_text(
+        (test_c_dir / "serial_transcript.json").write_text(
             json.dumps(post_reset_transcript, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        wait_summary = wait_for_xinput(test_b_dir, args.reconnect_wait_seconds, 1.0, "soft_reset")
+        wait_summary = wait_for_xinput(test_c_dir, args.reconnect_wait_seconds, 1.0, "soft_reset")
         sanity = None
         if wait_summary.get("slot0_connected"):
             serial = SerialPort(port)
             try:
                 post_sanity_transcript: list[dict[str, Any]] = []
-                sanity = run_xinput_sanity(serial, test_b_dir, args.serial_timeout, post_sanity_transcript, "soft_reset")
+                sanity = run_xinput_sanity(serial, test_c_dir, args.serial_timeout, post_sanity_transcript, "soft_reset")
             finally:
                 serial.close()
-            (test_b_dir / "sanity_serial_transcript.json").write_text(
+            (test_c_dir / "sanity_serial_transcript.json").write_text(
                 json.dumps(post_sanity_transcript, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
-        summary["tests"]["test_b_soft_reset"].update(
+        summary["tests"]["test_c_soft_reset"].update(
             {
                 "target_before_restart": post_reset_target_before,
                 "prepare_after_reset": prepare_after_reset,
@@ -674,9 +740,9 @@ def run(args: argparse.Namespace) -> int:
         )
 
     if args.target_reboot:
-        test_c_dir = run_dir / "test_c_power_cycle_surrogate"
-        test_c_dir.mkdir(exist_ok=True)
-        summary["tests"]["test_c_power_cycle_surrogate"] = {
+        test_d_dir = run_dir / "test_d_power_cycle_surrogate"
+        test_d_dir.mkdir(exist_ok=True)
+        summary["tests"]["test_d_power_cycle_surrogate"] = {
             "classification": "not_run",
             "detail": "A true hard power-cycle requires an operator action and is intentionally left out unless needed after A/B.",
         }

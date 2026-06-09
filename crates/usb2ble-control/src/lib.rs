@@ -87,11 +87,23 @@ impl ControlPlane for SerialControlPlane {
         if s == "FORGET_BLE_BONDS" {
             return Ok(ControlCommand::ForgetBleBonds);
         }
+        if s == "STOP_BLE_PERSONA" {
+            return Ok(ControlCommand::StopBlePersona);
+        }
+        if s == "DISCONNECT_BLE_HOST" {
+            return Ok(ControlCommand::DisconnectBleHost);
+        }
         if s == "LIST_BLE_IDENTITY_STRATEGIES" {
             return Ok(ControlCommand::ListBleIdentityStrategies);
         }
         if s == "GET_BLE_IDENTITY_INFO" {
             return Ok(ControlCommand::GetBleIdentityInfo);
+        }
+        if s == "GET_BLE_CONNECTION_INFO" {
+            return Ok(ControlCommand::GetBleConnectionInfo);
+        }
+        if s == "GET_BLE_BOND_INFO" {
+            return Ok(ControlCommand::GetBleBondInfo);
         }
         if let Some(rest) = s.strip_prefix("SET_BLE_IDENTITY_STRATEGY ") {
             let strategy = rest.trim();
@@ -773,6 +785,14 @@ mod tests {
             ControlCommand::GetBleIdentityInfo
         );
         assert_eq!(
+            cp.decode_command(b"GET_BLE_CONNECTION_INFO").unwrap(),
+            ControlCommand::GetBleConnectionInfo
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_BLE_BOND_INFO").unwrap(),
+            ControlCommand::GetBleBondInfo
+        );
+        assert_eq!(
             cp.decode_command(b"SET_BLE_IDENTITY_STRATEGY persona_static_random_experimental")
                 .unwrap(),
             ControlCommand::SetBleIdentityStrategy(
@@ -807,6 +827,28 @@ mod tests {
         assert_eq!(
             cp.decode_command(b"GET_BLE_ADVERTISING_EVENTS").unwrap(),
             ControlCommand::GetBleAdvertisingEvents
+        );
+    }
+
+    #[test]
+    fn test_decode_ble_reconnect_commands() {
+        let cp = SerialControlPlane::new();
+
+        assert_eq!(
+            cp.decode_command(b"STOP_BLE_PERSONA").unwrap(),
+            ControlCommand::StopBlePersona
+        );
+        assert_eq!(
+            cp.decode_command(b"DISCONNECT_BLE_HOST").unwrap(),
+            ControlCommand::DisconnectBleHost
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_BLE_CONNECTION_INFO").unwrap(),
+            ControlCommand::GetBleConnectionInfo
+        );
+        assert_eq!(
+            cp.decode_command(b"GET_BLE_BOND_INFO").unwrap(),
+            ControlCommand::GetBleBondInfo
         );
     }
 

@@ -117,8 +117,8 @@ coexistence. It must remain explicit and non-default.
 
 ## Single-Persona Xbox Reconnect Diagnostic
 
-The later 2026-06-04 single-persona Xbox reconnect diagnostic used the same
-explicit experimental Xbox address:
+The 2026-06-04 single-persona Xbox reconnect diagnostic used the same explicit
+experimental Xbox address:
 
 ```text
 CB:B3:AE:FA:FC:EF
@@ -132,18 +132,48 @@ no active persona, and `bonds=false`. Reapplying
 apparent target/Windows/XInput connection state, but deterministic reports did
 not move XInput and later publish attempts returned `ERROR:Generic`.
 
-This means the static-random address is useful for identity separation, but it
-does not by itself prove durable BLE bond persistence or reliable reconnect
-report delivery.
+The 2026-06-09 follow-up added explicit reconnect/report-delivery diagnostics
+and a clean stop path:
+
+```text
+STOP_BLE_PERSONA
+GET_BLE_CONNECTION_INFO
+GET_BLE_BOND_INFO
+DISCONNECT_BLE_HOST
+```
+
+After one manual Windows Settings baseline pair, `STOP_BLE_PERSONA` followed by
+`START_BLE_XBOX_CONTROLLER` reconnected the same Xbox address and deterministic
+reports again moved XInput. A target soft reset still returned runtime state to
+`legacy_public` with no active persona, but `GET_BLE_BOND_INFO` reported one
+stored ESP-IDF bond. Reapplying the explicit experimental strategy and Xbox
+persona restored XInput report delivery without clearing Windows cache:
+
+```text
+current_address=CB:B3:AE:FA:FC:EF
+bond_count=1
+bonds_present=true
+last_report_send_status=ok
+publish_ok_count=10
+```
+
+Direct `DISCONNECT_BLE_HOST` remains unsupported on the ESP32 target path, and
+authentication/encryption event fields remain `unknown`. This means the
+static-random address plus explicit persona reapply can support the witnessed
+single-persona Xbox reconnect/report-delivery path on Alex's PC, but it still
+does not prove durable BLE bond persistence, power-cycle behavior, or automatic
+persona/identity persistence.
 
 This still needs explicit evidence or fixes for:
 
 - A controlled no-removal Windows pairing matrix that captures the exact blocker
   when the previous persona is left paired.
-- BLE bond storage and why the target reports `bonds=false`/`bond_count=0`
-  after Windows Settings pairing.
-- Reconnect/report delivery after reset or power-cycle without requiring manual
-  Windows recovery.
+- Deeper BLE security/bond event telemetry beyond the current ESP-IDF bond
+  count/list.
+- Persistent explicit Xbox startup after reset if product workflow needs it.
+- True host disconnect/reconnect support, or a documented unsupported status for
+  this ESP-IDF HIDD layer.
+- Power-cycle behavior without Windows cache cleanup.
 - Whether host caches can be managed without creating stale device clutter.
 - Whether existing macOS Generic/Xbox live bridge evidence remains preserved.
 
@@ -158,7 +188,9 @@ Do not make per-persona addresses the default without a dedicated witness run.
 - It does not prove cache-free Windows persona switching or coexistence.
 - It does not prove BLE bond persistence or reliable reconnect/report delivery;
   see
-  `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_DIAGNOSTIC_2026-06-04.md`.
+  `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_DIAGNOSTIC_2026-06-04.md`
+  and the follow-up
+  `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_FIX_DIAGNOSTIC_2026-06-09.md`.
 - It does not prove physical HOTAS movement.
 - It does not prove broad Windows, game/app, Xbox console, or proprietary Xbox
   Wireless compatibility.

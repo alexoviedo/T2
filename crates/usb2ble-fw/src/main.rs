@@ -660,10 +660,41 @@ where
             }),
             Err(_) => ControlResponse::Error(ControlError::Generic),
         },
+        ControlCommand::StopBlePersona => {
+            bridge.stop();
+            let _ = app.handle_control_command(&ControlCommand::StopVirtualInput);
+            match ble.stop_persona() {
+                Ok(()) => {
+                    app.set_active_persona(None);
+                    app.set_active_ble_variant(None);
+                    app.set_ble_state(ble.current_state());
+                    smoke_adv.active = false;
+                    ControlResponse::BleAction(BleActionResponse {
+                        action: "stop_ble_persona",
+                        state: ble.current_state(),
+                        report: None,
+                    })
+                }
+                Err(err) => ControlResponse::Error(control_error_from_ble(err)),
+            }
+        }
+        ControlCommand::DisconnectBleHost => match ble.disconnect_host() {
+            Ok(()) => ControlResponse::BleAction(BleActionResponse {
+                action: "disconnect_ble_host",
+                state: ble.current_state(),
+                report: None,
+            }),
+            Err(err) => ControlResponse::Error(control_error_from_ble(err)),
+        },
         ControlCommand::ListBleIdentityStrategies => ble_identity_strategies_json(),
         ControlCommand::GetBleIdentityInfo => ControlResponse::Json(JsonResponse {
             prefix: "BLE_IDENTITY_INFO_JSON",
             json: ble.identity_info_json(),
+        }),
+        ControlCommand::GetBleConnectionInfo => ble_connection_info_json(app, ble, bridge),
+        ControlCommand::GetBleBondInfo => ControlResponse::Json(JsonResponse {
+            prefix: "BLE_BOND_INFO_JSON",
+            json: ble.bond_info_json(),
         }),
         ControlCommand::SetBleIdentityStrategy(strategy_id) => {
             let Some(strategy) = BleIdentityStrategy::from_id(strategy_id) else {
@@ -810,6 +841,63 @@ fn ble_adv_smoke_status_json(
             "requested_name": smoke_adv.requested_name,
             "connection_state": format!("{:?}", ble.current_state()),
             "transport_status": serde_json::from_str::<serde_json::Value>(&ble.adv_smoke_test_status_json()).unwrap_or_else(|_| serde_json::json!({"parse_error": true}))
+        })
+        .to_string(),
+    })
+}
+
+fn ble_connection_info_json<S>(
+    app: &mut App<S>,
+    ble: &impl BleTransport,
+    bridge: &BridgeRuntime,
+) -> ControlResponse
+where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    let transport = serde_json::from_str::<serde_json::Value>(&ble.connection_info_json())
+        .unwrap_or_else(|_| serde_json::json!({"parse_error": true}));
+    let virtual_input = match app.handle_control_command(&ControlCommand::GetVirtualInputStatus) {
+        ControlResponse::Json(resp) => serde_json::from_str::<serde_json::Value>(&resp.json)
+            .unwrap_or_else(|_| serde_json::json!({"parse_error": true})),
+        _ => serde_json::json!({"supported": false}),
+    };
+    let bridge_status = bridge.status(app.state().active_persona);
+    let active_persona = app.state().active_persona;
+    let active_variant = app.state().active_ble_variant;
+    let input_source = virtual_input
+        .get("active_input_source")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown");
+
+    ControlResponse::Json(JsonResponse {
+        prefix: "BLE_CONNECTION_INFO_JSON",
+        json: serde_json::json!({
+            "supported": true,
+            "active_persona": active_persona.map(|persona| persona.0),
+            "active_variant": active_variant.map(|variant| variant.id()),
+            "identity_strategy": ble.identity_strategy().id(),
+            "current_address": ble.identity_current_address().map(format_ble_address),
+            "address_type": ble.identity_address_type(),
+            "connection_state": format!("{:?}", ble.current_state()),
+            "transport": transport,
+            "bridge": {
+                "enabled": bridge_status.enabled,
+                "persona": bridge_status.active_persona.map(|persona| persona.0),
+                "rate_hz": bridge_status.rate_hz,
+                "last_publish_ms": bridge_status.last_publish_ms,
+                "published": bridge_status.published,
+                "skipped_duplicate": bridge_status.skipped_duplicate,
+                "skipped_rate": bridge_status.skipped_rate,
+                "skipped_not_connected": bridge_status.skipped_not_connected,
+                "skipped_not_ready": bridge_status.skipped_not_ready,
+                "last_error": bridge_status.last_error,
+                "current_input_source": input_source,
+            },
+            "virtual_input": virtual_input,
+            "deterministic_xbox_reports_allowed": active_persona
+                == Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID),
         })
         .to_string(),
     })
@@ -1801,6 +1889,109 @@ mod tests {
     }
 
     #[test]
+    fn ble_connection_and_bond_info_commands_return_json() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        match runtime.run(ControlCommand::GetBleConnectionInfo) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "BLE_CONNECTION_INFO_JSON");
+                let value: serde_json::Value = serde_json::from_str(&resp.json).unwrap();
+                assert_eq!(value["supported"], true);
+                assert_eq!(value["active_persona"], "xbox_wireless_controller");
+                assert_eq!(value["deterministic_xbox_reports_allowed"], true);
+                assert_eq!(value["transport"]["target"], "host_stub");
+            }
+            other => panic!("expected connection JSON, got {other:?}"),
+        }
+        match runtime.run(ControlCommand::GetBleBondInfo) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "BLE_BOND_INFO_JSON");
+                let value: serde_json::Value = serde_json::from_str(&resp.json).unwrap();
+                assert_eq!(value["supported"], true);
+                assert_eq!(value["bond_count"], 0);
+                assert_eq!(value["bonds_present"], false);
+            }
+            other => panic!("expected bond JSON, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn stop_ble_persona_clears_app_state_and_bridge() {
+        let mut runtime = Runtime::new();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        assert_bridge_status(runtime.run(ControlCommand::StartBridge));
+        match runtime.run(ControlCommand::StartVirtualInput) {
+            ControlResponse::Json(resp) => assert!(resp.json.contains("\"enabled\":true")),
+            other => panic!("expected virtual status, got {other:?}"),
+        }
+
+        assert_ble_stop(runtime.run(ControlCommand::StopBlePersona));
+
+        assert_eq!(runtime.app.state().active_persona, None);
+        assert_eq!(runtime.app.state().active_ble_variant, None);
+        assert!(
+            !runtime
+                .bridge
+                .status(runtime.app.state().active_persona)
+                .enabled
+        );
+        match runtime.run(ControlCommand::GetBleConnectionInfo) {
+            ControlResponse::Json(resp) => {
+                let value: serde_json::Value = serde_json::from_str(&resp.json).unwrap();
+                assert_eq!(value["active_persona"], serde_json::Value::Null);
+                assert_eq!(value["virtual_input"]["enabled"], false);
+            }
+            other => panic!("expected connection JSON, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn xbox_report_path_survives_stop_and_restart() {
+        let mut runtime = Runtime::new();
+
+        match runtime.run(ControlCommand::SetBleIdentityStrategy(
+            "persona_static_random_experimental".to_string(),
+        )) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "BLE_IDENTITY_STRATEGY_JSON");
+            }
+            other => panic!("expected identity strategy JSON, got {other:?}"),
+        }
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxTestReport(
+                "left_stick_right".to_string(),
+            )),
+            "publish_xbox_test_report",
+        );
+        assert_ble_stop(runtime.run(ControlCommand::StopBlePersona));
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleXboxController),
+            "start_xbox_controller",
+        );
+        let report = assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxTestReport(
+                "left_trigger_max".to_string(),
+            )),
+            "publish_xbox_test_report",
+        );
+
+        assert_eq!(report.persona_id, XBOX_WIRELESS_CONTROLLER_PERSONA_ID);
+        assert_eq!(&report.bytes[8..10], &1_023_u16.to_le_bytes());
+    }
+
+    #[test]
     fn generic_then_xbox_returns_persona_already_active() {
         let mut runtime = Runtime::new();
 
@@ -2557,6 +2748,17 @@ mod tests {
                 assert!(resp.report.is_none());
             }
             other => panic!("expected BLE action {action}, got {other:?}"),
+        }
+    }
+
+    fn assert_ble_stop(resp: ControlResponse) {
+        match resp {
+            ControlResponse::BleAction(resp) => {
+                assert_eq!(resp.action, "stop_ble_persona");
+                assert_eq!(resp.state, usb2ble_contracts::BleLinkState::Idle);
+                assert!(resp.report.is_none());
+            }
+            other => panic!("expected BLE stop action, got {other:?}"),
         }
     }
 

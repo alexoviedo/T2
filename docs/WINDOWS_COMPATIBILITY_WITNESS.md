@@ -81,13 +81,23 @@ not itself compatibility evidence.
   but deterministic reports did not move XInput and later publish attempts
   returned `ERROR:Generic`. Durable BLE bond persistence and reconnect/report
   delivery robustness remain unproven.
+- 2026-06-09:
+  `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_FIX_DIAGNOSTIC_2026-06-09.md`
+  records the follow-up reconnect/report-delivery fix diagnostic. New target
+  diagnostics expose connection state, report-send status, publish counters,
+  and ESP-IDF bond count/list. `STOP_BLE_PERSONA` provides a clean stop path
+  without clearing bonds. After one manual baseline Windows pairing, stop/start
+  persona and target soft reset plus explicit Xbox strategy/persona reapply both
+  restored XInput report delivery without Windows cache cleanup. Direct
+  `DISCONNECT_BLE_HOST` remains unsupported, runtime identity/persona still do
+  not persist across reset, and durable BLE bond persistence is not fully
+  proven.
 - The next Windows hardware chunk should build from the single-persona Xbox
-  path, but it should address reconnect/report delivery before assuming the
-  user can reset or power-cycle without manual Windows recovery. Do not reopen
-  cache-free Generic/U6/Xbox switching unless a specific identity/bond fix
-  exists. Do not treat advertisement visibility, apparent XInput connection, or
-  PnP presence as report delivery, app/game compatibility, durable bond
-  persistence, or cache-free switching evidence.
+  path, with the reset/reapply report-delivery path preserved. The next gap is
+  persistent user-selected Xbox startup and deeper bond/security/disconnect
+  telemetry, not cache-free Generic/U6/Xbox switching. Do not treat advertisement
+  visibility, apparent XInput connection, or PnP presence as app/game
+  compatibility, durable bond persistence, or cache-free switching evidence.
 
 ## Hardware Setup
 

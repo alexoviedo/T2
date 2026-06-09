@@ -16,6 +16,7 @@ pub struct BleHidTransport {
     identity_strategy: BleIdentityStrategy,
     base_address: [u8; 6],
     applied_address: Option<[u8; 6]>,
+    last_report_send_status: Option<&'static str>,
     published_reports: Vec<EncodedBleReport>,
 }
 
@@ -44,6 +45,7 @@ impl Default for BleHidTransport {
             identity_strategy: BleIdentityStrategy::LegacyPublic,
             base_address: [0x90, 0x70, 0x69, 0x07, 0x0d, 0x7e],
             applied_address: None,
+            last_report_send_status: None,
             published_reports: Vec::new(),
         }
     }
@@ -84,14 +86,32 @@ impl BleTransport for BleHidTransport {
 
     fn publish_report(&mut self, report: &EncodedBleReport) -> Result<(), BleTransportError> {
         if self.active_persona != Some(report.persona_id) {
+            self.last_report_send_status = Some("persona_mismatch");
             return Err(BleTransportError::PersonaMismatch);
         }
         self.published_reports.push(report.clone());
+        self.last_report_send_status = Some("ok");
         self.state = BleLinkState::Connected;
         Ok(())
     }
 
     fn forget_bonds(&mut self) -> Result<(), BleTransportError> {
+        Ok(())
+    }
+
+    fn stop_persona(&mut self) -> Result<(), BleTransportError> {
+        self.state = BleLinkState::Idle;
+        self.active_persona = None;
+        self.active_variant = None;
+        self.applied_address = None;
+        self.last_report_send_status = None;
+        Ok(())
+    }
+
+    fn disconnect_host(&mut self) -> Result<(), BleTransportError> {
+        if self.state == BleLinkState::Connected {
+            self.state = BleLinkState::Advertising;
+        }
         Ok(())
     }
 
@@ -132,6 +152,58 @@ impl BleTransport for BleHidTransport {
                 .unwrap_or_else(|| "null".to_string()),
             self.identity_is_applied()
         )
+    }
+
+    fn connection_info_json(&self) -> String {
+        serde_json::json!({
+            "supported": true,
+            "target": "host_stub",
+            "active_persona": self.active_persona.map(|persona| persona.0),
+            "active_variant": self.active_variant.map(|variant| variant.id()),
+            "identity_strategy": self.identity_strategy.id(),
+            "current_address": self.identity_current_address().map(format_ble_address),
+            "address_type": self.identity_address_type(),
+            "connection_state": format!("{:?}", self.state),
+            "connected": self.state == BleLinkState::Connected,
+            "connected_host_address": null,
+            "hidd_connect_count": 0,
+            "hidd_disconnect_count": 0,
+            "last_disconnect_reason": "unknown",
+            "notification_ready": if self.state == BleLinkState::Connected { "unknown" } else { "false" },
+            "last_report_send_status": self.last_report_send_status,
+            "last_report_send_return": null,
+            "disconnect_supported": true,
+            "stop_persona_supported": true,
+        })
+        .to_string()
+    }
+
+    fn bond_info_json(&self) -> String {
+        serde_json::json!({
+            "supported": true,
+            "target": "host_stub",
+            "bond_count": 0,
+            "bonds_present": false,
+            "bonded_device_addresses": [],
+            "last_auth_complete_status": "unknown",
+            "last_auth_complete_bonded": "unknown",
+            "last_security_event": "unknown",
+            "last_encryption_status": "unknown",
+            "forget_bonds_completed": "unknown",
+            "last_clear_bond_status": "unknown",
+            "host_connected_encrypted": "unknown",
+            "host_connected_authenticated": "unknown",
+            "host_connected_bonded": "unknown",
+            "security_parameters": {
+                "auth_request": "bond",
+                "io_capability": "none",
+                "key_size": 16,
+                "init_key_mask": "enc|id",
+                "rsp_key_mask": "enc|id",
+                "secure_connections": false
+            }
+        })
+        .to_string()
     }
 
     fn identity_current_address(&self) -> Option<[u8; 6]> {
@@ -326,6 +398,15 @@ mod target {
     static LAST_ADV_OWN_ADDR_TYPE: AtomicU32 = AtomicU32::new(0);
     static LAST_ADV_CHANNEL_MAP: AtomicU32 = AtomicU32::new(0);
     static LAST_ADV_FILTER_POLICY: AtomicU32 = AtomicU32::new(0);
+    static LAST_INPUT_SET_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static LAST_INPUT_REPORT_ID: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_INPUT_REPORT_LEN: AtomicU32 = AtomicU32::new(0);
+    static LAST_STOP_PERSONA_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static LAST_DISCONNECT_HOST_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static PUBLISH_ATTEMPT_COUNT: AtomicU32 = AtomicU32::new(0);
+    static PUBLISH_OK_COUNT: AtomicU32 = AtomicU32::new(0);
+    static PUBLISH_NOT_CONNECTED_COUNT: AtomicU32 = AtomicU32::new(0);
+    static PUBLISH_PERSONA_MISMATCH_COUNT: AtomicU32 = AtomicU32::new(0);
     static IDENTITY_STRATEGY: AtomicU8 = AtomicU8::new(0);
     static IDENTITY_APPLIED: AtomicBool = AtomicBool::new(false);
     static IDENTITY_STOPPED_BEFORE_CHANGE: AtomicBool = AtomicBool::new(false);
@@ -388,6 +469,7 @@ mod target {
             callback: esp_event_handler_t,
             dev: *mut *mut EspHiddDev,
         ) -> esp_err_t;
+        fn esp_hidd_dev_deinit(dev: *mut EspHiddDev) -> esp_err_t;
         fn esp_hidd_dev_connected(dev: *mut EspHiddDev) -> bool;
         fn esp_hidd_dev_input_set(
             dev: *mut EspHiddDev,
@@ -474,17 +556,22 @@ mod target {
         }
 
         fn publish_report(&mut self, report: &EncodedBleReport) -> Result<(), BleTransportError> {
+            PUBLISH_ATTEMPT_COUNT.fetch_add(1, Ordering::SeqCst);
             if self.active_persona != Some(report.persona_id) {
+                PUBLISH_PERSONA_MISMATCH_COUNT.fetch_add(1, Ordering::SeqCst);
                 return Err(BleTransportError::PersonaMismatch);
             }
 
             let dev = HID_DEV.load(Ordering::SeqCst);
             if dev.is_null() || !unsafe { esp_hidd_dev_connected(dev) } {
+                PUBLISH_NOT_CONNECTED_COUNT.fetch_add(1, Ordering::SeqCst);
                 return Err(BleTransportError::NotConnected);
             }
 
             let mut bytes = report.bytes.clone();
-            esp_result(unsafe {
+            LAST_INPUT_REPORT_ID.store(u32::from(report.report_id.0), Ordering::SeqCst);
+            LAST_INPUT_REPORT_LEN.store(bytes.len() as u32, Ordering::SeqCst);
+            let ret = unsafe {
                 esp_hidd_dev_input_set(
                     dev,
                     0,
@@ -492,7 +579,12 @@ mod target {
                     bytes.as_mut_ptr(),
                     bytes.len(),
                 )
-            })
+            };
+            LAST_INPUT_SET_RETURN.store(ret, Ordering::SeqCst);
+            if ret == ESP_OK {
+                PUBLISH_OK_COUNT.fetch_add(1, Ordering::SeqCst);
+            }
+            esp_result(ret)
         }
 
         fn forget_bonds(&mut self) -> Result<(), BleTransportError> {
@@ -511,6 +603,44 @@ mod target {
                 esp_result(unsafe { esp_ble_remove_bond_device(dev.bd_addr.as_mut_ptr()) })?;
             }
             Ok(())
+        }
+
+        fn stop_persona(&mut self) -> Result<(), BleTransportError> {
+            unsafe { start_stack()? };
+            if advertising_may_be_active() {
+                let stop_ret = unsafe { esp_ble_gap_stop_advertising() };
+                LAST_ADV_STOP_RETURN.store(stop_ret, Ordering::SeqCst);
+                if stop_ret != ESP_OK && stop_ret != ESP_ERR_INVALID_STATE {
+                    LAST_STOP_PERSONA_RETURN.store(stop_ret, Ordering::SeqCst);
+                    return esp_result(stop_ret);
+                }
+            }
+
+            let dev = HID_DEV.swap(ptr::null_mut(), Ordering::SeqCst);
+            if !dev.is_null() {
+                let deinit_ret = unsafe { esp_hidd_dev_deinit(dev) };
+                LAST_STOP_PERSONA_RETURN.store(deinit_ret, Ordering::SeqCst);
+                if deinit_ret != ESP_OK {
+                    HID_DEV.store(dev, Ordering::SeqCst);
+                    return esp_result(deinit_ret);
+                }
+            } else {
+                LAST_STOP_PERSONA_RETURN.store(ESP_OK, Ordering::SeqCst);
+            }
+
+            self.active_persona = None;
+            self.active_variant = None;
+            self.report_map.clear();
+            BLE_OWNER.store(OWNER_NONE, Ordering::SeqCst);
+            SMOKE_ACTIVE.store(false, Ordering::SeqCst);
+            SMOKE_STATE.store(SMOKE_STATE_IDLE, Ordering::SeqCst);
+            LINK_STATE.store(STATE_IDLE, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn disconnect_host(&mut self) -> Result<(), BleTransportError> {
+            LAST_DISCONNECT_HOST_RETURN.store(i32::MIN, Ordering::SeqCst);
+            Err(BleTransportError::Generic)
         }
 
         fn start_adv_smoke_test(&mut self, name: &str) -> Result<(), BleTransportError> {
@@ -614,6 +744,103 @@ mod target {
                 IDENTITY_STOPPED_BEFORE_CHANGE.load(Ordering::SeqCst),
                 option_i32(LAST_SET_RAND_ADDR_RETURN.load(Ordering::SeqCst))
             )
+        }
+
+        fn connection_info_json(&self) -> String {
+            let dev = HID_DEV.load(Ordering::SeqCst);
+            let connected = !dev.is_null() && unsafe { esp_hidd_dev_connected(dev) };
+            let last_input_return = LAST_INPUT_SET_RETURN.load(Ordering::SeqCst);
+            let last_report_send_status = if last_input_return == i32::MAX {
+                "never_sent"
+            } else if last_input_return == ESP_OK {
+                "ok"
+            } else {
+                "error"
+            };
+            serde_json::json!({
+                "supported": true,
+                "target": "esp32",
+                "active_persona": self.active_persona.map(|persona| persona.0),
+                "active_variant": self.active_variant.map(|variant| variant.id()),
+                "identity_strategy": self.identity_strategy.id(),
+                "current_address": self.identity_current_address().map(format_ble_address),
+                "address_type": self.identity_address_type(),
+                "connection_state": format!("{:?}", self.current_state()),
+                "connected": connected,
+                "connected_host_address": null,
+                "hidd_connect_count": HIDD_CONNECT_COUNT.load(Ordering::SeqCst),
+                "hidd_disconnect_count": HIDD_DISCONNECT_COUNT.load(Ordering::SeqCst),
+                "hidd_stop_count": HIDD_STOP_COUNT.load(Ordering::SeqCst),
+                "last_disconnect_reason": "unknown",
+                "notification_ready": if connected { "unknown" } else { "false" },
+                "last_report_send_status": last_report_send_status,
+                "last_report_send_return": optional_i32_value(last_input_return),
+                "last_report_id": optional_u32_value(LAST_INPUT_REPORT_ID.load(Ordering::SeqCst)),
+                "last_report_len": LAST_INPUT_REPORT_LEN.load(Ordering::SeqCst),
+                "publish_attempt_count": PUBLISH_ATTEMPT_COUNT.load(Ordering::SeqCst),
+                "publish_ok_count": PUBLISH_OK_COUNT.load(Ordering::SeqCst),
+                "publish_not_connected_count": PUBLISH_NOT_CONNECTED_COUNT.load(Ordering::SeqCst),
+                "publish_persona_mismatch_count": PUBLISH_PERSONA_MISMATCH_COUNT.load(Ordering::SeqCst),
+                "last_stop_persona_return": optional_i32_value(LAST_STOP_PERSONA_RETURN.load(Ordering::SeqCst)),
+                "disconnect_supported": false,
+                "last_disconnect_host_return": optional_i32_value(LAST_DISCONNECT_HOST_RETURN.load(Ordering::SeqCst)),
+                "stop_persona_supported": true,
+            })
+            .to_string()
+        }
+
+        fn bond_info_json(&self) -> String {
+            let mut addresses = Vec::new();
+            let mut list_return = i32::MAX;
+            let stack_started = unsafe { start_stack().is_ok() };
+            let count = if stack_started {
+                unsafe { esp_ble_get_bond_device_num() }
+            } else {
+                -1
+            };
+
+            if count > 0 {
+                let mut devices = vec![esp_ble_bond_dev_t::default(); count as usize];
+                let mut dev_num = count;
+                list_return =
+                    unsafe { esp_ble_get_bond_device_list(&mut dev_num, devices.as_mut_ptr()) };
+                if list_return == ESP_OK {
+                    addresses.extend(
+                        devices
+                            .iter()
+                            .take(dev_num as usize)
+                            .map(|dev| format_ble_address(dev.bd_addr)),
+                    );
+                }
+            }
+
+            serde_json::json!({
+                "supported": true,
+                "target": "esp32",
+                "stack_started": stack_started,
+                "bond_count": if count >= 0 { count } else { 0 },
+                "bonds_present": count > 0,
+                "bonded_device_addresses": addresses,
+                "bond_list_return": optional_i32_value(list_return),
+                "last_auth_complete_status": "unknown",
+                "last_auth_complete_bonded": "unknown",
+                "last_security_event": "unknown",
+                "last_encryption_status": "unknown",
+                "forget_bonds_completed": "unknown",
+                "last_clear_bond_status": "unknown",
+                "host_connected_encrypted": "unknown",
+                "host_connected_authenticated": "unknown",
+                "host_connected_bonded": "unknown",
+                "security_parameters": {
+                    "auth_request": "bond",
+                    "io_capability": "none",
+                    "key_size": 16,
+                    "init_key_mask": "enc|id",
+                    "rsp_key_mask": "enc|id",
+                    "secure_connections": false
+                }
+            })
+            .to_string()
         }
 
         fn identity_current_address(&self) -> Option<[u8; 6]> {
@@ -1363,6 +1590,22 @@ mod target {
             "null".to_string()
         } else {
             value.to_string()
+        }
+    }
+
+    fn optional_i32_value(value: i32) -> serde_json::Value {
+        if value == i32::MAX {
+            serde_json::Value::Null
+        } else {
+            serde_json::json!(value)
+        }
+    }
+
+    fn optional_u32_value(value: u32) -> serde_json::Value {
+        if value == u32::MAX {
+            serde_json::Value::Null
+        } else {
+            serde_json::json!(value)
         }
     }
 

@@ -233,8 +233,12 @@ where
             | ControlCommand::SendXboxSelfTestReport
             | ControlCommand::PublishXboxTestReport(_)
             | ControlCommand::ForgetBleBonds
+            | ControlCommand::StopBlePersona
+            | ControlCommand::DisconnectBleHost
             | ControlCommand::ListBleIdentityStrategies
             | ControlCommand::GetBleIdentityInfo
+            | ControlCommand::GetBleConnectionInfo
+            | ControlCommand::GetBleBondInfo
             | ControlCommand::SetBleIdentityStrategy(_)
             | ControlCommand::GetBleAdvertisingInfo
             | ControlCommand::StartBleGenericGamepadVariant(_)

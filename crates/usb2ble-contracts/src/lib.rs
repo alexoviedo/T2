@@ -865,6 +865,16 @@ pub trait BleTransport {
     /// Clear all stored bonding information.
     fn forget_bonds(&mut self) -> Result<(), BleTransportError>;
 
+    /// Stop the active BLE persona without erasing bonds.
+    fn stop_persona(&mut self) -> Result<(), BleTransportError> {
+        Err(BleTransportError::Generic)
+    }
+
+    /// Disconnect the current BLE HID host without erasing bonds.
+    fn disconnect_host(&mut self) -> Result<(), BleTransportError> {
+        Err(BleTransportError::Generic)
+    }
+
     /// Set the requested BLE identity strategy.
     fn set_identity_strategy(
         &mut self,
@@ -885,6 +895,16 @@ pub trait BleTransport {
     /// Return target BLE identity diagnostics as JSON.
     fn identity_info_json(&self) -> String {
         "{\"supported\":false,\"strategy\":\"legacy_public\"}".to_string()
+    }
+
+    /// Return target BLE connection/report-delivery diagnostics as JSON.
+    fn connection_info_json(&self) -> String {
+        "{\"supported\":false}".to_string()
+    }
+
+    /// Return target BLE bond/security diagnostics as JSON.
+    fn bond_info_json(&self) -> String {
+        "{\"supported\":false}".to_string()
     }
 
     /// Return the current target BLE address, when available.
@@ -1432,10 +1452,18 @@ pub enum ControlCommand {
     PublishXboxTestReport(String),
     /// Clear BLE bond data.
     ForgetBleBonds,
+    /// Stop the active BLE persona without clearing bonds.
+    StopBlePersona,
+    /// Disconnect the current BLE HID host without clearing bonds.
+    DisconnectBleHost,
     /// List runtime BLE identity strategies known to the firmware.
     ListBleIdentityStrategies,
     /// Request runtime BLE identity diagnostics as JSON.
     GetBleIdentityInfo,
+    /// Request BLE connection/report-delivery diagnostics as JSON.
+    GetBleConnectionInfo,
+    /// Request BLE bond/security diagnostics as JSON.
+    GetBleBondInfo,
     /// Set the runtime BLE identity strategy.
     SetBleIdentityStrategy(String),
     /// Request intended BLE advertising/security configuration.
