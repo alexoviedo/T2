@@ -203,6 +203,28 @@ impl ControlPlane for SerialControlPlane {
         if s == "START_CONFIGURED" {
             return Ok(ControlCommand::StartConfigured);
         }
+        if s == "GET_STARTUP_BLE_CONFIG" {
+            return Ok(ControlCommand::GetStartupBleConfig);
+        }
+        if let Some(rest) = s.strip_prefix("ENABLE_STARTUP_BLE ") {
+            let enabled = parse_bool(rest.trim()).ok_or(ControlError::Generic)?;
+            return Ok(ControlCommand::SetStartupBleEnabled(enabled));
+        }
+        if let Some(rest) = s.strip_prefix("SET_STARTUP_BLE_PERSONA ") {
+            return Ok(ControlCommand::SetStartupBlePersona(
+                rest.trim().to_string(),
+            ));
+        }
+        if let Some(rest) = s.strip_prefix("SET_STARTUP_BLE_IDENTITY_STRATEGY ") {
+            return Ok(ControlCommand::SetStartupBleIdentityStrategy(
+                rest.trim().to_string(),
+            ));
+        }
+        if let Some(rest) = s.strip_prefix("SET_STARTUP_BLE_VARIANT ") {
+            return Ok(ControlCommand::SetStartupBleVariant(
+                rest.trim().to_string(),
+            ));
+        }
         if s == "START_VIRTUAL_INPUT" {
             return Ok(ControlCommand::StartVirtualInput);
         }
@@ -442,11 +464,27 @@ fn encode_config_status(out: &mut String, resp: &usb2ble_contracts::ConfigStatus
     let _ = write!(out, "persona={};", resp.selected_persona);
     let _ = write!(out, "profile={};", resp.selected_profile);
     let _ = write!(out, "mappings={};", resp.mappings);
+    let _ = write!(out, "startup_ble_enabled={};", resp.startup_ble_enabled);
+    let _ = write!(out, "startup_ble_persona={};", resp.startup_ble_persona);
+    let _ = write!(
+        out,
+        "startup_ble_identity_strategy={};",
+        resp.startup_ble_identity_strategy
+    );
+    let _ = write!(out, "startup_ble_variant={};", resp.startup_ble_variant);
     let _ = write!(out, "import_active={};", resp.import_active);
     if let Some(last_error) = resp.last_error {
         let _ = write!(out, "last_error={last_error};");
     } else {
         out.push_str("last_error=none;");
+    }
+}
+
+fn parse_bool(value: &str) -> Option<bool> {
+    match value {
+        "true" | "1" | "on" | "enabled" => Some(true),
+        "false" | "0" | "off" | "disabled" => Some(false),
+        _ => None,
     }
 }
 
@@ -961,6 +999,47 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_startup_ble_config_commands() {
+        let cp = SerialControlPlane::new();
+
+        assert_eq!(
+            cp.decode_command(b"GET_STARTUP_BLE_CONFIG").unwrap(),
+            ControlCommand::GetStartupBleConfig
+        );
+        assert_eq!(
+            cp.decode_command(b"ENABLE_STARTUP_BLE true").unwrap(),
+            ControlCommand::SetStartupBleEnabled(true)
+        );
+        assert_eq!(
+            cp.decode_command(b"ENABLE_STARTUP_BLE off").unwrap(),
+            ControlCommand::SetStartupBleEnabled(false)
+        );
+        assert_eq!(
+            cp.decode_command(b"ENABLE_STARTUP_BLE maybe").unwrap_err(),
+            ControlError::Generic
+        );
+        assert_eq!(
+            cp.decode_command(b"SET_STARTUP_BLE_PERSONA xbox_wireless_controller")
+                .unwrap(),
+            ControlCommand::SetStartupBlePersona("xbox_wireless_controller".to_string())
+        );
+        assert_eq!(
+            cp.decode_command(
+                b"SET_STARTUP_BLE_IDENTITY_STRATEGY persona_static_random_experimental"
+            )
+            .unwrap(),
+            ControlCommand::SetStartupBleIdentityStrategy(
+                "persona_static_random_experimental".to_string()
+            )
+        );
+        assert_eq!(
+            cp.decode_command(b"SET_STARTUP_BLE_VARIANT xbox_compatibility")
+                .unwrap(),
+            ControlCommand::SetStartupBleVariant("xbox_compatibility".to_string())
+        );
+    }
+
+    #[test]
     #[allow(clippy::too_many_lines)]
     fn test_encode_m2_responses() {
         use usb2ble_contracts::{
@@ -1220,11 +1299,15 @@ mod tests {
             mappings: 4,
             import_active: false,
             last_error: None,
+            startup_ble_enabled: true,
+            startup_ble_persona: "xbox_wireless_controller".to_string(),
+            startup_ble_identity_strategy: "persona_static_random_experimental".to_string(),
+            startup_ble_variant: "xbox_compatibility".to_string(),
         });
         let bytes = cp.encode_response(&status).unwrap();
         assert_eq!(
             std::str::from_utf8(&bytes).unwrap(),
-            "CONFIG_STATUS:valid=true;source=runtime;persona=xbox_wireless_controller;profile=custom_runtime;mappings=4;import_active=false;last_error=none;\n"
+            "CONFIG_STATUS:valid=true;source=runtime;persona=xbox_wireless_controller;profile=custom_runtime;mappings=4;startup_ble_enabled=true;startup_ble_persona=xbox_wireless_controller;startup_ble_identity_strategy=persona_static_random_experimental;startup_ble_variant=xbox_compatibility;import_active=false;last_error=none;\n"
         );
 
         let json = ControlResponse::Json(usb2ble_contracts::JsonResponse {

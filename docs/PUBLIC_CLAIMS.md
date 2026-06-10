@@ -69,6 +69,14 @@ These claims are supported by checked-in evidence:
   cleanup. This is a narrow single-PC diagnostic: direct host disconnect remains
   unsupported, runtime identity/persona still do not persist across reset, and
   durable BLE bond persistence is not fully proven.
+- On Alex's Windows PC, explicit persisted startup BLE config for the
+  single-persona Xbox path can restore the Xbox address/persona and XInput
+  deterministic report delivery after target soft reset and an operator-assisted
+  ESP32-S3 serial USB power-cycle, without Windows remove/re-pair or serial
+  persona reapply. Startup BLE remains disabled by default, and
+  `persona_static_random_experimental` remains explicit and non-default. This is
+  still not broad Windows/game compatibility and not full durable BLE bond
+  persistence.
 
 ## Forbidden Overclaims
 
@@ -82,6 +90,8 @@ Do not claim any of these until matching checked-in evidence exists:
 - physical Xbox host-visible refined Flight Pack movement from real USB input,
 - complete Xbox standard button layout, including stick-press buttons,
 - BLE bond persistence or reconnect robustness,
+- broad power-cycle/reconnect robustness beyond the named single-PC Xbox
+  startup witness,
 - cache-free Windows persona switching or Generic/U6/Xbox coexistence,
 - final product-quality calibration or deadzone feel,
 - broad host/browser support,

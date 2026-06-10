@@ -92,12 +92,25 @@ not itself compatibility evidence.
   `DISCONNECT_BLE_HOST` remains unsupported, runtime identity/persona still do
   not persist across reset, and durable BLE bond persistence is not fully
   proven.
+- 2026-06-09:
+  `docs/milestone-evidence/WINDOWS_XBOX_STARTUP_RECONNECT_WITNESS_2026-06-09.md`
+  records explicit persisted startup BLE config for the single-persona Xbox
+  path. With startup BLE enabled for Xbox plus
+  `persona_static_random_experimental`, target soft reset and an
+  operator-assisted ESP32-S3 serial USB power-cycle both restored the Xbox
+  persona/address without serial strategy/persona reapply or Windows
+  remove/re-pair. A one-time startup warm restart landed the ESP-IDF HIDD path
+  in the known-good report-delivery state, and deterministic reports moved
+  XInput after both reset paths. Direct `DISCONNECT_BLE_HOST`, deeper
+  auth/encryption telemetry, durable BLE bond persistence, and post-reset
+  app/game behavior remain unproven.
 - The next Windows hardware chunk should build from the single-persona Xbox
-  path, with the reset/reapply report-delivery path preserved. The next gap is
-  persistent user-selected Xbox startup and deeper bond/security/disconnect
-  telemetry, not cache-free Generic/U6/Xbox switching. Do not treat advertisement
-  visibility, apparent XInput connection, or PnP presence as app/game
-  compatibility, durable bond persistence, or cache-free switching evidence.
+  path, with explicit startup reconnect/report delivery preserved. The next gap
+  is deeper bond/security/disconnect telemetry or a post-reset app/game
+  micro-smoke, not cache-free Generic/U6/Xbox switching. Do not treat
+  advertisement visibility, apparent XInput connection, or PnP presence as
+  app/game compatibility, durable bond persistence, or cache-free switching
+  evidence.
 
 ## Hardware Setup
 

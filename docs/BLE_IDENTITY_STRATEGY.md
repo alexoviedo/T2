@@ -80,6 +80,19 @@ SET_BLE_IDENTITY_STRATEGY legacy_public
 SET_BLE_IDENTITY_STRATEGY persona_static_random_experimental
 ```
 
+The identity strategy can also be placed in the opt-in persisted startup BLE
+configuration:
+
+```text
+SET_STARTUP_BLE_IDENTITY_STRATEGY persona_static_random_experimental
+ENABLE_STARTUP_BLE true
+SAVE_CONFIG
+```
+
+That configuration is disabled by default. It exists so a user-selected
+single-persona workflow can boot directly into a tested mode without changing
+the global default identity behavior.
+
 Experimental address intents:
 
 | Persona | Address intent |
@@ -164,16 +177,34 @@ single-persona Xbox reconnect/report-delivery path on Alex's PC, but it still
 does not prove durable BLE bond persistence, power-cycle behavior, or automatic
 persona/identity persistence.
 
+The later 2026-06-09 startup reconnect witness added explicit persisted startup
+BLE config. With startup BLE enabled for Xbox plus
+`persona_static_random_experimental`, target soft reset and an
+operator-assisted ESP32-S3 serial USB power-cycle both restored the same Xbox
+address/persona without serial reapply, and deterministic reports moved Windows
+XInput after a one-time startup warm restart:
+
+```text
+startup_ble_enabled=true
+current_address=CB:B3:AE:FA:FC:EF
+warm_restart_attempted=true
+warm_restart_applied=true
+last_report_send_status=ok
+publish_ok_count=18
+```
+
+This is still explicit single-persona Xbox evidence on Alex's PC. It does not
+make static-random identity the default and it does not prove cache-free
+multi-persona switching or durable BLE bond persistence.
+
 This still needs explicit evidence or fixes for:
 
 - A controlled no-removal Windows pairing matrix that captures the exact blocker
   when the previous persona is left paired.
 - Deeper BLE security/bond event telemetry beyond the current ESP-IDF bond
   count/list.
-- Persistent explicit Xbox startup after reset if product workflow needs it.
 - True host disconnect/reconnect support, or a documented unsupported status for
   this ESP-IDF HIDD layer.
-- Power-cycle behavior without Windows cache cleanup.
 - Whether host caches can be managed without creating stale device clutter.
 - Whether existing macOS Generic/Xbox live bridge evidence remains preserved.
 
@@ -190,7 +221,9 @@ Do not make per-persona addresses the default without a dedicated witness run.
   see
   `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_DIAGNOSTIC_2026-06-04.md`
   and the follow-up
-  `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_FIX_DIAGNOSTIC_2026-06-09.md`.
+  `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_FIX_DIAGNOSTIC_2026-06-09.md`;
+  startup reset/power-cycle evidence for the single-persona Xbox path is in
+  `docs/milestone-evidence/WINDOWS_XBOX_STARTUP_RECONNECT_WITNESS_2026-06-09.md`.
 - It does not prove physical HOTAS movement.
 - It does not prove broad Windows, game/app, Xbox console, or proprietary Xbox
   Wireless compatibility.

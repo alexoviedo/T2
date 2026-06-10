@@ -36,6 +36,8 @@ const DEFAULT_BRIDGE_RATE_HZ: u16 = 50;
 const MIN_BRIDGE_RATE_HZ: u16 = 1;
 const MAX_BRIDGE_RATE_HZ: u16 = 200;
 const BRIDGE_HEARTBEAT_MS: u64 = 1_000;
+const STARTUP_BLE_DELAY_MS: u64 = 2_500;
+const STARTUP_BLE_WARM_RESTART_DELAY_MS: u64 = 2_500;
 
 #[derive(Debug, Default)]
 struct SelfTestState {
@@ -89,6 +91,16 @@ impl Default for SmokeAdvRuntime {
             requested_name: "USB2BLE_ADV_TEST".to_string(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+struct StartupBleRuntime {
+    attempted: bool,
+    applied: bool,
+    warm_restart_attempted: bool,
+    warm_restart_applied: bool,
+    last_action: Option<&'static str>,
+    last_error: Option<String>,
 }
 
 #[derive(Debug)]
@@ -376,7 +388,12 @@ pub fn main() {
     let mut bridge = BridgeRuntime::new();
     let mut config_import = ConfigImportRuntime::default();
     let mut smoke_adv = SmokeAdvRuntime::default();
+    let mut startup_ble = StartupBleRuntime::default();
     let bridge_clock = std::time::Instant::now();
+    let startup_ble_due_at = app.runtime_config().startup_ble.enabled.then(|| {
+        std::time::Instant::now() + std::time::Duration::from_millis(STARTUP_BLE_DELAY_MS)
+    });
+    let mut startup_ble_warm_restart_due_at: Option<std::time::Instant> = None;
 
     // 4. Print startup banner
     platform::trace_printf(b"--- USB2BLE FIRMWARE BOOT ---\n\0");
@@ -399,6 +416,45 @@ pub fn main() {
         }
         #[cfg(not(target_os = "espidf"))]
         usb.service_host();
+
+        if let Some(due_at) = startup_ble_due_at
+            && !startup_ble.attempted
+            && std::time::Instant::now() >= due_at
+        {
+            apply_startup_ble_config(
+                &mut app,
+                &mut ble,
+                &generic_encoder,
+                &xbox_encoder,
+                &mut bridge,
+                &mut smoke_adv,
+                &mut startup_ble,
+            );
+            write_startup_ble_outcome(&uart, &startup_ble);
+            if startup_ble.applied {
+                startup_ble_warm_restart_due_at = Some(
+                    std::time::Instant::now()
+                        + std::time::Duration::from_millis(STARTUP_BLE_WARM_RESTART_DELAY_MS),
+                );
+            }
+        }
+
+        if let Some(due_at) = startup_ble_warm_restart_due_at
+            && !startup_ble.warm_restart_attempted
+            && std::time::Instant::now() >= due_at
+        {
+            warm_restart_startup_ble_config(
+                &mut app,
+                &mut ble,
+                &generic_encoder,
+                &xbox_encoder,
+                &mut bridge,
+                &mut smoke_adv,
+                &mut startup_ble,
+            );
+            write_startup_ble_outcome(&uart, &startup_ble);
+            startup_ble_warm_restart_due_at = None;
+        }
 
         // Poll USB events
         let mut bridge_polled_this_loop = false;
@@ -514,6 +570,7 @@ pub fn main() {
                             &mut bridge,
                             &mut config_import,
                             &mut smoke_adv,
+                            &mut startup_ble,
                         );
                         if let Ok(resp_bytes) = control.encode_response(&resp) {
                             uart.write_all(&resp_bytes);
@@ -552,6 +609,138 @@ fn elapsed_ms(start: std::time::Instant) -> u64 {
     start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
 }
 
+fn apply_startup_ble_config<S>(
+    app: &mut App<S>,
+    ble: &mut impl BleTransport,
+    generic_encoder: &impl PersonaEncoder,
+    xbox_encoder: &impl PersonaEncoder,
+    bridge: &mut BridgeRuntime,
+    smoke_adv: &mut SmokeAdvRuntime,
+    startup_ble: &mut StartupBleRuntime,
+) where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    let config = app.runtime_config().startup_ble.clone();
+    if !config.enabled {
+        *startup_ble = StartupBleRuntime::default();
+        app.set_ble_state(ble.current_state());
+        return;
+    }
+
+    startup_ble.attempted = true;
+    startup_ble.applied = false;
+    startup_ble.last_action = Some("startup_ble");
+    startup_ble.last_error = None;
+
+    bridge.stop();
+    stop_smoke_before_persona(ble, smoke_adv);
+
+    let Some(strategy) = BleIdentityStrategy::from_id(&config.identity_strategy) else {
+        startup_ble.last_error = Some("unknown_identity_strategy".to_string());
+        app.set_ble_state(ble.current_state());
+        return;
+    };
+    if let Err(err) = ble.set_identity_strategy(strategy) {
+        startup_ble.last_error = Some(format!("identity_strategy:{err:?}"));
+        app.set_ble_state(ble.current_state());
+        return;
+    }
+
+    match start_ble_persona_from_startup_config(app, ble, generic_encoder, xbox_encoder, &config) {
+        ControlResponse::BleAction(_) => {
+            startup_ble.applied = true;
+            startup_ble.last_error = None;
+        }
+        ControlResponse::Error(err) => {
+            startup_ble.last_error = Some(format!("start:{err:?}"));
+        }
+        _ => {
+            startup_ble.last_error = Some("unexpected_response".to_string());
+        }
+    }
+    app.set_ble_state(ble.current_state());
+}
+
+fn warm_restart_startup_ble_config<S>(
+    app: &mut App<S>,
+    ble: &mut impl BleTransport,
+    generic_encoder: &impl PersonaEncoder,
+    xbox_encoder: &impl PersonaEncoder,
+    bridge: &mut BridgeRuntime,
+    smoke_adv: &mut SmokeAdvRuntime,
+    startup_ble: &mut StartupBleRuntime,
+) where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    if !startup_ble.applied || startup_ble.warm_restart_attempted {
+        return;
+    }
+
+    startup_ble.warm_restart_attempted = true;
+    startup_ble.warm_restart_applied = false;
+    startup_ble.last_action = Some("startup_ble_warm_restart");
+    startup_ble.last_error = None;
+
+    let config = app.runtime_config().startup_ble.clone();
+    let Ok(persona_id) = persona_id_from_config(&config.persona) else {
+        startup_ble.last_error = Some("warm_unknown_persona".to_string());
+        return;
+    };
+    if app.state().active_persona != Some(persona_id) {
+        startup_ble.last_error = Some("warm_persona_changed".to_string());
+        app.set_ble_state(ble.current_state());
+        return;
+    }
+
+    bridge.stop();
+    stop_smoke_before_persona(ble, smoke_adv);
+    let _ = app.handle_control_command(&ControlCommand::StopVirtualInput);
+
+    if let Err(err) = ble.stop_persona() {
+        startup_ble.last_error = Some(format!("warm_stop:{err:?}"));
+        app.set_ble_state(ble.current_state());
+        return;
+    }
+    app.set_active_persona(None);
+    app.set_active_ble_variant(None);
+    app.set_ble_state(ble.current_state());
+
+    match start_ble_persona_from_startup_config(app, ble, generic_encoder, xbox_encoder, &config) {
+        ControlResponse::BleAction(_) => {
+            startup_ble.warm_restart_applied = true;
+            startup_ble.last_error = None;
+        }
+        ControlResponse::Error(err) => {
+            startup_ble.last_error = Some(format!("warm_start:{err:?}"));
+        }
+        _ => {
+            startup_ble.last_error = Some("warm_unexpected_response".to_string());
+        }
+    }
+    app.set_ble_state(ble.current_state());
+}
+
+fn write_startup_ble_outcome(uart: &Uart, startup_ble: &StartupBleRuntime) {
+    if !startup_ble.attempted {
+        return;
+    }
+    let error = startup_ble.last_error.as_deref().unwrap_or("none");
+    uart.write_all(
+        format!(
+            "[STARTUP_BLE] attempted=true;applied={};warm_restart_attempted={};warm_restart_applied={};last_action={};last_error={error};\n",
+            startup_ble.applied,
+            startup_ble.warm_restart_attempted,
+            startup_ble.warm_restart_applied,
+            startup_ble.last_action.unwrap_or("none")
+        )
+        .as_bytes(),
+    );
+}
+
 fn write_bridge_poll_outcome(uart: &Uart, outcome: BridgePollOutcome) {
     match outcome {
         BridgePollOutcome::Noop => {}
@@ -587,6 +776,7 @@ fn handle_control_command<S>(
     bridge: &mut BridgeRuntime,
     config_import: &mut ConfigImportRuntime,
     smoke_adv: &mut SmokeAdvRuntime,
+    startup_ble: &mut StartupBleRuntime,
 ) -> ControlResponse
 where
     S: usb2ble_contracts::ProfileStore
@@ -691,7 +881,9 @@ where
             prefix: "BLE_IDENTITY_INFO_JSON",
             json: ble.identity_info_json(),
         }),
-        ControlCommand::GetBleConnectionInfo => ble_connection_info_json(app, ble, bridge),
+        ControlCommand::GetBleConnectionInfo => {
+            ble_connection_info_json(app, ble, bridge, startup_ble)
+        }
         ControlCommand::GetBleBondInfo => ControlResponse::Json(JsonResponse {
             prefix: "BLE_BOND_INFO_JSON",
             json: ble.bond_info_json(),
@@ -801,6 +993,7 @@ where
         ControlCommand::StartConfigured => {
             start_configured(app, ble, generic_encoder, xbox_encoder, bridge)
         }
+        ControlCommand::GetStartupBleConfig => startup_ble_config_json(app, startup_ble),
         _ => app.handle_control_command(cmd),
     };
 
@@ -850,6 +1043,7 @@ fn ble_connection_info_json<S>(
     app: &mut App<S>,
     ble: &impl BleTransport,
     bridge: &BridgeRuntime,
+    startup_ble: &StartupBleRuntime,
 ) -> ControlResponse
 where
     S: usb2ble_contracts::ProfileStore
@@ -896,10 +1090,46 @@ where
                 "current_input_source": input_source,
             },
             "virtual_input": virtual_input,
+            "startup_ble": startup_ble_status_value(app, startup_ble),
             "deterministic_xbox_reports_allowed": active_persona
                 == Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID),
         })
         .to_string(),
+    })
+}
+
+fn startup_ble_config_json<S>(app: &App<S>, startup_ble: &StartupBleRuntime) -> ControlResponse
+where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    ControlResponse::Json(JsonResponse {
+        prefix: "STARTUP_BLE_CONFIG_JSON",
+        json: startup_ble_status_value(app, startup_ble).to_string(),
+    })
+}
+
+fn startup_ble_status_value<S>(app: &App<S>, startup_ble: &StartupBleRuntime) -> serde_json::Value
+where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    let config = &app.runtime_config().startup_ble;
+    serde_json::json!({
+        "enabled": config.enabled,
+        "persona": config.persona,
+        "identity_strategy": config.identity_strategy,
+        "compatibility_variant": config.compatibility_variant,
+        "runtime": {
+            "attempted": startup_ble.attempted,
+            "applied": startup_ble.applied,
+            "warm_restart_attempted": startup_ble.warm_restart_attempted,
+            "warm_restart_applied": startup_ble.warm_restart_applied,
+            "last_action": startup_ble.last_action,
+            "last_error": startup_ble.last_error,
+        }
     })
 }
 
@@ -1409,6 +1639,66 @@ where
     )
 }
 
+fn start_ble_persona_from_startup_config<S>(
+    app: &mut App<S>,
+    ble: &mut impl BleTransport,
+    generic_encoder: &impl PersonaEncoder,
+    xbox_encoder: &impl PersonaEncoder,
+    config: &usb2ble_contracts::StartupBleRuntimeConfig,
+) -> ControlResponse
+where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    let persona_id = match persona_id_from_config(&config.persona) {
+        Ok(persona_id) => persona_id,
+        Err(err) => return ControlResponse::Error(err),
+    };
+    let Some(variant) = BleCompatibilityVariant::from_id(&config.compatibility_variant) else {
+        return ControlResponse::Error(ControlError::UnknownProfile);
+    };
+
+    if persona_id == XBOX_WIRELESS_CONTROLLER_PERSONA_ID {
+        if variant != BleCompatibilityVariant::XboxCompatibility {
+            return ControlResponse::Error(ControlError::PersonaMismatch);
+        }
+        return start_ble_persona(
+            app,
+            ble,
+            xbox_encoder,
+            XBOX_WIRELESS_CONTROLLER_PERSONA_ID,
+            None,
+            "startup_ble",
+        );
+    }
+
+    if persona_id == GENERIC_GAMEPAD_PERSONA_ID {
+        return match variant {
+            BleCompatibilityVariant::GenericDefault
+            | BleCompatibilityVariant::GenericHogpStrict => start_ble_persona(
+                app,
+                ble,
+                generic_encoder,
+                GENERIC_GAMEPAD_PERSONA_ID,
+                Some(variant),
+                "startup_ble",
+            ),
+            BleCompatibilityVariant::GenericUnsigned6Axis => start_ble_persona(
+                app,
+                ble,
+                &GenericUnsigned6AxisEncoder,
+                GENERIC_GAMEPAD_PERSONA_ID,
+                None,
+                "startup_ble",
+            ),
+            _ => ControlResponse::Error(ControlError::PersonaMismatch),
+        };
+    }
+
+    ControlResponse::Error(ControlError::UnknownPersona)
+}
+
 fn start_configured<S>(
     app: &mut App<S>,
     ble: &mut impl BleTransport,
@@ -1657,6 +1947,7 @@ mod tests {
         bridge: BridgeRuntime,
         config_import: ConfigImportRuntime,
         smoke_adv: SmokeAdvRuntime,
+        startup_ble: StartupBleRuntime,
     }
 
     impl Runtime {
@@ -1670,6 +1961,7 @@ mod tests {
                 bridge: BridgeRuntime::new(),
                 config_import: ConfigImportRuntime::default(),
                 smoke_adv: SmokeAdvRuntime::default(),
+                startup_ble: StartupBleRuntime::default(),
             }
         }
 
@@ -1690,11 +1982,36 @@ mod tests {
                 &mut self.bridge,
                 &mut self.config_import,
                 &mut self.smoke_adv,
+                &mut self.startup_ble,
             )
         }
 
         fn poll_bridge(&mut self, now_ms: u64) -> BridgePollOutcome {
             self.bridge.poll(&self.app, &mut self.ble, now_ms)
+        }
+
+        fn apply_startup_ble_config(&mut self) {
+            apply_startup_ble_config(
+                &mut self.app,
+                &mut self.ble,
+                &self.generic_encoder,
+                &self.xbox_encoder,
+                &mut self.bridge,
+                &mut self.smoke_adv,
+                &mut self.startup_ble,
+            );
+        }
+
+        fn warm_restart_startup_ble_config(&mut self) {
+            warm_restart_startup_ble_config(
+                &mut self.app,
+                &mut self.ble,
+                &self.generic_encoder,
+                &self.xbox_encoder,
+                &mut self.bridge,
+                &mut self.smoke_adv,
+                &mut self.startup_ble,
+            );
         }
     }
 
@@ -1903,6 +2220,8 @@ mod tests {
                 assert_eq!(value["supported"], true);
                 assert_eq!(value["active_persona"], "xbox_wireless_controller");
                 assert_eq!(value["deterministic_xbox_reports_allowed"], true);
+                assert_eq!(value["startup_ble"]["enabled"], false);
+                assert_eq!(value["startup_ble"]["runtime"]["attempted"], false);
                 assert_eq!(value["transport"]["target"], "host_stub");
             }
             other => panic!("expected connection JSON, got {other:?}"),
@@ -1917,6 +2236,125 @@ mod tests {
             }
             other => panic!("expected bond JSON, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn startup_ble_default_is_disabled() {
+        let mut runtime = Runtime::new();
+
+        runtime.apply_startup_ble_config();
+
+        assert!(!runtime.startup_ble.attempted);
+        assert!(!runtime.startup_ble.applied);
+        assert_eq!(runtime.app.state().active_persona, None);
+        assert_eq!(
+            runtime.ble.identity_strategy(),
+            BleIdentityStrategy::LegacyPublic
+        );
+        match runtime.run(ControlCommand::GetStartupBleConfig) {
+            ControlResponse::Json(resp) => {
+                assert_eq!(resp.prefix, "STARTUP_BLE_CONFIG_JSON");
+                let value: serde_json::Value = serde_json::from_str(&resp.json).unwrap();
+                assert_eq!(value["enabled"], false);
+                assert_eq!(value["runtime"]["attempted"], false);
+            }
+            other => panic!("expected startup BLE JSON, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn startup_ble_xbox_config_starts_identity_and_reports() {
+        let mut runtime = Runtime::new();
+
+        assert_config_action(
+            runtime.run(ControlCommand::SetStartupBleIdentityStrategy(
+                "persona_static_random_experimental".to_string(),
+            )),
+            "set_startup_ble_identity_strategy",
+        );
+        assert_config_action(
+            runtime.run(ControlCommand::SetStartupBlePersona(
+                "xbox_wireless_controller".to_string(),
+            )),
+            "set_startup_ble_persona",
+        );
+        assert_config_action(
+            runtime.run(ControlCommand::SetStartupBleVariant(
+                "xbox_compatibility".to_string(),
+            )),
+            "set_startup_ble_variant",
+        );
+        assert_config_action(
+            runtime.run(ControlCommand::SetStartupBleEnabled(true)),
+            "set_startup_ble_enabled",
+        );
+
+        runtime.apply_startup_ble_config();
+
+        assert!(runtime.startup_ble.attempted);
+        assert!(runtime.startup_ble.applied);
+        assert_eq!(
+            runtime.app.state().active_persona,
+            Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID)
+        );
+        assert_eq!(
+            runtime.ble.identity_strategy(),
+            BleIdentityStrategy::PersonaStaticRandomExperimental
+        );
+        let report = assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxTestReport(
+                "left_stick_right".to_string(),
+            )),
+            "publish_xbox_test_report",
+        );
+        assert_eq!(report.persona_id, XBOX_WIRELESS_CONTROLLER_PERSONA_ID);
+        assert_eq!(&report.bytes[0..2], &u16::MAX.to_le_bytes());
+
+        match runtime.run(ControlCommand::GetBleConnectionInfo) {
+            ControlResponse::Json(resp) => {
+                let value: serde_json::Value = serde_json::from_str(&resp.json).unwrap();
+                assert_eq!(value["startup_ble"]["enabled"], true);
+                assert_eq!(value["startup_ble"]["runtime"]["attempted"], true);
+                assert_eq!(value["startup_ble"]["runtime"]["applied"], true);
+                assert_eq!(
+                    value["startup_ble"]["runtime"]["warm_restart_attempted"],
+                    false
+                );
+                assert_eq!(value["deterministic_xbox_reports_allowed"], true);
+            }
+            other => panic!("expected connection JSON, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn startup_ble_warm_restart_preserves_xbox_report_path() {
+        let mut runtime = Runtime::new();
+
+        assert_config_action(
+            runtime.run(ControlCommand::SetStartupBleIdentityStrategy(
+                "persona_static_random_experimental".to_string(),
+            )),
+            "set_startup_ble_identity_strategy",
+        );
+        assert_config_action(
+            runtime.run(ControlCommand::SetStartupBleEnabled(true)),
+            "set_startup_ble_enabled",
+        );
+        runtime.apply_startup_ble_config();
+        runtime.warm_restart_startup_ble_config();
+
+        assert!(runtime.startup_ble.warm_restart_attempted);
+        assert!(runtime.startup_ble.warm_restart_applied);
+        assert_eq!(
+            runtime.app.state().active_persona,
+            Some(XBOX_WIRELESS_CONTROLLER_PERSONA_ID)
+        );
+        assert_ble_report(
+            runtime.run(ControlCommand::PublishXboxTestReport(
+                "left_trigger_max".to_string(),
+            )),
+            "publish_xbox_test_report",
+        );
     }
 
     #[test]
@@ -2759,6 +3197,16 @@ mod tests {
                 assert!(resp.report.is_none());
             }
             other => panic!("expected BLE stop action, got {other:?}"),
+        }
+    }
+
+    fn assert_config_action(resp: ControlResponse, action: &str) {
+        match resp {
+            ControlResponse::ConfigAction(resp) => {
+                assert_eq!(resp.action, action);
+                assert_eq!(resp.state, "ok");
+            }
+            other => panic!("expected config action {action}, got {other:?}"),
         }
     }
 

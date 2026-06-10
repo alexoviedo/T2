@@ -12,11 +12,20 @@ model and chunk protocol instead of inventing a second format.
 - `selected_persona`: `generic_gamepad` or `xbox_wireless_controller`.
 - `selected_profile`: a built-in profile ID or `custom_runtime`.
 - `bridge`: `auto_start_persona`, `auto_start_bridge`, and `rate_hz`.
+- `startup_ble`: optional boot-time BLE persona startup, disabled by default.
 - `mappings`: source VID/PID/interface/control to target control rules.
 - per-rule `invert`, optional `deadzone`, and optional `axis_to_trigger`.
 
 If no valid config is stored, firmware keeps the existing built-in behavior.
 Built-in profiles remain available and are not removed by custom runtime config.
+
+`startup_ble` is explicit product workflow configuration, not a global default.
+When disabled, boot/reset behavior is unchanged and no BLE persona starts
+automatically. When enabled, firmware applies the configured BLE identity
+strategy and starts the configured BLE persona after boot. The initial supported
+startup target is the Xbox-compatible persona with `xbox_compatibility`; this
+lets a user opt into the already witnessed single-persona Xbox path without
+making `persona_static_random_experimental` the project default.
 
 ## Flight Pack Presets
 
@@ -45,6 +54,11 @@ RESET_CONFIG
 SAVE_CONFIG
 LOAD_CONFIG
 START_CONFIGURED
+GET_STARTUP_BLE_CONFIG
+ENABLE_STARTUP_BLE <true|false>
+SET_STARTUP_BLE_PERSONA <persona_id>
+SET_STARTUP_BLE_IDENTITY_STRATEGY <strategy_id>
+SET_STARTUP_BLE_VARIANT <variant_id>
 ```
 
 Import is validated before commit. Invalid JSON, schema mismatch, unknown
@@ -58,6 +72,16 @@ The `ConfigStore` trait now persists validated `RuntimeConfig`. Host tests use
 the in-memory store. ESP32-S3 target builds use ESP-IDF NVS via the platform
 crate. If stored config is missing or invalid, firmware falls back safely to the
 default runtime config and reports status through `GET_CONFIG_STATUS`.
+
+Startup BLE fields are persisted with the rest of runtime config. Existing
+schema-version-1 JSON that does not contain `startup_ble` remains valid; the
+field defaults to disabled with `legacy_public` identity strategy. `SAVE_CONFIG`
+is required for startup BLE settings to survive reset or power-cycle.
+
+The first hardware witness for this path is
+`docs/milestone-evidence/WINDOWS_XBOX_STARTUP_RECONNECT_WITNESS_2026-06-09.md`.
+It proves an explicit saved Xbox startup config on Alex's Windows PC, not a
+global default change and not broad Windows/game compatibility.
 
 ## Smoke Tool
 

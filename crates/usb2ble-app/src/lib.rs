@@ -3,10 +3,10 @@
 //! Responsible for orchestration and application state.
 
 use usb2ble_contracts::{
-    AppState, BleCompatibilityVariant, BleLinkState, BondStore, BridgeRuntimeConfig,
-    CONTRACT_VERSION, CUSTOM_RUNTIME_PROFILE_ID_STR, CompositeInputFrame, CompositeMerger,
-    ConfigActionResponse, ConfigStatusResponse, ConfigStore, ConnectionTopology, ControlCommand,
-    ControlError, ControlResponse, DescriptorKey, DeviceId, EncodedBleReport,
+    AppState, BleCompatibilityVariant, BleIdentityStrategy, BleLinkState, BondStore,
+    BridgeRuntimeConfig, CONTRACT_VERSION, CUSTOM_RUNTIME_PROFILE_ID_STR, CompositeInputFrame,
+    CompositeMerger, ConfigActionResponse, ConfigStatusResponse, ConfigStore, ConnectionTopology,
+    ControlCommand, ControlError, ControlResponse, DescriptorKey, DeviceId, EncodedBleReport,
     EncodedReportResponse, FLIGHT_PACK_DEMO_PROFILE_ID_STR, GENERIC_AUTO_PROFILE_ID_STR,
     GENERIC_GAMEPAD_PERSONA_ID_STR, HidDescriptorParser, HidReportDecoder, HidSummaryResponse,
     InfoResponse, InputCatalog, InputCatalogEntry, InputNormalizer, InterfaceId, JsonResponse,
@@ -14,8 +14,8 @@ use usb2ble_contracts::{
     NormalizedCompositeValue, NormalizedControlValue, NormalizedInputFrame,
     NormalizedInputResponse, PersonaEncoder, PersonaId, ProfileId, ProfileResponse, ProfileStore,
     RUNTIME_CONFIG_SCHEMA_VERSION, RuntimeConfig, RuntimeTransform, SourceMappingRule,
-    StatusResponse, UsbDescriptorResponse, UsbDeviceRef, UsbIngressEvent, UsbInterfaceRef,
-    UsbReportResponse, UsbStatusResponse, XBOX_AUTO_PROFILE_ID_STR,
+    StartupBleRuntimeConfig, StatusResponse, UsbDescriptorResponse, UsbDeviceRef, UsbIngressEvent,
+    UsbInterfaceRef, UsbReportResponse, UsbStatusResponse, XBOX_AUTO_PROFILE_ID_STR,
     XBOX_FLIGHT_PACK_DEMO_PROFILE_ID_STR, XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR,
 };
 use usb2ble_hid::{HidParser, summarize_capabilities};
@@ -201,6 +201,43 @@ where
                 }),
                 Err(err) => ControlResponse::Error(err),
             },
+            ControlCommand::GetStartupBleConfig => self.startup_ble_config_response(),
+            ControlCommand::SetStartupBleEnabled(enabled) => {
+                let mut next = self.runtime_config.startup_ble.clone();
+                next.enabled = *enabled;
+                self.set_startup_ble_config(
+                    next,
+                    "set_startup_ble_enabled",
+                    Some(format!("enabled={enabled};")),
+                )
+            }
+            ControlCommand::SetStartupBlePersona(persona) => {
+                let mut next = self.runtime_config.startup_ble.clone();
+                next.persona.clone_from(persona);
+                self.set_startup_ble_config(
+                    next,
+                    "set_startup_ble_persona",
+                    Some(format!("persona={persona};")),
+                )
+            }
+            ControlCommand::SetStartupBleIdentityStrategy(strategy) => {
+                let mut next = self.runtime_config.startup_ble.clone();
+                next.identity_strategy.clone_from(strategy);
+                self.set_startup_ble_config(
+                    next,
+                    "set_startup_ble_identity_strategy",
+                    Some(format!("identity_strategy={strategy};")),
+                )
+            }
+            ControlCommand::SetStartupBleVariant(variant) => {
+                let mut next = self.runtime_config.startup_ble.clone();
+                next.compatibility_variant.clone_from(variant);
+                self.set_startup_ble_config(
+                    next,
+                    "set_startup_ble_variant",
+                    Some(format!("variant={variant};")),
+                )
+            }
             ControlCommand::StartVirtualInput => {
                 self.virtual_input.enabled = true;
                 if self.virtual_input.frame.is_none() {
@@ -312,6 +349,18 @@ where
             mappings: self.runtime_config.mappings.len(),
             import_active,
             last_error: self.last_config_error,
+            startup_ble_enabled: self.runtime_config.startup_ble.enabled,
+            startup_ble_persona: self.runtime_config.startup_ble.persona.clone(),
+            startup_ble_identity_strategy: self
+                .runtime_config
+                .startup_ble
+                .identity_strategy
+                .clone(),
+            startup_ble_variant: self
+                .runtime_config
+                .startup_ble
+                .compatibility_variant
+                .clone(),
         }
     }
 
@@ -360,6 +409,41 @@ where
         self.last_config_error = None;
     }
 
+    fn set_startup_ble_config(
+        &mut self,
+        next: StartupBleRuntimeConfig,
+        action: &'static str,
+        detail: Option<String>,
+    ) -> ControlResponse {
+        let mut candidate = self.runtime_config.clone();
+        candidate.startup_ble = next;
+        match validate_runtime_config(&candidate) {
+            Ok(()) => {
+                self.runtime_config = candidate;
+                self.config_source = "runtime";
+                self.last_config_error = None;
+                ControlResponse::ConfigAction(ConfigActionResponse {
+                    action,
+                    state: "ok",
+                    detail,
+                })
+            }
+            Err(err) => ControlResponse::Error(err),
+        }
+    }
+
+    fn startup_ble_config_response(&self) -> ControlResponse {
+        serde_json::to_string(&self.runtime_config.startup_ble).map_or_else(
+            |_| ControlResponse::Error(ControlError::Generic),
+            |json| {
+                ControlResponse::Json(JsonResponse {
+                    prefix: "STARTUP_BLE_CONFIG_JSON",
+                    json,
+                })
+            },
+        )
+    }
+
     fn config_json_response(&self) -> ControlResponse {
         serde_json::to_string(&self.runtime_config).map_or_else(
             |_| ControlResponse::Error(ControlError::Generic),
@@ -391,6 +475,24 @@ where
                 "auto_start_persona": "bool",
                 "auto_start_bridge": "bool",
                 "rate_hz": { "min": 1, "max": 200, "default": 50 }
+            },
+            "startup_ble": {
+                "enabled": "bool",
+                "persona": [
+                    GENERIC_GAMEPAD_PERSONA_ID_STR,
+                    XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR
+                ],
+                "identity_strategy": [
+                    BleIdentityStrategy::LegacyPublic.id(),
+                    BleIdentityStrategy::PersonaStaticRandomExperimental.id()
+                ],
+                "compatibility_variant": [
+                    BleCompatibilityVariant::GenericDefault.id(),
+                    BleCompatibilityVariant::GenericHogpStrict.id(),
+                    BleCompatibilityVariant::GenericUnsigned6Axis.id(),
+                    BleCompatibilityVariant::XboxCompatibility.id()
+                ],
+                "default_enabled": false
             },
             "mapping_rule": {
                 "source_vendor_id": "u16|required",
@@ -901,6 +1003,7 @@ pub fn validate_runtime_config(config: &RuntimeConfig) -> Result<(), ControlErro
     }
     let persona = persona_id_from_alias(&config.selected_persona)?;
     validate_bridge_config(&config.bridge)?;
+    validate_startup_ble_config(&config.startup_ble)?;
     validate_profile_for_persona(&config.selected_profile, persona)?;
 
     if !config.uses_custom_mappings() {
@@ -970,6 +1073,28 @@ fn validate_bridge_config(config: &BridgeRuntimeConfig) -> Result<(), ControlErr
         Ok(())
     } else {
         Err(ControlError::InvalidBridgeRate)
+    }
+}
+
+fn validate_startup_ble_config(config: &StartupBleRuntimeConfig) -> Result<(), ControlError> {
+    let persona = persona_id_from_alias(&config.persona)?;
+    if BleIdentityStrategy::from_id(&config.identity_strategy).is_none() {
+        return Err(ControlError::Generic);
+    }
+    let Some(variant) = BleCompatibilityVariant::from_id(&config.compatibility_variant) else {
+        return Err(ControlError::UnknownProfile);
+    };
+    match (persona, variant) {
+        (
+            GENERIC_GAMEPAD_PERSONA_ID,
+            BleCompatibilityVariant::GenericDefault
+            | BleCompatibilityVariant::GenericHogpStrict
+            | BleCompatibilityVariant::GenericUnsigned6Axis,
+        )
+        | (XBOX_WIRELESS_CONTROLLER_PERSONA_ID, BleCompatibilityVariant::XboxCompatibility) => {
+            Ok(())
+        }
+        _ => Err(ControlError::PersonaMismatch),
     }
 }
 
@@ -1535,6 +1660,69 @@ mod tests {
         let app = App::new(store);
         assert_eq!(app.runtime_config(), &config);
         assert_eq!(app.config_status(false).source, "loaded");
+    }
+
+    #[test]
+    fn startup_ble_config_commands_persist_in_runtime_config() {
+        let store = InMemoryStore::new();
+        let mut app = App::new(store.clone());
+
+        assert!(matches!(
+            app.handle_control_command(&ControlCommand::SetStartupBleIdentityStrategy(
+                "persona_static_random_experimental".to_string()
+            )),
+            ControlResponse::ConfigAction(_)
+        ));
+        assert!(matches!(
+            app.handle_control_command(&ControlCommand::SetStartupBlePersona(
+                XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR.to_string()
+            )),
+            ControlResponse::ConfigAction(_)
+        ));
+        assert!(matches!(
+            app.handle_control_command(&ControlCommand::SetStartupBleVariant(
+                BleCompatibilityVariant::XboxCompatibility.id().to_string()
+            )),
+            ControlResponse::ConfigAction(_)
+        ));
+        assert!(matches!(
+            app.handle_control_command(&ControlCommand::SetStartupBleEnabled(true)),
+            ControlResponse::ConfigAction(_)
+        ));
+        app.save_runtime_config().unwrap();
+
+        let app = App::new(store);
+        let startup = &app.runtime_config().startup_ble;
+        assert!(startup.enabled);
+        assert_eq!(startup.persona, XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR);
+        assert_eq!(
+            startup.identity_strategy,
+            BleIdentityStrategy::PersonaStaticRandomExperimental.id()
+        );
+        assert_eq!(
+            startup.compatibility_variant,
+            BleCompatibilityVariant::XboxCompatibility.id()
+        );
+        let status = app.config_status(false);
+        assert!(status.startup_ble_enabled);
+        assert_eq!(
+            status.startup_ble_persona,
+            XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR
+        );
+    }
+
+    #[test]
+    fn startup_ble_validation_rejects_persona_variant_mismatch() {
+        let mut config = RuntimeConfig::default();
+        config.startup_ble.enabled = true;
+        config.startup_ble.persona = GENERIC_GAMEPAD_PERSONA_ID_STR.to_string();
+        config.startup_ble.compatibility_variant =
+            BleCompatibilityVariant::XboxCompatibility.id().to_string();
+
+        assert_eq!(
+            validate_runtime_config(&config),
+            Err(ControlError::PersonaMismatch)
+        );
     }
 
     #[test]

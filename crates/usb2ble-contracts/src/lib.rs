@@ -985,6 +985,30 @@ impl Default for BridgeRuntimeConfig {
     }
 }
 
+/// Optional boot-time BLE persona startup stored in runtime configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartupBleRuntimeConfig {
+    /// Whether firmware should start a BLE persona automatically after boot.
+    pub enabled: bool,
+    /// Persona to start when `enabled` is true.
+    pub persona: String,
+    /// BLE identity strategy to apply before starting the persona.
+    pub identity_strategy: String,
+    /// BLE compatibility variant to use for the startup persona.
+    pub compatibility_variant: String,
+}
+
+impl Default for StartupBleRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            persona: XBOX_WIRELESS_CONTROLLER_PERSONA_ID_STR.to_string(),
+            identity_strategy: BleIdentityStrategy::LegacyPublic.id().to_string(),
+            compatibility_variant: BleCompatibilityVariant::XboxCompatibility.id().to_string(),
+        }
+    }
+}
+
 /// Runtime configuration of the project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -1000,6 +1024,9 @@ pub struct RuntimeConfig {
     pub selected_profile: String,
     /// Live bridge behavior.
     pub bridge: BridgeRuntimeConfig,
+    /// Optional boot-time BLE persona startup. Disabled by default.
+    #[serde(default)]
+    pub startup_ble: StartupBleRuntimeConfig,
     /// Custom mapping rules used when `selected_profile` is `custom_runtime`.
     pub mappings: Vec<SourceMappingRule>,
 }
@@ -1013,6 +1040,7 @@ impl Default for RuntimeConfig {
             selected_persona: GENERIC_GAMEPAD_PERSONA_ID_STR.to_string(),
             selected_profile: GENERIC_AUTO_PROFILE_ID_STR.to_string(),
             bridge: BridgeRuntimeConfig::default(),
+            startup_ble: StartupBleRuntimeConfig::default(),
             mappings: Vec::new(),
         }
     }
@@ -1340,6 +1368,14 @@ pub struct ConfigStatusResponse {
     pub import_active: bool,
     /// Last config error as a stable string, when present.
     pub last_error: Option<&'static str>,
+    /// Whether boot-time BLE startup is enabled in the current config.
+    pub startup_ble_enabled: bool,
+    /// Startup BLE persona from the current config.
+    pub startup_ble_persona: String,
+    /// Startup BLE identity strategy from the current config.
+    pub startup_ble_identity_strategy: String,
+    /// Startup BLE compatibility variant from the current config.
+    pub startup_ble_variant: String,
 }
 
 /// A JSON response line for the webapp-ready configuration protocol.
@@ -1522,6 +1558,16 @@ pub enum ControlCommand {
     LoadConfig,
     /// Start the selected persona and optional bridge from runtime configuration.
     StartConfigured,
+    /// Request persisted startup BLE configuration as JSON.
+    GetStartupBleConfig,
+    /// Enable or disable boot-time BLE persona startup.
+    SetStartupBleEnabled(bool),
+    /// Set the boot-time BLE persona.
+    SetStartupBlePersona(String),
+    /// Set the boot-time BLE identity strategy.
+    SetStartupBleIdentityStrategy(String),
+    /// Set the boot-time BLE compatibility variant.
+    SetStartupBleVariant(String),
     /// Enable diagnostic virtual normalized input replay.
     StartVirtualInput,
     /// Disable diagnostic virtual normalized input replay.
@@ -1711,10 +1757,40 @@ mod config_tests {
         let config = RuntimeConfig::default();
         assert_eq!(config.schema_version, RUNTIME_CONFIG_SCHEMA_VERSION);
         assert_eq!(config.selected_persona, GENERIC_GAMEPAD_PERSONA_ID_STR);
+        assert!(!config.startup_ble.enabled);
+        assert_eq!(
+            config.startup_ble.identity_strategy,
+            BleIdentityStrategy::LegacyPublic.id()
+        );
 
         let json = serde_json::to_string(&config).unwrap();
         let decoded: RuntimeConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, config);
+    }
+
+    #[test]
+    fn runtime_config_missing_startup_ble_uses_disabled_default() {
+        let json = r#"{
+            "schema_version": 1,
+            "metadata_version": 1,
+            "display_name": "Old Config",
+            "selected_persona": "generic_gamepad",
+            "selected_profile": "generic_auto",
+            "bridge": {
+                "auto_start_persona": true,
+                "auto_start_bridge": false,
+                "rate_hz": 50
+            },
+            "mappings": []
+        }"#;
+
+        let decoded: RuntimeConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(decoded.selected_persona, GENERIC_GAMEPAD_PERSONA_ID_STR);
+        assert!(!decoded.startup_ble.enabled);
+        assert_eq!(
+            decoded.startup_ble.compatibility_variant,
+            BleCompatibilityVariant::XboxCompatibility.id()
+        );
     }
 
     #[test]
