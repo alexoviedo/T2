@@ -113,6 +113,20 @@ not itself compatibility evidence.
   remove/re-pair, serial persona reapply, or physical control movement. The
   target now reports auth-complete status and a bond-list entry, but active
   encryption/authentication and complete key persistence remain unproven.
+- 2026-06-10:
+  `docs/milestone-evidence/PUBLIC_GAMEPAD_TESTER_WINDOWS_XBOX_DIAGNOSTIC_2026-06-10.md`
+  records the first public Gamepad API tester diagnostic on Alex's Windows PC.
+  The public tester page was deployed and the Xbox path still drove Windows
+  XInput slot 0 through deterministic reports, but Chrome Gamepad API reported
+  zero connected gamepads in the automated public-page run. Treat this as a
+  partial/negative browser diagnostic, not Windows browser compatibility.
+- 2026-06-10:
+  `docs/milestone-evidence/WEB_PAGES_CONFIGURATOR_DESKTOP_DIAGNOSTIC_2026-06-10.md`
+  records the public GitHub Pages desktop workflow status. The Pages root,
+  firmware manifest, and public tester page were reachable; the first public
+  Web Serial configurator attempt opened the serial port but timed out waiting
+  for a board response. A narrow Web Serial handshake fix was deployed, but
+  public UI config/save/load remains pending retest.
 - The next Windows hardware chunk should build from the single-persona Xbox
   path, with explicit startup reconnect/report delivery preserved. The next gap
   is either a longer no-removal reset/power-cycle soak, direct host-disconnect

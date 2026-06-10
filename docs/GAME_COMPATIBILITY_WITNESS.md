@@ -12,6 +12,10 @@ Checked-in game/app examples:
 
 Browser Gamepad API evidence is useful because it proves host-visible HID
 reports, but it is not a substitute for a real app/game compatibility witness.
+The public tester diagnostic in
+`docs/milestone-evidence/PUBLIC_GAMEPAD_TESTER_WINDOWS_XBOX_DIAGNOSTIC_2026-06-10.md`
+is therefore browser-surface evidence only. In that run, Windows XInput moved
+but Chrome Gamepad API reported zero connected gamepads.
 Use this runbook when testing whether USB2BLE behaves like a usable controller
 inside an actual application.
 
