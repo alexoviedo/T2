@@ -625,15 +625,28 @@ function setupEvents() {
   els.selStartupBleVariant.addEventListener('change', updateJsonFromForm);
 
   els.btnConnect.addEventListener('click', async () => {
+    els.btnConnect.disabled = true;
+    els.badgeConnection.textContent = 'Connecting...';
     try {
       await serial.requestPort();
       await serial.connect();
+      const configStatus = await protocol.getConfigStatus();
+      currentConfig = await protocol.getConfigJson();
+      els.lblConfigStatus.textContent = configStatus;
+      renderConfig();
       updateConnectionUI(true);
-      await refreshConfigStatus();
-      await refreshConfig();
     } catch (e: any) {
       showError(`Connection failed: ${e.message}`);
+      if (serial.isConnected()) {
+        try {
+          await serial.disconnect();
+        } catch (disconnectError) {
+          console.warn('Failed to close unresponsive serial port:', disconnectError);
+        }
+      }
       updateConnectionUI(false);
+    } finally {
+      els.btnConnect.disabled = false;
     }
   });
 

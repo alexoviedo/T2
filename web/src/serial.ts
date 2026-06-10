@@ -1,6 +1,8 @@
 export type SerialLogCallback = (dir: 'tx' | 'rx', text: string) => void;
 
 export class SerialConnection {
+  private static readonly CONNECT_SETTLE_MS = 2500;
+
   private port: SerialPort | null = null;
   private reader: ReadableStreamDefaultReader<string> | null = null;
   private writer: WritableStreamDefaultWriter<string> | null = null;
@@ -34,6 +36,8 @@ export class SerialConnection {
     await this.port.open({ baudRate: 115200 });
     this.keepReading = true;
 
+    await this.setConsoleSignals();
+
     // Set up standard stream with TextDecoder
     const textDecoder = new TextDecoderStream();
     this.readPromise = this.port.readable!.pipeTo(textDecoder.writable as any).catch((e: any) => {
@@ -51,6 +55,11 @@ export class SerialConnection {
 
     // Start background read loop
     this.readLoop();
+
+    // Some ESP32-S3 USB CDC adapters reset or briefly stall the console when a
+    // browser opens the port. Let boot chatter drain before the first command.
+    await this.delay(SerialConnection.CONNECT_SETTLE_MS);
+    this.clearBufferedInput();
   }
 
   async disconnect(): Promise<void> {
@@ -80,6 +89,7 @@ export class SerialConnection {
     }
 
     this.rxBuffer = '';
+    this.lineQueue = [];
     this.pendingLines = [];
   }
 
@@ -122,6 +132,30 @@ export class SerialConnection {
     }
   }
 
+  private async setConsoleSignals(): Promise<void> {
+    if (!this.port?.setSignals) {
+      return;
+    }
+
+    try {
+      await this.port.setSignals({
+        dataTerminalReady: true,
+        requestToSend: true,
+      });
+    } catch (e) {
+      console.warn('Unable to set serial console signals:', e);
+    }
+  }
+
+  private clearBufferedInput(): void {
+    this.rxBuffer = '';
+    this.lineQueue = [];
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async writeLine(line: string): Promise<void> {
     if (!this.writer) throw new Error('Not connected');
 
@@ -159,7 +193,7 @@ export class SerialConnection {
     });
   }
 
-  async commandResponse(cmd: string, expectedPrefixes: string[] = [], timeoutMs = 5000): Promise<string[]> {
+  async commandResponse(cmd: string, expectedPrefixes: string[] = [], timeoutMs = 10000): Promise<string[]> {
     const execute = async () => {
       // Drain stale lines before sending the command, but preserve pending lines
       this.lineQueue = [];
