@@ -77,6 +77,12 @@ These claims are supported by checked-in evidence:
   `persona_static_random_experimental` remains explicit and non-default. This is
   still not broad Windows/game compatibility and not full durable BLE bond
   persistence.
+- On Alex's Windows PC, the same explicit persisted single-persona Xbox startup
+  path completed a five-cycle target soft-reset soak without Windows
+  remove/re-pair: each cycle restored the Xbox address/persona, kept XInput slot
+  0 connected, and moved deterministic left-stick, trigger, and A-button
+  reports. The target now exposes richer ESP-IDF auth/bond telemetry, but active
+  encryption/authentication and complete key persistence are still not proven.
 
 ## Forbidden Overclaims
 
@@ -89,9 +95,9 @@ Do not claim any of these until matching checked-in evidence exists:
 - iPhone compatibility,
 - physical Xbox host-visible refined Flight Pack movement from real USB input,
 - complete Xbox standard button layout, including stick-press buttons,
-- BLE bond persistence or reconnect robustness,
-- broad power-cycle/reconnect robustness beyond the named single-PC Xbox
-  startup witness,
+- durable BLE bond persistence,
+- reconnect robustness beyond the named single-PC Xbox startup reset/power-cycle
+  and five-cycle soft-reset witnesses,
 - cache-free Windows persona switching or Generic/U6/Xbox coexistence,
 - final product-quality calibration or deadzone feel,
 - broad host/browser support,

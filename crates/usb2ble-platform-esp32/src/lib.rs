@@ -4,6 +4,8 @@
 //! - ESP-IDF bindings,
 //! - UART/NVS adapters.
 
+#![recursion_limit = "256"]
+
 pub mod ble_hid;
 pub mod usb_host;
 

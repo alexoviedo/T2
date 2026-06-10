@@ -104,10 +104,20 @@ not itself compatibility evidence.
   XInput after both reset paths. Direct `DISCONNECT_BLE_HOST`, deeper
   auth/encryption telemetry, durable BLE bond persistence, and post-reset
   app/game behavior remain unproven.
+- 2026-06-10:
+  `docs/milestone-evidence/WINDOWS_XBOX_STARTUP_RECONNECT_SOAK_WITNESS_2026-06-10.md`
+  records richer ESP-IDF auth/security telemetry in `GET_BLE_BOND_INFO` and a
+  five-cycle target soft-reset soak of the explicit persisted single-persona
+  Xbox startup path. Each cycle restored the Xbox address/persona, kept XInput
+  slot 0 connected, and moved deterministic reports without Windows
+  remove/re-pair, serial persona reapply, or physical control movement. The
+  target now reports auth-complete status and a bond-list entry, but active
+  encryption/authentication and complete key persistence remain unproven.
 - The next Windows hardware chunk should build from the single-persona Xbox
   path, with explicit startup reconnect/report delivery preserved. The next gap
-  is deeper bond/security/disconnect telemetry or a post-reset app/game
-  micro-smoke, not cache-free Generic/U6/Xbox switching. Do not treat
+  is either a longer no-removal reset/power-cycle soak, direct host-disconnect
+  support if ESP-IDF exposes a safe path, or a post-reset app/game micro-smoke,
+  not cache-free Generic/U6/Xbox switching. Do not treat
   advertisement visibility, apparent XInput connection, or PnP presence as
   app/game compatibility, durable bond persistence, or cache-free switching
   evidence.

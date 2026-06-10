@@ -197,12 +197,29 @@ This is still explicit single-persona Xbox evidence on Alex's PC. It does not
 make static-random identity the default and it does not prove cache-free
 multi-persona switching or durable BLE bond persistence.
 
+The 2026-06-10 startup reconnect soak added richer ESP-IDF auth/security
+telemetry to `GET_BLE_BOND_INFO` and ran five target soft resets without
+Windows remove/re-pair. Each cycle restored the explicit startup Xbox persona
+at:
+
+```text
+CB:B3:AE:FA:FC:EF
+```
+
+XInput slot 0 stayed connected, and deterministic left-stick, trigger, and A
+button reports moved XInput after every reset. The new bond diagnostics reported
+one bond-list entry and auth-complete success for Windows address
+`50:FE:0C:02:AE:6A`, but also reported `last_auth_complete_key_present=false`,
+a stored key mask limited to `peer_identity_key`, and no dedicated encryption
+event. That is useful reconnect/report-delivery evidence, not a full durable
+BLE bond persistence claim.
+
 This still needs explicit evidence or fixes for:
 
 - A controlled no-removal Windows pairing matrix that captures the exact blocker
   when the previous persona is left paired.
-- Deeper BLE security/bond event telemetry beyond the current ESP-IDF bond
-  count/list.
+- Active encryption/authentication state or more complete BLE security key
+  telemetry than the current auth-complete and bond-list diagnostics expose.
 - True host disconnect/reconnect support, or a documented unsupported status for
   this ESP-IDF HIDD layer.
 - Whether host caches can be managed without creating stale device clutter.
@@ -223,7 +240,9 @@ Do not make per-persona addresses the default without a dedicated witness run.
   and the follow-up
   `docs/milestone-evidence/WINDOWS_XBOX_RECONNECT_FIX_DIAGNOSTIC_2026-06-09.md`;
   startup reset/power-cycle evidence for the single-persona Xbox path is in
-  `docs/milestone-evidence/WINDOWS_XBOX_STARTUP_RECONNECT_WITNESS_2026-06-09.md`.
+  `docs/milestone-evidence/WINDOWS_XBOX_STARTUP_RECONNECT_WITNESS_2026-06-09.md`,
+  and a five-cycle soft-reset soak with richer bond/auth telemetry is in
+  `docs/milestone-evidence/WINDOWS_XBOX_STARTUP_RECONNECT_SOAK_WITNESS_2026-06-10.md`.
 - It does not prove physical HOTAS movement.
 - It does not prove broad Windows, game/app, Xbox console, or proprietary Xbox
   Wireless compatibility.

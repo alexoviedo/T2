@@ -186,9 +186,31 @@ impl BleTransport for BleHidTransport {
             "bonds_present": false,
             "bonded_device_addresses": [],
             "last_auth_complete_status": "unknown",
+            "last_auth_complete_success": "unknown",
             "last_auth_complete_bonded": "unknown",
+            "last_auth_complete_key_present": "unknown",
+            "last_auth_complete_fail_reason": null,
+            "last_auth_complete_fail_reason_name": "unknown",
+            "last_auth_complete_address": null,
+            "last_auth_complete_addr_type": null,
+            "last_auth_complete_auth_mode": null,
+            "last_auth_complete_auth_mode_name": "unknown",
             "last_security_event": "unknown",
+            "last_security_event_code": null,
+            "auth_complete_count": 0,
+            "security_request_count": 0,
+            "key_event_count": 0,
+            "numeric_comparison_request_count": 0,
+            "passkey_notification_count": 0,
+            "passkey_request_count": 0,
+            "last_key_event_type": null,
+            "last_key_event_type_name": "unknown",
+            "last_key_event_address": null,
+            "last_security_request_address": null,
+            "last_security_response_return": null,
+            "last_confirm_reply_return": null,
             "last_encryption_status": "unknown",
+            "encryption_event_source": "not_exposed_by_host_stub",
             "forget_bonds_completed": "unknown",
             "last_clear_bond_status": "unknown",
             "host_connected_encrypted": "unknown",
@@ -281,16 +303,19 @@ mod target {
         DUPL_SCAN_CACHE_REFRESH_PERIOD, ESP_BLE_ENC_KEY_MASK, ESP_BLE_ID_KEY_MASK,
         ESP_BT_CTRL_CONFIG_MAGIC_VAL, ESP_BT_CTRL_CONFIG_VERSION, ESP_ERR_INVALID_STATE,
         ESP_ERR_NOT_FOUND, ESP_ERR_NVS_NEW_VERSION_FOUND, ESP_ERR_NVS_NO_FREE_PAGES,
-        ESP_IO_CAP_NONE, ESP_LE_AUTH_BOND, ESP_OK, ESP_TASK_BT_CONTROLLER_PRIO,
-        ESP_TASK_BT_CONTROLLER_STACK, MESH_DUPLICATE_SCAN_CACHE_SIZE,
-        NORMAL_SCAN_DUPLICATE_CACHE_SIZE, SCAN_DUPLICATE_MODE, SCAN_DUPLICATE_TYPE_VALUE,
-        SLAVE_CE_LEN_MIN_DEFAULT, esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC,
-        esp_ble_addr_type_t_BLE_ADDR_TYPE_RANDOM, esp_ble_adv_channel_t_ADV_CHNL_ALL,
-        esp_ble_adv_data_t, esp_ble_adv_filter_t_ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
-        esp_ble_adv_params_t, esp_ble_adv_type_t_ADV_TYPE_IND,
-        esp_ble_adv_type_t_ADV_TYPE_NONCONN_IND, esp_ble_adv_type_t_ADV_TYPE_SCAN_IND,
-        esp_ble_auth_req_t, esp_ble_bond_dev_t, esp_ble_gap_cb_param_t,
-        esp_ble_gap_config_adv_data, esp_ble_gap_config_adv_data_raw,
+        ESP_IO_CAP_NONE, ESP_LE_AUTH_BOND, ESP_LE_AUTH_NO_BOND, ESP_LE_AUTH_REQ_BOND_MITM,
+        ESP_LE_AUTH_REQ_MITM, ESP_LE_AUTH_REQ_SC_BOND, ESP_LE_AUTH_REQ_SC_MITM,
+        ESP_LE_AUTH_REQ_SC_MITM_BOND, ESP_LE_AUTH_REQ_SC_ONLY, ESP_LE_KEY_LCSRK, ESP_LE_KEY_LENC,
+        ESP_LE_KEY_LID, ESP_LE_KEY_LLK, ESP_LE_KEY_PCSRK, ESP_LE_KEY_PENC, ESP_LE_KEY_PID,
+        ESP_LE_KEY_PLK, ESP_OK, ESP_TASK_BT_CONTROLLER_PRIO, ESP_TASK_BT_CONTROLLER_STACK,
+        MESH_DUPLICATE_SCAN_CACHE_SIZE, NORMAL_SCAN_DUPLICATE_CACHE_SIZE, SCAN_DUPLICATE_MODE,
+        SCAN_DUPLICATE_TYPE_VALUE, SLAVE_CE_LEN_MIN_DEFAULT,
+        esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC, esp_ble_addr_type_t_BLE_ADDR_TYPE_RANDOM,
+        esp_ble_adv_channel_t_ADV_CHNL_ALL, esp_ble_adv_data_t,
+        esp_ble_adv_filter_t_ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY, esp_ble_adv_params_t,
+        esp_ble_adv_type_t_ADV_TYPE_IND, esp_ble_adv_type_t_ADV_TYPE_NONCONN_IND,
+        esp_ble_adv_type_t_ADV_TYPE_SCAN_IND, esp_ble_auth_req_t, esp_ble_bond_dev_t,
+        esp_ble_gap_cb_param_t, esp_ble_gap_config_adv_data, esp_ble_gap_config_adv_data_raw,
         esp_ble_gap_config_scan_rsp_data_raw, esp_ble_gap_register_callback,
         esp_ble_gap_security_rsp, esp_ble_gap_set_device_name, esp_ble_gap_set_rand_addr,
         esp_ble_gap_set_security_param, esp_ble_gap_start_advertising,
@@ -308,7 +333,10 @@ mod target {
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_START_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT,
-        esp_gap_ble_cb_event_t_ESP_GAP_BLE_NC_REQ_EVT,
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_AUTH_CMPL_EVT,
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_KEY_EVT, esp_gap_ble_cb_event_t_ESP_GAP_BLE_NC_REQ_EVT,
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_PASSKEY_NOTIF_EVT,
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_PASSKEY_REQ_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT,
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SEC_REQ_EVT, esp_gatt_if_t, esp_gatts_cb_event_t,
@@ -356,8 +384,16 @@ mod target {
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT;
     const GAP_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT: esp_gap_ble_cb_event_t =
         esp_gap_ble_cb_event_t_ESP_GAP_BLE_SCAN_RSP_DATA_RAW_SET_COMPLETE_EVT;
+    const GAP_AUTH_CMPL_EVT: esp_gap_ble_cb_event_t =
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_AUTH_CMPL_EVT;
+    const GAP_KEY_EVT: esp_gap_ble_cb_event_t = esp_gap_ble_cb_event_t_ESP_GAP_BLE_KEY_EVT;
     const GAP_SEC_REQ_EVT: esp_gap_ble_cb_event_t = esp_gap_ble_cb_event_t_ESP_GAP_BLE_SEC_REQ_EVT;
+    const GAP_PASSKEY_NOTIF_EVT: esp_gap_ble_cb_event_t =
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_PASSKEY_NOTIF_EVT;
+    const GAP_PASSKEY_REQ_EVT: esp_gap_ble_cb_event_t =
+        esp_gap_ble_cb_event_t_ESP_GAP_BLE_PASSKEY_REQ_EVT;
     const GAP_NC_REQ_EVT: esp_gap_ble_cb_event_t = esp_gap_ble_cb_event_t_ESP_GAP_BLE_NC_REQ_EVT;
+    const TRI_UNKNOWN: u8 = u8::MAX;
 
     static STACK_STARTED: AtomicBool = AtomicBool::new(false);
     static HID_DEV: AtomicPtr<EspHiddDev> = AtomicPtr::new(ptr::null_mut());
@@ -407,6 +443,23 @@ mod target {
     static PUBLISH_OK_COUNT: AtomicU32 = AtomicU32::new(0);
     static PUBLISH_NOT_CONNECTED_COUNT: AtomicU32 = AtomicU32::new(0);
     static PUBLISH_PERSONA_MISMATCH_COUNT: AtomicU32 = AtomicU32::new(0);
+    static AUTH_COMPLETE_COUNT: AtomicU32 = AtomicU32::new(0);
+    static SECURITY_REQUEST_COUNT: AtomicU32 = AtomicU32::new(0);
+    static KEY_EVENT_COUNT: AtomicU32 = AtomicU32::new(0);
+    static NUMERIC_COMPARISON_REQUEST_COUNT: AtomicU32 = AtomicU32::new(0);
+    static PASSKEY_NOTIFICATION_COUNT: AtomicU32 = AtomicU32::new(0);
+    static PASSKEY_REQUEST_COUNT: AtomicU32 = AtomicU32::new(0);
+    static LAST_SECURITY_EVENT_CODE: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_AUTH_SUCCESS: AtomicU8 = AtomicU8::new(TRI_UNKNOWN);
+    static LAST_AUTH_KEY_PRESENT: AtomicU8 = AtomicU8::new(TRI_UNKNOWN);
+    static LAST_AUTH_FAIL_REASON: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_AUTH_ADDR_TYPE: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_AUTH_MODE: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_KEY_TYPE: AtomicU32 = AtomicU32::new(u32::MAX);
+    static LAST_SECURITY_RSP_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static LAST_CONFIRM_REPLY_RETURN: AtomicI32 = AtomicI32::new(i32::MAX);
+    static LAST_CLEAR_BOND_STATUS: AtomicI32 = AtomicI32::new(i32::MAX);
+    static FORGET_BONDS_COMPLETED: AtomicU8 = AtomicU8::new(TRI_UNKNOWN);
     static IDENTITY_STRATEGY: AtomicU8 = AtomicU8::new(0);
     static IDENTITY_APPLIED: AtomicBool = AtomicBool::new(false);
     static IDENTITY_STOPPED_BEFORE_CHANGE: AtomicBool = AtomicBool::new(false);
@@ -422,6 +475,33 @@ mod target {
         AtomicU8::new(0),
     ];
     static APPLIED_ADDRESS: [AtomicU8; 6] = [
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+    ];
+    static LAST_AUTH_ADDRESS_VALID: AtomicBool = AtomicBool::new(false);
+    static LAST_AUTH_ADDRESS: [AtomicU8; 6] = [
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+    ];
+    static LAST_KEY_ADDRESS_VALID: AtomicBool = AtomicBool::new(false);
+    static LAST_KEY_ADDRESS: [AtomicU8; 6] = [
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+        AtomicU8::new(0),
+    ];
+    static LAST_SEC_REQ_ADDRESS_VALID: AtomicBool = AtomicBool::new(false);
+    static LAST_SEC_REQ_ADDRESS: [AtomicU8; 6] = [
         AtomicU8::new(0),
         AtomicU8::new(0),
         AtomicU8::new(0),
@@ -589,19 +669,31 @@ mod target {
 
         fn forget_bonds(&mut self) -> Result<(), BleTransportError> {
             unsafe { start_stack()? };
+            FORGET_BONDS_COMPLETED.store(0, Ordering::SeqCst);
             let count = unsafe { esp_ble_get_bond_device_num() };
             if count <= 0 {
+                LAST_CLEAR_BOND_STATUS.store(ESP_OK, Ordering::SeqCst);
+                FORGET_BONDS_COMPLETED.store(1, Ordering::SeqCst);
                 return Ok(());
             }
 
             let mut devices = vec![esp_ble_bond_dev_t::default(); count as usize];
             let mut dev_num = count;
-            esp_result(unsafe {
-                esp_ble_get_bond_device_list(&mut dev_num, devices.as_mut_ptr())
-            })?;
-            for dev in devices.iter_mut().take(dev_num as usize) {
-                esp_result(unsafe { esp_ble_remove_bond_device(dev.bd_addr.as_mut_ptr()) })?;
+            let list_ret =
+                unsafe { esp_ble_get_bond_device_list(&mut dev_num, devices.as_mut_ptr()) };
+            if list_ret != ESP_OK {
+                LAST_CLEAR_BOND_STATUS.store(list_ret, Ordering::SeqCst);
+                return esp_result(list_ret);
             }
+            for dev in devices.iter_mut().take(dev_num as usize) {
+                let remove_ret = unsafe { esp_ble_remove_bond_device(dev.bd_addr.as_mut_ptr()) };
+                if remove_ret != ESP_OK {
+                    LAST_CLEAR_BOND_STATUS.store(remove_ret, Ordering::SeqCst);
+                    return esp_result(remove_ret);
+                }
+            }
+            LAST_CLEAR_BOND_STATUS.store(ESP_OK, Ordering::SeqCst);
+            FORGET_BONDS_COMPLETED.store(1, Ordering::SeqCst);
             Ok(())
         }
 
@@ -791,6 +883,7 @@ mod target {
 
         fn bond_info_json(&self) -> String {
             let mut addresses = Vec::new();
+            let mut bonded_devices = Vec::new();
             let mut list_return = i32::MAX;
             let stack_started = unsafe { start_stack().is_ok() };
             let count = if stack_started {
@@ -811,8 +904,27 @@ mod target {
                             .take(dev_num as usize)
                             .map(|dev| format_ble_address(dev.bd_addr)),
                     );
+                    bonded_devices.extend(devices.iter().take(dev_num as usize).map(|dev| {
+                        let key_mask = dev.bond_key.key_mask as u32;
+                        let addr_type = dev.bd_addr_type as u32;
+                        serde_json::json!({
+                            "address": format_ble_address(dev.bd_addr),
+                            "address_type": addr_type,
+                            "address_type_name": address_type_name(addr_type),
+                            "key_mask": key_mask,
+                            "key_mask_names": key_mask_names(key_mask),
+                        })
+                    }));
                 }
             }
+
+            let auth_success = LAST_AUTH_SUCCESS.load(Ordering::SeqCst);
+            let auth_key_present = LAST_AUTH_KEY_PRESENT.load(Ordering::SeqCst);
+            let auth_fail_reason = LAST_AUTH_FAIL_REASON.load(Ordering::SeqCst);
+            let auth_mode = LAST_AUTH_MODE.load(Ordering::SeqCst);
+            let auth_addr_type = LAST_AUTH_ADDR_TYPE.load(Ordering::SeqCst);
+            let last_security_event_code = LAST_SECURITY_EVENT_CODE.load(Ordering::SeqCst);
+            let last_key_type = LAST_KEY_TYPE.load(Ordering::SeqCst);
 
             serde_json::json!({
                 "supported": true,
@@ -821,13 +933,46 @@ mod target {
                 "bond_count": if count >= 0 { count } else { 0 },
                 "bonds_present": count > 0,
                 "bonded_device_addresses": addresses,
+                "bonded_devices": bonded_devices,
                 "bond_list_return": optional_i32_value(list_return),
-                "last_auth_complete_status": "unknown",
-                "last_auth_complete_bonded": "unknown",
-                "last_security_event": "unknown",
-                "last_encryption_status": "unknown",
-                "forget_bonds_completed": "unknown",
-                "last_clear_bond_status": "unknown",
+                "last_auth_complete_status": auth_status_label(auth_success),
+                "last_auth_complete_success": optional_bool_value(auth_success),
+                "last_auth_complete_bonded": optional_bool_value(auth_key_present),
+                "last_auth_complete_key_present": optional_bool_value(auth_key_present),
+                "last_auth_complete_fail_reason": optional_u32_value(auth_fail_reason),
+                "last_auth_complete_fail_reason_name": auth_fail_reason_name(auth_fail_reason),
+                "last_auth_complete_address": optional_address_value(
+                    LAST_AUTH_ADDRESS_VALID.load(Ordering::SeqCst),
+                    &LAST_AUTH_ADDRESS,
+                ),
+                "last_auth_complete_addr_type": optional_u32_value(auth_addr_type),
+                "last_auth_complete_addr_type_name": address_type_name(auth_addr_type),
+                "last_auth_complete_auth_mode": optional_u32_value(auth_mode),
+                "last_auth_complete_auth_mode_name": auth_mode_name(auth_mode),
+                "last_security_event": gap_security_event_name(last_security_event_code),
+                "last_security_event_code": optional_u32_value(last_security_event_code),
+                "auth_complete_count": AUTH_COMPLETE_COUNT.load(Ordering::SeqCst),
+                "security_request_count": SECURITY_REQUEST_COUNT.load(Ordering::SeqCst),
+                "key_event_count": KEY_EVENT_COUNT.load(Ordering::SeqCst),
+                "numeric_comparison_request_count": NUMERIC_COMPARISON_REQUEST_COUNT.load(Ordering::SeqCst),
+                "passkey_notification_count": PASSKEY_NOTIFICATION_COUNT.load(Ordering::SeqCst),
+                "passkey_request_count": PASSKEY_REQUEST_COUNT.load(Ordering::SeqCst),
+                "last_key_event_type": optional_u32_value(last_key_type),
+                "last_key_event_type_name": key_type_name(last_key_type),
+                "last_key_event_address": optional_address_value(
+                    LAST_KEY_ADDRESS_VALID.load(Ordering::SeqCst),
+                    &LAST_KEY_ADDRESS,
+                ),
+                "last_security_request_address": optional_address_value(
+                    LAST_SEC_REQ_ADDRESS_VALID.load(Ordering::SeqCst),
+                    &LAST_SEC_REQ_ADDRESS,
+                ),
+                "last_security_response_return": optional_i32_value(LAST_SECURITY_RSP_RETURN.load(Ordering::SeqCst)),
+                "last_confirm_reply_return": optional_i32_value(LAST_CONFIRM_REPLY_RETURN.load(Ordering::SeqCst)),
+                "last_encryption_status": "unknown_no_dedicated_gap_event",
+                "encryption_event_source": "esp_gap_auth_complete_and_key_events",
+                "forget_bonds_completed": optional_bool_value(FORGET_BONDS_COMPLETED.load(Ordering::SeqCst)),
+                "last_clear_bond_status": optional_i32_value(LAST_CLEAR_BOND_STATUS.load(Ordering::SeqCst)),
                 "host_connected_encrypted": "unknown",
                 "host_connected_authenticated": "unknown",
                 "host_connected_bonded": "unknown",
@@ -1467,16 +1612,56 @@ mod target {
                     LAST_GAP_STATUS.store(status, Ordering::SeqCst);
                 }
             }
-            GAP_SEC_REQ_EVT => {
+            GAP_AUTH_CMPL_EVT => {
+                AUTH_COMPLETE_COUNT.fetch_add(1, Ordering::SeqCst);
+                LAST_SECURITY_EVENT_CODE.store(event as u32, Ordering::SeqCst);
                 if !param.is_null() {
-                    let mut req = (*param).ble_security.ble_req;
-                    let _ = esp_ble_gap_security_rsp(req.bd_addr.as_mut_ptr(), true);
+                    let auth = (*param).ble_security.auth_cmpl;
+                    store_address(&LAST_AUTH_ADDRESS, auth.bd_addr);
+                    LAST_AUTH_ADDRESS_VALID.store(true, Ordering::SeqCst);
+                    LAST_AUTH_SUCCESS.store(bool_to_tri(auth.success), Ordering::SeqCst);
+                    LAST_AUTH_KEY_PRESENT.store(bool_to_tri(auth.key_present), Ordering::SeqCst);
+                    LAST_AUTH_FAIL_REASON.store(auth.fail_reason as u32, Ordering::SeqCst);
+                    LAST_AUTH_ADDR_TYPE.store(auth.addr_type as u32, Ordering::SeqCst);
+                    LAST_AUTH_MODE.store(auth.auth_mode as u32, Ordering::SeqCst);
                 }
             }
+            GAP_KEY_EVT => {
+                KEY_EVENT_COUNT.fetch_add(1, Ordering::SeqCst);
+                LAST_SECURITY_EVENT_CODE.store(event as u32, Ordering::SeqCst);
+                if !param.is_null() {
+                    let key = (*param).ble_security.ble_key;
+                    store_address(&LAST_KEY_ADDRESS, key.bd_addr);
+                    LAST_KEY_ADDRESS_VALID.store(true, Ordering::SeqCst);
+                    LAST_KEY_TYPE.store(key.key_type as u32, Ordering::SeqCst);
+                }
+            }
+            GAP_SEC_REQ_EVT => {
+                SECURITY_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
+                LAST_SECURITY_EVENT_CODE.store(event as u32, Ordering::SeqCst);
+                if !param.is_null() {
+                    let mut req = (*param).ble_security.ble_req;
+                    store_address(&LAST_SEC_REQ_ADDRESS, req.bd_addr);
+                    LAST_SEC_REQ_ADDRESS_VALID.store(true, Ordering::SeqCst);
+                    let ret = esp_ble_gap_security_rsp(req.bd_addr.as_mut_ptr(), true);
+                    LAST_SECURITY_RSP_RETURN.store(ret, Ordering::SeqCst);
+                }
+            }
+            GAP_PASSKEY_NOTIF_EVT => {
+                PASSKEY_NOTIFICATION_COUNT.fetch_add(1, Ordering::SeqCst);
+                LAST_SECURITY_EVENT_CODE.store(event as u32, Ordering::SeqCst);
+            }
+            GAP_PASSKEY_REQ_EVT => {
+                PASSKEY_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
+                LAST_SECURITY_EVENT_CODE.store(event as u32, Ordering::SeqCst);
+            }
             GAP_NC_REQ_EVT => {
+                NUMERIC_COMPARISON_REQUEST_COUNT.fetch_add(1, Ordering::SeqCst);
+                LAST_SECURITY_EVENT_CODE.store(event as u32, Ordering::SeqCst);
                 if !param.is_null() {
                     let mut key = (*param).ble_security.key_notif;
-                    let _ = esp_ble_confirm_reply(key.bd_addr.as_mut_ptr(), true);
+                    let ret = esp_ble_confirm_reply(key.bd_addr.as_mut_ptr(), true);
+                    LAST_CONFIRM_REPLY_RETURN.store(ret, Ordering::SeqCst);
                 }
             }
             _ => {}
@@ -1606,6 +1791,151 @@ mod target {
             serde_json::Value::Null
         } else {
             serde_json::json!(value)
+        }
+    }
+
+    fn bool_to_tri(value: bool) -> u8 {
+        u8::from(value)
+    }
+
+    fn optional_bool_value(value: u8) -> serde_json::Value {
+        match value {
+            0 => serde_json::json!(false),
+            1 => serde_json::json!(true),
+            _ => serde_json::Value::Null,
+        }
+    }
+
+    fn auth_status_label(value: u8) -> &'static str {
+        match value {
+            0 => "failed",
+            1 => "success",
+            _ => "unknown",
+        }
+    }
+
+    fn optional_address_value(valid: bool, source: &[AtomicU8; 6]) -> serde_json::Value {
+        if valid {
+            serde_json::json!(format_ble_address(load_address(source)))
+        } else {
+            serde_json::Value::Null
+        }
+    }
+
+    fn gap_security_event_name(value: u32) -> &'static str {
+        match value {
+            v if v == GAP_AUTH_CMPL_EVT as u32 => "auth_complete",
+            v if v == GAP_KEY_EVT as u32 => "key",
+            v if v == GAP_SEC_REQ_EVT as u32 => "security_request",
+            v if v == GAP_PASSKEY_NOTIF_EVT as u32 => "passkey_notification",
+            v if v == GAP_PASSKEY_REQ_EVT as u32 => "passkey_request",
+            v if v == GAP_NC_REQ_EVT as u32 => "numeric_comparison_request",
+            u32::MAX => "unknown",
+            _ => "other",
+        }
+    }
+
+    fn address_type_name(value: u32) -> &'static str {
+        match value {
+            v if v == esp_ble_addr_type_t_BLE_ADDR_TYPE_PUBLIC as u32 => "public",
+            v if v == esp_ble_addr_type_t_BLE_ADDR_TYPE_RANDOM as u32 => "random",
+            u32::MAX => "unknown",
+            _ => "other",
+        }
+    }
+
+    fn auth_mode_name(value: u32) -> &'static str {
+        match value {
+            v if v == ESP_LE_AUTH_NO_BOND => "no_bond",
+            v if v == ESP_LE_AUTH_BOND => "bond",
+            v if v == ESP_LE_AUTH_REQ_MITM => "mitm",
+            v if v == ESP_LE_AUTH_REQ_BOND_MITM => "bond_mitm",
+            v if v == ESP_LE_AUTH_REQ_SC_ONLY => "secure_connections_only",
+            v if v == ESP_LE_AUTH_REQ_SC_BOND => "secure_connections_bond",
+            v if v == ESP_LE_AUTH_REQ_SC_MITM => "secure_connections_mitm",
+            v if v == ESP_LE_AUTH_REQ_SC_MITM_BOND => "secure_connections_mitm_bond",
+            u32::MAX => "unknown",
+            _ => "other",
+        }
+    }
+
+    fn key_type_name(value: u32) -> &'static str {
+        match value {
+            v if v == ESP_LE_KEY_PENC => "peer_encryption_key",
+            v if v == ESP_LE_KEY_PID => "peer_identity_key",
+            v if v == ESP_LE_KEY_PCSRK => "peer_csrk",
+            v if v == ESP_LE_KEY_PLK => "peer_link_key",
+            v if v == ESP_LE_KEY_LENC => "local_encryption_key",
+            v if v == ESP_LE_KEY_LID => "local_identity_key",
+            v if v == ESP_LE_KEY_LCSRK => "local_csrk",
+            v if v == ESP_LE_KEY_LLK => "local_link_key",
+            u32::MAX => "unknown",
+            _ => "other",
+        }
+    }
+
+    fn key_mask_names(mask: u32) -> Vec<&'static str> {
+        let mut names = Vec::new();
+        if mask & ESP_LE_KEY_PENC != 0 {
+            names.push("peer_encryption_key");
+        }
+        if mask & ESP_LE_KEY_PID != 0 {
+            names.push("peer_identity_key");
+        }
+        if mask & ESP_LE_KEY_PCSRK != 0 {
+            names.push("peer_csrk");
+        }
+        if mask & ESP_LE_KEY_PLK != 0 {
+            names.push("peer_link_key");
+        }
+        if mask & ESP_LE_KEY_LENC != 0 {
+            names.push("local_encryption_key");
+        }
+        if mask & ESP_LE_KEY_LID != 0 {
+            names.push("local_identity_key");
+        }
+        if mask & ESP_LE_KEY_LCSRK != 0 {
+            names.push("local_csrk");
+        }
+        if mask & ESP_LE_KEY_LLK != 0 {
+            names.push("local_link_key");
+        }
+        if names.is_empty() {
+            names.push("none");
+        }
+        names
+    }
+
+    fn auth_fail_reason_name(value: u32) -> &'static str {
+        match value {
+            u32::MAX => "unknown",
+            0 => "none_or_success",
+            78 => "passkey_fail",
+            79 => "oob_fail",
+            80 => "pair_auth_fail",
+            81 => "confirm_value_fail",
+            82 => "pair_not_supported",
+            83 => "encryption_key_size",
+            84 => "invalid_command",
+            85 => "unknown_error",
+            86 => "repeated_attempt",
+            87 => "invalid_parameters",
+            88 => "dhkey_check_fail",
+            89 => "numeric_comparison_fail",
+            90 => "br_pairing_in_progress",
+            91 => "cross_transport_derive_not_allowed",
+            92 => "internal_error",
+            93 => "unknown_io",
+            94 => "init_fail",
+            95 => "confirm_fail",
+            96 => "busy",
+            97 => "encryption_fail",
+            98 => "started",
+            99 => "response_timeout",
+            100 => "encrypted_diversifier_not_available",
+            101 => "unspecified_error",
+            102 => "connection_timeout",
+            _ => "other",
         }
     }
 

@@ -2233,6 +2233,11 @@ mod tests {
                 assert_eq!(value["supported"], true);
                 assert_eq!(value["bond_count"], 0);
                 assert_eq!(value["bonds_present"], false);
+                assert_eq!(value["auth_complete_count"], 0);
+                assert_eq!(value["key_event_count"], 0);
+                assert_eq!(value["last_auth_complete_status"], "unknown");
+                assert_eq!(value["last_encryption_status"], "unknown");
+                assert_eq!(value["encryption_event_source"], "not_exposed_by_host_stub");
             }
             other => panic!("expected bond JSON, got {other:?}"),
         }

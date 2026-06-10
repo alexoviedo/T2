@@ -25,6 +25,17 @@ This matrix tracks the support status for devices, personas, and milestones.
 | `esp-idf-sys` | `0.37.2` resolved from `esp-idf-sys = "0.37"` | Baseline | 0.37.x line retained |
 | USB host hub config | `CONFIG_USB_HOST_HUBS_SUPPORTED=y` | Hub identity witness captured | Stable hub config; no experimental hub flag |
 
+## Recent Compatibility Notes
+
+- 2026-06-10:
+  `docs/milestone-evidence/WINDOWS_XBOX_STARTUP_RECONNECT_SOAK_WITNESS_2026-06-10.md`
+  adds richer ESP-IDF auth/security telemetry for `GET_BLE_BOND_INFO` and a
+  five-cycle target soft-reset soak for the explicit persisted single-persona
+  Xbox startup path on Alex's Windows PC. Each cycle restored the Xbox
+  address/persona and XInput deterministic report delivery without Windows
+  remove/re-pair. This is not broad Windows/game compatibility, not physical
+  HOTAS movement, and not full durable BLE bond persistence.
+
 ## Devices
 
 | Device | VID | PID | Status | Note |
