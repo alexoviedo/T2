@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>USB2BLE Gamepad API Tester</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f4f7f8;
+        --panel: #ffffff;
+        --ink: #17201d;
+        --muted: #5d6c72;
+        --line: #cfdbde;
+        --primary: #155e75;
+        --primary-ink: #ffffff;
+        --ok: #117044;
+        --warn: #8a5600;
+        --bad: #a32020;
+        --track: #e4ecef;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #11181b;
+          --panel: #172124;
+          --ink: #e8f0f2;
+          --muted: #a1b1b6;
+          --line: #314247;
+          --primary: #38bdf8;
+          --primary-ink: #081114;
+          --track: #263438;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      main {
+        width: min(100%, 1120px);
+        margin: 0 auto;
+        padding: max(16px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
+      }
+
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: end;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 4px;
+        font-size: 30px;
+        line-height: 1.08;
+      }
+
+      h2 {
+        font-size: 18px;
+        margin-bottom: 10px;
+      }
+
+      h3 {
+        font-size: 15px;
+        margin-bottom: 8px;
+      }
+
+      p,
+      li {
+        line-height: 1.45;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      section,
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .status {
+        display: inline-flex;
+        min-height: 32px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0 12px;
+        font-weight: 800;
+      }
+
+      .status.ok {
+        color: var(--ok);
+      }
+
+      .status.warn {
+        color: var(--warn);
+      }
+
+      .status.bad {
+        color: var(--bad);
+      }
+
+      button,
+      select {
+        min-height: 44px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 0 12px;
+        background: var(--panel);
+        color: var(--ink);
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        font-weight: 800;
+      }
+
+      button.primary {
+        background: var(--primary);
+        color: var(--primary-ink);
+        border-color: var(--primary);
+      }
+
+      button:disabled {
+        opacity: 0.52;
+        cursor: default;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        min-height: 78px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .value {
+        margin-top: 6px;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+      }
+
+      .axis-row,
+      .button-row {
+        display: grid;
+        grid-template-columns: 72px 1fr 86px;
+        gap: 8px;
+        align-items: center;
+        margin: 8px 0;
+      }
+
+      .track {
+        position: relative;
+        height: 14px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--track);
+        overflow: hidden;
+      }
+
+      .fill {
+        height: 100%;
+        width: 0%;
+        background: var(--primary);
+      }
+
+      .centerline {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: color-mix(in srgb, var(--ink) 35%, transparent);
+      }
+
+      .pill-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .pill {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 9px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .pill.hit {
+        color: var(--ok);
+        border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+        font-weight: 800;
+      }
+
+      pre {
+        min-height: 180px;
+        max-height: 360px;
+        overflow: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px;
+        background: #0d171a;
+        color: #dff7e8;
+      }
+
+      a {
+        color: var(--primary);
+        font-weight: 800;
+      }
+
+      @media (max-width: 720px) {
+        h1 {
+          font-size: 24px;
+        }
+
+        .grid,
+        .grid.three {
+          grid-template-columns: 1fr;
+        }
+
+        .axis-row,
+        .button-row {
+          grid-template-columns: 56px 1fr 66px;
+          font-size: 13px;
+        }
+
+        .toolbar button,
+        .toolbar select {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stack">
+      <header>
+        <div>
+          <h1>USB2BLE Gamepad API Tester</h1>
+          <p class="muted">Browser Gamepad API evidence surface. This is not Web Serial.</p>
+        </div>
+        <span id="capture-state" class="status warn">Idle</span>
+      </header>
+
+      <section class="stack">
+        <div class="toolbar">
+          <select id="profile">
+            <option value="xbox-standard">Xbox / standard gamepad</option>
+            <option value="generic-ble">Generic BLE Gamepad</option>
+            <option value="generic-u6">Generic U6</option>
+          </select>
+          <button id="arm" class="primary" type="button">Arm / Start Capture</button>
+          <button id="copy" type="button">Copy Evidence JSON</button>
+          <button id="download" type="button">Download Evidence JSON</button>
+        </div>
+        <p class="muted">
+          Web Serial configurator and firmware flashing require a supported desktop Chromium browser.
+          This page only polls `navigator.getGamepads()` and can be opened separately on Windows, iOS, Quest, or Android-like browsers.
+        </p>
+      </section>
+
+      <section>
+        <h2>Live Status</h2>
+        <div class="grid three">
+          <div class="metric">
+            <div class="label">Gamepad API</div>
+            <div id="api" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">Connected Count</div>
+            <div id="count" class="value">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Expected Profile</div>
+            <div id="profile-label" class="value">Xbox / standard gamepad</div>
+          </div>
+          <div class="metric">
+            <div class="label">Gamepad ID</div>
+            <div id="gamepad-id" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">Mapping</div>
+            <div id="mapping" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">Timestamp</div>
+            <div id="timestamp" class="value">-</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div>
+          <h2>Axes</h2>
+          <div id="axes"></div>
+        </div>
+        <div>
+          <h2>Buttons</h2>
+          <div id="buttons"></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Scenario Checklist</h2>
+        <div id="scenarios" class="pill-list"></div>
+      </section>
+
+      <section>
+        <h2>Evidence Summary</h2>
+        <pre id="summary">{}</pre>
+      </section>
+    </main>
+
+    <script>
+      const PROFILES = {
+        "xbox-standard": {
+          label: "Xbox / standard gamepad",
+          expectedMapping: "standard",
+          axes: ["left_x", "left_y", "right_x", "right_y"],
+          buttons: ["a", "b", "x", "y", "lb", "rb", "lt", "rt", "view", "menu", "ls", "rs", "dpad_up", "dpad_down", "dpad_left", "dpad_right"],
+          scenarios: [
+            ["neutral", "Neutral"],
+            ["left-stick", "Left stick"],
+            ["right-stick", "Right stick / rudder"],
+            ["triggers", "LT / RT"],
+            ["ab", "A / B"],
+            ["dpad", "D-pad"],
+          ],
+        },
+        "generic-ble": {
+          label: "Generic BLE Gamepad",
+          expectedMapping: "",
+          axes: ["x", "y", "z", "rx", "ry", "rz"],
+          buttons: Array.from({ length: 16 }, (_, index) => `button_${index + 1}`),
+          scenarios: [
+            ["neutral", "Neutral"],
+            ["stick", "Stick"],
+            ["throttle", "Throttle"],
+            ["rudder", "Rudder"],
+            ["toe-brakes", "Toe brakes"],
+            ["buttons", "Buttons"],
+          ],
+        },
+        "generic-u6": {
+          label: "Generic U6",
+          expectedMapping: "",
+          axes: ["x", "y", "z", "rx", "ry", "rz"],
+          buttons: Array.from({ length: 16 }, (_, index) => `button_${index + 1}`),
+          scenarios: [
+            ["neutral", "Neutral"],
+            ["stick", "Stick"],
+            ["throttle", "Throttle"],
+            ["rudder", "Rudder"],
+            ["toe-brakes", "Toe brakes"],
+            ["buttons", "Buttons"],
+          ],
+        },
+      };
+
+      const params = new URLSearchParams(location.search);
+      const state = {
+        armed: false,
+        startedAt: null,
+        samples: [],
+        baseline: null,
+        latest: null,
+        changedAxes: new Set(),
+        changedButtons: new Set(),
+        scenarioHits: new Set(),
+        lastDownloadAt: 0,
+      };
+
+      const els = {
+        captureState: document.querySelector("#capture-state"),
+        profile: document.querySelector("#profile"),
+        profileLabel: document.querySelector("#profile-label"),
+        arm: document.querySelector("#arm"),
+        copy: document.querySelector("#copy"),
+        download: document.querySelector("#download"),
+        api: document.querySelector("#api"),
+        count: document.querySelector("#count"),
+        gamepadId: document.querySelector("#gamepad-id"),
+        mapping: document.querySelector("#mapping"),
+        timestamp: document.querySelector("#timestamp"),
+        axes: document.querySelector("#axes"),
+        buttons: document.querySelector("#buttons"),
+        scenarios: document.querySelector("#scenarios"),
+        summary: document.querySelector("#summary"),
+      };
+
+      function round(value) {
+        return Math.round(Number(value || 0) * 1000) / 1000;
+      }
+
+      function activeProfile() {
+        return PROFILES[els.profile.value] || PROFILES["xbox-standard"];
+      }
+
+      function snapshot(gamepad) {
+        if (!gamepad) return null;
+        return {
+          index: gamepad.index,
+          id: gamepad.id,
+          mapping: gamepad.mapping || "",
+          connected: gamepad.connected,
+          timestamp: gamepad.timestamp,
+          axes: Array.from(gamepad.axes || []).map(round),
+          buttons: Array.from(gamepad.buttons || []).map((button) => ({
+            pressed: Boolean(button.pressed),
+            touched: Boolean(button.touched),
+            value: round(button.value),
+          })),
+        };
+      }
+
+      function readGamepads() {
+        if (!navigator.getGamepads) return [];
+        return Array.from(navigator.getGamepads()).map(snapshot).filter(Boolean);
+      }
+
+      function primaryGamepad(gamepads) {
+        return gamepads.find((gamepad) => gamepad.connected) || gamepads[0] || null;
+      }
+
+      function axisDelta(a, b, index) {
+        return Math.abs((a.axes[index] || 0) - (b.axes[index] || 0));
+      }
+
+      function buttonDelta(a, b, index) {
+        const av = a.buttons[index]?.value || 0;
+        const bv = b.buttons[index]?.value || 0;
+        const ap = Boolean(a.buttons[index]?.pressed);
+        const bp = Boolean(b.buttons[index]?.pressed);
+        return Math.abs(av - bv) > 0.18 || ap !== bp;
+      }
+
+      function classifyChanges(current) {
+        if (!state.baseline || !current) return;
+        current.axes.forEach((_, index) => {
+          if (axisDelta(state.baseline, current, index) > 0.18) state.changedAxes.add(index);
+        });
+        current.buttons.forEach((_, index) => {
+          if (buttonDelta(state.baseline, current, index)) state.changedButtons.add(index);
+        });
+        if (state.changedAxes.size === 0 && state.changedButtons.size === 0) {
+          state.scenarioHits.add("neutral");
+        }
+        if (state.changedAxes.has(0) || state.changedAxes.has(1)) {
+          state.scenarioHits.add(activeProfile() === PROFILES["xbox-standard"] ? "left-stick" : "stick");
+        }
+        if (state.changedAxes.has(2) || state.changedAxes.has(3)) {
+          state.scenarioHits.add(activeProfile() === PROFILES["xbox-standard"] ? "right-stick" : "rudder");
+        }
+        if (state.changedAxes.has(4) || state.changedAxes.has(5)) {
+          state.scenarioHits.add("toe-brakes");
+        }
+        if (state.changedButtons.has(6) || state.changedButtons.has(7)) {
+          state.scenarioHits.add("triggers");
+        }
+        if (state.changedButtons.has(0) || state.changedButtons.has(1)) {
+          state.scenarioHits.add(activeProfile() === PROFILES["xbox-standard"] ? "ab" : "buttons");
+        }
+        if ([12, 13, 14, 15].some((index) => state.changedButtons.has(index))) {
+          state.scenarioHits.add("dpad");
+        }
+      }
+
+      function evidence() {
+        const gamepads = readGamepads();
+        const current = primaryGamepad(gamepads);
+        const profile = activeProfile();
+        const profileMatched = current
+          ? profile.expectedMapping === "standard"
+            ? current.mapping === "standard"
+            : true
+          : false;
+        return {
+          schema: "usb2ble_public_gamepad_tester_v1",
+          captured_at: new Date().toISOString(),
+          page_url: location.href,
+          user_agent: navigator.userAgent,
+          platform: navigator.platform,
+          has_gamepad_api: Boolean(navigator.getGamepads),
+          armed: state.armed,
+          expected_profile: els.profile.value,
+          expected_profile_label: profile.label,
+          expected_mapping: profile.expectedMapping,
+          profile_matched: profileMatched,
+          gamepad_count: gamepads.filter((gamepad) => gamepad.connected).length,
+          primary_gamepad: current,
+          changed_axes: Array.from(state.changedAxes).sort((a, b) => a - b),
+          changed_buttons: Array.from(state.changedButtons).sort((a, b) => a - b),
+          scenario_hits: Array.from(state.scenarioHits).sort(),
+          sample_count: state.samples.length,
+          samples: state.samples.slice(-80),
+        };
+      }
+
+      function renderControls(container, values, labels, kind) {
+        container.innerHTML = "";
+        const count = Math.max(values.length, labels.length);
+        for (let index = 0; index < count; index += 1) {
+          const row = document.createElement("div");
+          row.className = kind === "axis" ? "axis-row" : "button-row";
+          const label = document.createElement("div");
+          label.textContent = labels[index] || `${kind}_${index}`;
+          const track = document.createElement("div");
+          track.className = "track";
+          const fill = document.createElement("div");
+          fill.className = "fill";
+          const center = document.createElement("div");
+          center.className = "centerline";
+          const value = document.createElement("div");
+          const raw = kind === "axis" ? Number(values[index] || 0) : Number(values[index]?.value || 0);
+          const percent = kind === "axis" ? ((raw + 1) / 2) * 100 : raw * 100;
+          fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+          value.textContent = round(raw).toFixed(3);
+          track.appendChild(fill);
+          if (kind === "axis") track.appendChild(center);
+          row.append(label, track, value);
+          container.appendChild(row);
+        }
+      }
+
+      function renderScenarios() {
+        els.scenarios.innerHTML = "";
+        for (const [key, label] of activeProfile().scenarios) {
+          const pill = document.createElement("span");
+          pill.className = state.scenarioHits.has(key) ? "pill hit" : "pill";
+          pill.textContent = label;
+          els.scenarios.appendChild(pill);
+        }
+      }
+
+      function render() {
+        const gamepads = readGamepads();
+        const current = primaryGamepad(gamepads);
+        if (state.armed && current && !state.baseline) state.baseline = current;
+        if (state.armed && current) {
+          classifyChanges(current);
+          state.samples.push({
+            at: new Date().toISOString(),
+            primary_gamepad: current,
+          });
+          if (state.samples.length > 240) state.samples.shift();
+        }
+        const profile = activeProfile();
+        els.api.textContent = navigator.getGamepads ? "available" : "unavailable";
+        els.count.textContent = String(gamepads.filter((gamepad) => gamepad.connected).length);
+        els.profileLabel.textContent = profile.label;
+        els.gamepadId.textContent = current?.id || "-";
+        els.mapping.textContent = current?.mapping || "-";
+        els.timestamp.textContent = current ? String(Math.round(current.timestamp || 0)) : "-";
+        els.captureState.textContent = state.armed ? "Capturing" : "Idle";
+        els.captureState.className = state.armed ? "status ok" : "status warn";
+        renderControls(els.axes, current?.axes || [], profile.axes, "axis");
+        renderControls(els.buttons, current?.buttons || [], profile.buttons, "button");
+        renderScenarios();
+        const latestEvidence = evidence();
+        window.__usb2bleGamepadTesterEvidence = latestEvidence;
+        els.summary.textContent = JSON.stringify(
+          {
+            has_gamepad_api: latestEvidence.has_gamepad_api,
+            gamepad_count: latestEvidence.gamepad_count,
+            id: latestEvidence.primary_gamepad?.id || null,
+            mapping: latestEvidence.primary_gamepad?.mapping || null,
+            profile_matched: latestEvidence.profile_matched,
+            changed_axes: latestEvidence.changed_axes,
+            changed_buttons: latestEvidence.changed_buttons,
+            scenario_hits: latestEvidence.scenario_hits,
+            sample_count: latestEvidence.sample_count,
+          },
+          null,
+          2
+        );
+      }
+
+      function arm(source) {
+        if (state.armed) return;
+        state.armed = true;
+        state.startedAt = new Date().toISOString();
+        state.baseline = primaryGamepad(readGamepads());
+        state.samples = [];
+        state.changedAxes.clear();
+        state.changedButtons.clear();
+        state.scenarioHits.clear();
+        state.scenarioHits.add("neutral");
+        els.arm.disabled = true;
+        els.arm.textContent = `Capture armed (${source})`;
+        render();
+      }
+
+      async function copyEvidence() {
+        const text = JSON.stringify(evidence(), null, 2);
+        await navigator.clipboard.writeText(text);
+      }
+
+      function downloadEvidence() {
+        const now = Date.now();
+        if (now - state.lastDownloadAt < 1200) return;
+        state.lastDownloadAt = now;
+        const blob = new Blob([JSON.stringify(evidence(), null, 2) + "\n"], { type: "application/json" });
+        const link = document.createElement("a");
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        link.href = URL.createObjectURL(blob);
+        link.download = `usb2ble-gamepad-evidence-${stamp}.json`;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          URL.revokeObjectURL(link.href);
+          link.remove();
+        }, 500);
+      }
+
+      function applyParams() {
+        const expected = params.get("expectedProfile");
+        if (expected && PROFILES[expected]) els.profile.value = expected;
+        if (params.get("autoArm") === "1") setTimeout(() => arm("autoArm"), 250);
+        const captureMs = Number(params.get("captureMs") || "0");
+        if (params.get("autoDownload") === "1" && captureMs > 0) {
+          setTimeout(() => {
+            if (!state.armed) arm("autoDownload");
+            downloadEvidence();
+          }, Math.max(1000, captureMs));
+        }
+      }
+
+      els.arm.addEventListener("click", () => arm("button"));
+      els.copy.addEventListener("click", () => copyEvidence().catch(() => {}));
+      els.download.addEventListener("click", downloadEvidence);
+      els.profile.addEventListener("change", () => {
+        state.baseline = primaryGamepad(readGamepads());
+        state.changedAxes.clear();
+        state.changedButtons.clear();
+        state.scenarioHits.clear();
+        state.scenarioHits.add("neutral");
+        render();
+      });
+      window.addEventListener("gamepadconnected", () => {
+        if (params.get("autoArmOnConnect") === "1") arm("gamepadconnected");
+        render();
+      });
+      window.addEventListener("gamepaddisconnected", render);
+
+      applyParams();
+      render();
+      setInterval(render, Number(params.get("sampleMs") || "100"));
+    </script>
+  </body>
+</html>

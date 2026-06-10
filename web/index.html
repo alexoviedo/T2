@@ -85,6 +85,37 @@
             </div>
           </div>
 
+          <div class="card">
+            <h3>Startup BLE</h3>
+            <div class="form-group">
+              <label>Enable Startup BLE:</label>
+              <input type="checkbox" id="chk-startup-ble-enabled" />
+            </div>
+            <div class="form-group">
+              <label>Startup Persona:</label>
+              <select id="sel-startup-ble-persona">
+                <option value="generic_gamepad">Generic Gamepad</option>
+                <option value="xbox_wireless_controller">Xbox Wireless Controller</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Identity Strategy:</label>
+              <select id="sel-startup-ble-identity">
+                <option value="legacy_public">legacy_public</option>
+                <option value="persona_static_random_experimental">persona_static_random_experimental</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Startup Variant:</label>
+              <select id="sel-startup-ble-variant">
+                <option value="generic_default">generic_default</option>
+                <option value="generic_hogp_strict">generic_hogp_strict</option>
+                <option value="generic_unsigned_6axis">generic_unsigned_6axis</option>
+                <option value="xbox_compatibility">xbox_compatibility</option>
+              </select>
+            </div>
+          </div>
+
           <div class="actions card">
             <button id="btn-commit-config">Commit Config to Board</button>
             <button id="btn-save-config">Save Config (NVS)</button>
@@ -149,6 +180,9 @@
           <div class="card">
             <button id="btn-preset-generic" class="primary">Apply Flight Pack Generic</button>
             <button id="btn-preset-xbox" class="primary">Apply Flight Pack Xbox</button>
+          </div>
+          <div class="card">
+            <a href="./gamepad-test.html">Open public Gamepad API tester</a>
           </div>
         </section>
 

@@ -22,6 +22,13 @@ export interface BridgeConfig {
   rate_hz: number;
 }
 
+export interface StartupBleConfig {
+  enabled: boolean;
+  persona: 'generic_gamepad' | 'xbox_wireless_controller';
+  identity_strategy: 'legacy_public' | 'persona_static_random_experimental';
+  compatibility_variant: 'generic_default' | 'generic_hogp_strict' | 'generic_unsigned_6axis' | 'xbox_compatibility';
+}
+
 export interface RuntimeConfig {
   schema_version: number;
   metadata_version: number;
@@ -29,5 +36,6 @@ export interface RuntimeConfig {
   selected_persona: 'generic_gamepad' | 'xbox_wireless_controller';
   selected_profile: string;
   bridge: BridgeConfig;
+  startup_ble?: StartupBleConfig;
   mappings: MappingRule[];
 }

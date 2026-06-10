@@ -30,6 +30,12 @@ export const flightPackGeneric: RuntimeConfig = {
     auto_start_bridge: false,
     rate_hz: 50,
   },
+  startup_ble: {
+    enabled: false,
+    persona: 'generic_gamepad',
+    identity_strategy: 'legacy_public',
+    compatibility_variant: 'generic_default',
+  },
   mappings: [
     thrustmasterRule(0xb10a, 'axis_01_30', 'x'),
     thrustmasterRule(0xb10a, 'axis_01_31', 'y'),
@@ -50,6 +56,12 @@ export const flightPackXbox: RuntimeConfig = {
     auto_start_persona: true,
     auto_start_bridge: false,
     rate_hz: 50,
+  },
+  startup_ble: {
+    enabled: true,
+    persona: 'xbox_wireless_controller',
+    identity_strategy: 'persona_static_random_experimental',
+    compatibility_variant: 'xbox_compatibility',
   },
   mappings: [
     thrustmasterRule(0xb10a, 'axis_01_30', 'left_x'),

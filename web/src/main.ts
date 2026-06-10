@@ -37,6 +37,10 @@ const els = {
   chkAutoStartPersona: document.getElementById('chk-auto-start-persona') as HTMLInputElement,
   chkAutoStartBridge: document.getElementById('chk-auto-start-bridge') as HTMLInputElement,
   inpRateHz: document.getElementById('inp-rate-hz') as HTMLInputElement,
+  chkStartupBleEnabled: document.getElementById('chk-startup-ble-enabled') as HTMLInputElement,
+  selStartupBlePersona: document.getElementById('sel-startup-ble-persona') as HTMLSelectElement,
+  selStartupBleIdentity: document.getElementById('sel-startup-ble-identity') as HTMLSelectElement,
+  selStartupBleVariant: document.getElementById('sel-startup-ble-variant') as HTMLSelectElement,
   txtJsonConfig: document.getElementById('txt-json-config') as HTMLTextAreaElement,
 
   btnCommitConfig: document.getElementById('btn-commit-config') as HTMLButtonElement,
@@ -183,6 +187,11 @@ function renderConfig() {
   els.chkAutoStartPersona.checked = currentConfig.bridge?.auto_start_persona ?? true;
   els.chkAutoStartBridge.checked = currentConfig.bridge?.auto_start_bridge ?? false;
   els.inpRateHz.value = (currentConfig.bridge?.rate_hz ?? 50).toString();
+  const startupBle = currentConfig.startup_ble ?? defaultStartupBle();
+  els.chkStartupBleEnabled.checked = startupBle.enabled;
+  els.selStartupBlePersona.value = startupBle.persona;
+  els.selStartupBleIdentity.value = startupBle.identity_strategy;
+  els.selStartupBleVariant.value = startupBle.compatibility_variant;
 
   els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
 
@@ -194,6 +203,15 @@ function updateJsonFromForm() {
   if (!currentConfig) return;
   buildConfigFromUI();
   els.txtJsonConfig.value = JSON.stringify(currentConfig, null, 2);
+}
+
+function defaultStartupBle() {
+  return {
+    enabled: false,
+    persona: 'xbox_wireless_controller' as const,
+    identity_strategy: 'legacy_public' as const,
+    compatibility_variant: 'xbox_compatibility' as const,
+  };
 }
 
 function renderMappings() {
@@ -524,6 +542,13 @@ function buildConfigFromUI(): RuntimeConfig | null {
     currentConfig.bridge.rate_hz = parsedRate;
   }
 
+  currentConfig.startup_ble = {
+    enabled: els.chkStartupBleEnabled.checked,
+    persona: els.selStartupBlePersona.value as any,
+    identity_strategy: els.selStartupBleIdentity.value as any,
+    compatibility_variant: els.selStartupBleVariant.value as any,
+  };
+
   return currentConfig;
 }
 
@@ -594,6 +619,10 @@ function setupEvents() {
   els.chkAutoStartPersona.addEventListener('change', updateJsonFromForm);
   els.chkAutoStartBridge.addEventListener('change', updateJsonFromForm);
   els.inpRateHz.addEventListener('input', updateJsonFromForm);
+  els.chkStartupBleEnabled.addEventListener('change', updateJsonFromForm);
+  els.selStartupBlePersona.addEventListener('change', updateJsonFromForm);
+  els.selStartupBleIdentity.addEventListener('change', updateJsonFromForm);
+  els.selStartupBleVariant.addEventListener('change', updateJsonFromForm);
 
   els.btnConnect.addEventListener('click', async () => {
     try {
