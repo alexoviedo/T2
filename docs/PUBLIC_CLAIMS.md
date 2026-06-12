@@ -12,6 +12,12 @@ These claims are supported by checked-in evidence:
 - The practical RJ12 Flight Pack topology has target-side axis-label evidence.
 - Runtime config import/save/load across an actual board reset is proven.
 - Chrome Web Serial configurator smoke is proven.
+- The deployed public GitHub Pages Web Serial configurator has a Windows
+  desktop witness: after a browser serial framing fix, Alex's PC connected to
+  `COM3`, imported Flight Pack Xbox, saved/loaded config, started configured
+  Xbox, and verified that the saved startup config persisted across target soft
+  reset. This does not prove web flashing, mobile Web Serial, broad browser
+  support, or physical HOTAS movement.
 - Refined Generic Flight Pack mapping/report encoding is target-witnessed.
 - Refined Generic `z/rx/ry/rz` axis exposure is visible in Chrome Gamepad API.
 - Refined Generic live bridge completed a 300-second Chrome/browser soak.

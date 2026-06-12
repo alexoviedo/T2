@@ -127,6 +127,15 @@ not itself compatibility evidence.
   Web Serial configurator attempt opened the serial port but timed out waiting
   for a board response. A narrow Web Serial handshake fix was deployed, but
   public UI config/save/load remains pending retest.
+- 2026-06-12:
+  `docs/milestone-evidence/WEB_PAGES_CONFIGURATOR_DESKTOP_WITNESS_2026-06-12.md`
+  records the deployed public GitHub Pages Web Serial configurator retest after
+  the browser serial framing fix. On Alex's Windows PC, the public page
+  connected to `COM3`, imported Flight Pack Xbox, saved and loaded config,
+  started configured Xbox, and the saved startup Xbox config persisted across a
+  target soft reset. The retest log had zero interleaved `ERROR:Generic`
+  responses. Web flashing, mobile Web Serial, physical HOTAS movement, broad
+  platform compatibility, and BLE bond persistence remain unproven.
 - The next Windows hardware chunk should build from the single-persona Xbox
   path, with explicit startup reconnect/report delivery preserved. The next gap
   is either a longer no-removal reset/power-cycle soak, direct host-disconnect

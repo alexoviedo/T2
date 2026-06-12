@@ -113,7 +113,10 @@ python3 tools/serial_command.py --port <PORT> GET_CONFIG_STATUS START_CONFIGURED
 ```
 
 The Web Serial configurator can perform the same config import/save/load/start
-flow in Chrome or Edge on desktop.
+flow in Chrome or Edge on desktop. A public GitHub Pages desktop witness on
+Alex's Windows PC covers Flight Pack Xbox import/save/load/start-configured and
+soft-reset config persistence; web flashing and mobile Web Serial are separate,
+unproven paths.
 
 ## Useful Commands
 
