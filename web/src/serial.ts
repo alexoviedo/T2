@@ -163,7 +163,9 @@ export class SerialConnection {
       this.logCallback('tx', line);
     }
 
-    await this.writer.write(line + '\r\n');
+    // Match the native serial tools and firmware newline framing. Some
+    // ESP-IDF console paths translate CRLF into an extra empty command frame.
+    await this.writer.write(line + '\n');
   }
 
   async readLine(timeoutMs = 5000): Promise<string> {
