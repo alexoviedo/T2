@@ -987,7 +987,7 @@ where
             .virtual_input
             .sequence_missed_intervals
             .saturating_add(scheduled_slot.saturating_sub(self.virtual_input.sequence_next_slot));
-        let scenario = if scheduled_slot % 2 == 0 {
+        let scenario = if scheduled_slot.is_multiple_of(2) {
             "stick_left"
         } else {
             "stick_right"

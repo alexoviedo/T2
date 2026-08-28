@@ -36,6 +36,7 @@ const DEFAULT_BRIDGE_RATE_HZ: u16 = 50;
 const MIN_BRIDGE_RATE_HZ: u16 = 1;
 const MAX_BRIDGE_RATE_HZ: u16 = 200;
 const BRIDGE_HEARTBEAT_MS: u64 = 1_000;
+#[cfg(any(target_os = "espidf", test))]
 const CONTROL_PLANE_IDLE_BACKOFF_MS: u64 = 10;
 const STARTUP_BLE_DELAY_MS: u64 = 2_500;
 const STARTUP_BLE_WARM_RESTART_DELAY_MS: u64 = 2_500;
@@ -57,9 +58,9 @@ enum BridgePollOutcome {
 struct BridgeRuntime {
     enabled: bool,
     rate_hz: u16,
-    min_interval_ms: u64,
+    min_interval_micros: u64,
     heartbeat_ms: u64,
-    last_attempt_ms: Option<u64>,
+    next_attempt_micros: Option<u64>,
     last_publish_ms: Option<u64>,
     last_report: Option<EncodedBleReport>,
     first_success_logged: bool,
@@ -189,9 +190,9 @@ impl BridgeRuntime {
         let mut runtime = Self {
             enabled: false,
             rate_hz: DEFAULT_BRIDGE_RATE_HZ,
-            min_interval_ms: 0,
+            min_interval_micros: 0,
             heartbeat_ms: BRIDGE_HEARTBEAT_MS,
-            last_attempt_ms: None,
+            next_attempt_micros: None,
             last_publish_ms: None,
             last_report: None,
             first_success_logged: false,
@@ -214,7 +215,7 @@ impl BridgeRuntime {
 
         if !self.enabled {
             self.last_publish_ms = None;
-            self.last_attempt_ms = None;
+            self.next_attempt_micros = None;
             self.last_report = None;
             self.first_success_logged = false;
         }
@@ -235,6 +236,7 @@ impl BridgeRuntime {
         }
         self.rate_hz = rate_hz;
         self.update_min_interval();
+        self.next_attempt_micros = None;
         self.last_error = None;
         Ok(())
     }
@@ -258,7 +260,7 @@ impl BridgeRuntime {
         &mut self,
         app: &App<S>,
         ble: &mut impl BleTransport,
-        now_ms: u64,
+        now_micros: u64,
     ) -> BridgePollOutcome
     where
         S: usb2ble_contracts::ProfileStore
@@ -276,13 +278,24 @@ impl BridgeRuntime {
             return BridgePollOutcome::Noop;
         };
 
-        if let Some(last_ms) = self.last_attempt_ms
-            && now_ms.saturating_sub(last_ms) < self.min_interval_ms
+        if self
+            .next_attempt_micros
+            .is_some_and(|deadline| now_micros < deadline)
         {
             self.skipped_rate = self.skipped_rate.saturating_add(1);
             return BridgePollOutcome::Noop;
         }
-        self.last_attempt_ms = Some(now_ms);
+        let scheduled_micros = self.next_attempt_micros.unwrap_or(now_micros);
+        let elapsed_intervals = now_micros
+            .saturating_sub(scheduled_micros)
+            .checked_div(self.min_interval_micros)
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.next_attempt_micros = Some(
+            scheduled_micros
+                .saturating_add(elapsed_intervals.saturating_mul(self.min_interval_micros)),
+        );
+        let now_ms = now_micros / 1_000;
 
         let report = match bridge_report_for_persona(app, persona_id) {
             Ok(report) => report,
@@ -341,7 +354,8 @@ impl BridgeRuntime {
     }
 
     fn update_min_interval(&mut self) {
-        self.min_interval_ms = u64::from(1_000_u16.saturating_add(self.rate_hz - 1) / self.rate_hz);
+        self.min_interval_micros =
+            1_000_000_u64.saturating_add(u64::from(self.rate_hz) - 1) / u64::from(self.rate_hz);
     }
 }
 
@@ -550,9 +564,9 @@ pub fn main() {
             }
             app.handle_usb_event(event);
             if is_input_report {
-                let now_ms = elapsed_ms(bridge_clock);
+                let now_micros = elapsed_micros(bridge_clock);
                 let bridge_poll_started = std::time::Instant::now();
-                let outcome = bridge.poll(&app, &mut ble, now_ms);
+                let outcome = bridge.poll(&app, &mut ble, now_micros);
                 app.record_bridge_poll_duration(elapsed_micros(bridge_poll_started));
                 write_bridge_poll_outcome(&uart, outcome);
                 bridge_polled_this_loop = true;
@@ -561,9 +575,9 @@ pub fn main() {
         app.record_usb_event_drain_duration(elapsed_micros(usb_event_drain_started));
 
         if !bridge_polled_this_loop {
-            let now_ms = elapsed_ms(bridge_clock);
+            let now_micros = elapsed_micros(bridge_clock);
             let bridge_poll_started = std::time::Instant::now();
-            let outcome = bridge.poll(&app, &mut ble, now_ms);
+            let outcome = bridge.poll(&app, &mut ble, now_micros);
             app.record_bridge_poll_duration(elapsed_micros(bridge_poll_started));
             write_bridge_poll_outcome(&uart, outcome);
         }
@@ -623,10 +637,6 @@ pub fn main() {
             }
         }
     }
-}
-
-fn elapsed_ms(start: std::time::Instant) -> u64 {
-    start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
 }
 
 fn elapsed_micros(start: std::time::Instant) -> u64 {
@@ -2017,7 +2027,11 @@ mod tests {
         }
 
         fn poll_bridge(&mut self, now_ms: u64) -> BridgePollOutcome {
-            self.bridge.poll(&self.app, &mut self.ble, now_ms)
+            self.poll_bridge_micros(now_ms.saturating_mul(1_000))
+        }
+
+        fn poll_bridge_micros(&mut self, now_micros: u64) -> BridgePollOutcome {
+            self.bridge.poll(&self.app, &mut self.ble, now_micros)
         }
 
         fn apply_startup_ble_config(&mut self) {
@@ -2732,6 +2746,36 @@ mod tests {
     }
 
     #[test]
+    fn bridge_50hz_deadline_does_not_drift_after_late_polls() {
+        let mut runtime = Runtime::with_button_input();
+
+        assert_ble_action(
+            runtime.run(ControlCommand::StartBleGenericGamepad),
+            "start_generic_gamepad",
+        );
+        assert_bridge_status(runtime.run(ControlCommand::StartBridge));
+
+        assert_eq!(
+            runtime.poll_bridge_micros(0),
+            BridgePollOutcome::FirstPublish
+        );
+        for slot in 1_u64..=500 {
+            inject_button_report(&mut runtime.app, slot.is_multiple_of(2), 100 + slot);
+            let one_microsecond_late = slot % 2;
+            assert_eq!(
+                runtime.poll_bridge_micros(
+                    slot.saturating_mul(20_000)
+                        .saturating_add(one_microsecond_late),
+                ),
+                BridgePollOutcome::Noop
+            );
+        }
+
+        assert_eq!(runtime.ble.published_reports().len(), 501);
+        assert_eq!(runtime.bridge.next_attempt_micros, Some(10_020_000));
+    }
+
+    #[test]
     fn bridge_duplicate_suppression_suppresses_until_heartbeat() {
         let mut runtime = Runtime::with_button_input();
 
@@ -3149,11 +3193,24 @@ mod tests {
                 bytes: report_descriptor,
             },
         ));
+        inject_button_report(app, true, 100);
+    }
+
+    fn inject_button_report(app: &mut App<InMemoryStore>, pressed: bool, timestamp_micros: u64) {
+        let source = UsbInterfaceRef {
+            device: UsbDeviceRef {
+                device_id: DeviceId(1),
+                topology: ConnectionTopology::Direct,
+                vendor_id: 0x1234,
+                product_id: 0x5678,
+            },
+            interface_id: InterfaceId(0),
+        };
         app.handle_usb_event(UsbIngressEvent::InputReportReceived(InputReportPacket {
-            source: iface,
+            source,
             report_id: ReportId(0),
-            payload: vec![0x01],
-            timestamp_micros: 100,
+            payload: vec![u8::from(pressed)],
+            timestamp_micros,
         }));
     }
 

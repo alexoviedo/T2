@@ -26,6 +26,7 @@ REQUIRED_RELEASE_FILES = (
     Path("docs/EVIDENCE_INDEX.md"),
     Path("scripts/package_firmware.sh"),
     Path("scripts/build.sh"),
+    Path("scripts/check_target_build.sh"),
     Path("scripts/flash.sh"),
     Path(".github/workflows/ci.yml"),
 )
@@ -151,6 +152,52 @@ def check_release_files(root: Path) -> list[Issue]:
     return issues
 
 
+def check_production_firmware_profile(root: Path) -> list[Issue]:
+    issues: list[Issue] = []
+    requirements = {
+        Path("scripts/build.sh"): ("--release",),
+        Path("scripts/check_target_build.sh"): ("--release",),
+        Path("scripts/flash.sh"): (
+            'PROFILE="${PROFILE:-release}"',
+            '[[ "$PROFILE" != "release" ]]',
+            'TARGET_DIR="${CARGO_TARGET_DIR:-target}"',
+            '$TARGET_DIR/$TARGET/$PROFILE/usb2ble-fw',
+        ),
+        Path("scripts/package_firmware.sh"): (
+            'PROFILE="${PROFILE:-release}"',
+            '[[ "$PROFILE" != "release" ]]',
+            'TARGET_DIR="${CARGO_TARGET_DIR:-target}"',
+            "*/release/usb2ble-fw",
+        ),
+        Path(".github/workflows/ci.yml"): (
+            "target/xtensa-esp32s3-espidf/release/usb2ble-fw",
+        ),
+    }
+    for path, phrases in requirements.items():
+        full = root / path
+        if not full.is_file():
+            continue
+        text = read_text(full)
+        for phrase in phrases:
+            if phrase not in text:
+                issues.append(
+                    Issue(path, f"production firmware path is missing {phrase!r}")
+                )
+
+    forbidden = "target/xtensa-esp32s3-espidf/debug/usb2ble-fw"
+    for path in (
+        Path("scripts/flash.sh"),
+        Path("scripts/package_firmware.sh"),
+        Path(".github/workflows/ci.yml"),
+    ):
+        full = root / path
+        if full.is_file() and forbidden in read_text(full):
+            issues.append(
+                Issue(path, "production firmware path references the debug executable")
+            )
+    return issues
+
+
 def iter_repo_files(root: Path):
     for path in root.rglob("*"):
         if not path.is_file():
@@ -186,6 +233,7 @@ def check_repository(root: Path) -> list[Issue]:
     issues.extend(check_web_package(root))
     issues.extend(check_cargo_metadata(root))
     issues.extend(check_release_files(root))
+    issues.extend(check_production_firmware_profile(root))
     issues.extend(check_hidden_blockers(root))
 
     evidence_checker = load_tool(root, "check_evidence_docs")

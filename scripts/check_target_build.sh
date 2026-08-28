@@ -22,6 +22,6 @@ else
     echo "Warning: esp toolchain not found in rustup; using default cargo toolchain."
 fi
 
-"${CARGO_BIN[@]}" build "${BUILD_FLAGS[@]}" --locked --package usb2ble-fw --target "$TARGET"
+"${CARGO_BIN[@]}" build "${BUILD_FLAGS[@]}" --locked --release --package usb2ble-fw --target "$TARGET"
 
-echo "Target build preflight passed for $TARGET."
+echo "Optimized release target build preflight passed for $TARGET."

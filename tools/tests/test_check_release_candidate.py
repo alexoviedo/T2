@@ -42,6 +42,30 @@ def write_required_repo(root: Path) -> None:
         "docs/PUBLIC_CLAIMS.md\n",
         encoding="utf-8",
     )
+    (root / "scripts" / "build.sh").write_text(
+        "cargo build --release\n", encoding="utf-8"
+    )
+    (root / "scripts" / "check_target_build.sh").write_text(
+        "cargo build --release\n", encoding="utf-8"
+    )
+    (root / "scripts" / "flash.sh").write_text(
+        'PROFILE="${PROFILE:-release}"\n'
+        'TARGET_DIR="${CARGO_TARGET_DIR:-target}"\n'
+        'if [[ "$PROFILE" != "release" ]]; then exit 1; fi\n'
+        'BINARY="$TARGET_DIR/$TARGET/$PROFILE/usb2ble-fw"\n',
+        encoding="utf-8",
+    )
+    (root / "scripts" / "package_firmware.sh").write_text(
+        'PROFILE="${PROFILE:-release}"\n'
+        'TARGET_DIR="${CARGO_TARGET_DIR:-target}"\n'
+        'if [[ "$PROFILE" != "release" ]]; then exit 1; fi\n'
+        'case "$BINARY" in */release/usb2ble-fw) ;; esac\n',
+        encoding="utf-8",
+    )
+    (root / ".github" / "workflows" / "ci.yml").write_text(
+        "cp target/xtensa-esp32s3-espidf/release/usb2ble-fw target/dist/\n",
+        encoding="utf-8",
+    )
     web = root / "web"
     web.mkdir()
     (web / "package.json").write_text(
@@ -68,8 +92,23 @@ class ReleaseCandidateTests(unittest.TestCase):
             issues.extend(check_release_candidate.check_web_package(root))
             issues.extend(check_release_candidate.check_cargo_metadata(root))
             issues.extend(check_release_candidate.check_release_files(root))
+            issues.extend(check_release_candidate.check_production_firmware_profile(root))
             issues.extend(check_release_candidate.check_hidden_blockers(root))
             self.assertEqual(issues, [])
+
+    def test_debug_production_firmware_path_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_required_repo(root)
+            (root / ".github" / "workflows" / "ci.yml").write_text(
+                "cp target/xtensa-esp32s3-espidf/debug/usb2ble-fw target/dist/\n",
+                encoding="utf-8",
+            )
+            messages = [
+                issue.message
+                for issue in check_release_candidate.check_production_firmware_profile(root)
+            ]
+            self.assertTrue(any("debug executable" in message for message in messages))
 
     def test_missing_apache_license_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

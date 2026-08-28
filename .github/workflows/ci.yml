@@ -100,7 +100,7 @@ jobs:
         mkdir -p target/dist
         cp target/firmware/usb2ble-fw-esp32s3-merged.bin target/dist/
         cp target/firmware/usb2ble-fw-esp32s3-manifest.txt target/dist/
-        cp target/xtensa-esp32s3-espidf/debug/usb2ble-fw target/dist/
+        cp target/xtensa-esp32s3-espidf/release/usb2ble-fw target/dist/
 
     - name: Upload flashable firmware artifact
       uses: actions/upload-artifact@v7

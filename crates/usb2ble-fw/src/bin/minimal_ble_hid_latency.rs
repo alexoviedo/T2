@@ -16,9 +16,7 @@ fn main() {
     use std::ffi::CString;
     use std::time::{Duration, Instant};
 
-    use usb2ble_contracts::{
-        BleLinkState, BleTransport, EncodedBleReport, PersonaEncoder,
-    };
+    use usb2ble_contracts::{BleLinkState, BleTransport, EncodedBleReport, PersonaEncoder};
     use usb2ble_personas::{
         GENERIC_GAMEPAD_PERSONA_ID, GENERIC_GAMEPAD_REPORT_ID, GenericGamepadEncoder,
     };

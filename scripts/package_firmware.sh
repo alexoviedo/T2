@@ -5,14 +5,28 @@ echo "Packaging USB2BLE ESP32-S3 flash image..."
 
 TARGET="${TARGET:-xtensa-esp32s3-espidf}"
 CHIP="${CHIP:-esp32s3}"
-PROFILE="${PROFILE:-debug}"
+PROFILE="${PROFILE:-release}"
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
 FLASH_SIZE="${FLASH_SIZE:-16mb}"
 FLASH_MODE="${FLASH_MODE:-dio}"
 FLASH_FREQ="${FLASH_FREQ:-40mhz}"
 OUT_DIR="${OUT_DIR:-target/firmware}"
-BINARY="${BINARY:-target/$TARGET/$PROFILE/usb2ble-fw}"
+BINARY="${BINARY:-$TARGET_DIR/$TARGET/$PROFILE/usb2ble-fw}"
 IMAGE="${IMAGE:-$OUT_DIR/usb2ble-fw-$CHIP-merged.bin}"
 MANIFEST="${MANIFEST:-$OUT_DIR/usb2ble-fw-$CHIP-manifest.txt}"
+
+if [[ "$PROFILE" != "release" ]]; then
+    echo "Error: production packaging requires PROFILE=release; got PROFILE=$PROFILE"
+    exit 1
+fi
+
+case "$BINARY" in
+    */release/usb2ble-fw) ;;
+    *)
+        echo "Error: production packaging requires a release firmware ELF; got BINARY=$BINARY"
+        exit 1
+        ;;
+esac
 
 if ! command -v espflash &> /dev/null; then
     echo "Error: espflash not found."
