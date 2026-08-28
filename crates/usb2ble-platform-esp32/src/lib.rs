@@ -103,7 +103,7 @@ impl Uart {
                 }
                 UartReadResult::Pending
             }
-            Err(_) => UartReadResult::Error,
+            Err(err) => classify_uart_read_error(&err),
         }
     }
 
@@ -141,6 +141,13 @@ impl Uart {
     }
 }
 
+fn classify_uart_read_error(err: &io::Error) -> UartReadResult {
+    match err.kind() {
+        io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => UartReadResult::Pending,
+        _ => UartReadResult::Error,
+    }
+}
+
 impl Default for Uart {
     fn default() -> Self {
         Self::new()
@@ -154,16 +161,14 @@ pub fn init() {
         // Required for ESP-IDF linkage
         esp_idf_sys::link_patches();
 
-        // Ensure stdin is non-blocking so the main event loop does not halt on read
+        // Explicitly select ESP-IDF's non-blocking UART VFS implementation.
+        // Generic fcntl(O_NONBLOCK) is not sufficient when the console VFS has
+        // previously selected its interrupt-driven blocking implementation.
         unsafe {
-            let flags = esp_idf_sys::fcntl(0, esp_idf_sys::F_GETFL as i32, 0);
-            if flags >= 0 {
-                esp_idf_sys::fcntl(
-                    0,
-                    esp_idf_sys::F_SETFL as i32,
-                    flags | (esp_idf_sys::O_NONBLOCK as i32),
-                );
-            }
+            esp_idf_sys::esp_vfs_dev_uart_use_nonblocking(
+                esp_idf_sys::CONFIG_ESP_CONSOLE_UART_NUM as i32,
+            );
+            esp_idf_sys::esp_vfs_usb_serial_jtag_use_nonblocking();
         }
 
         init_nvs_flash();
@@ -475,5 +480,23 @@ mod tests {
         let res = uart.read_line(&mut buf);
         assert_eq!(res, UartReadResult::Frame(5));
         assert_eq!(&buf[..5], b"CMD2\n");
+    }
+
+    #[test]
+    fn test_uart_nonblocking_empty_read_is_pending() {
+        let err = io::Error::from(io::ErrorKind::WouldBlock);
+        assert_eq!(classify_uart_read_error(&err), UartReadResult::Pending);
+    }
+
+    #[test]
+    fn test_uart_interrupted_read_is_pending() {
+        let err = io::Error::from(io::ErrorKind::Interrupted);
+        assert_eq!(classify_uart_read_error(&err), UartReadResult::Pending);
+    }
+
+    #[test]
+    fn test_uart_real_read_error_remains_error() {
+        let err = io::Error::from(io::ErrorKind::Other);
+        assert_eq!(classify_uart_read_error(&err), UartReadResult::Error);
     }
 }

@@ -36,6 +36,7 @@ const DEFAULT_BRIDGE_RATE_HZ: u16 = 50;
 const MIN_BRIDGE_RATE_HZ: u16 = 1;
 const MAX_BRIDGE_RATE_HZ: u16 = 200;
 const BRIDGE_HEARTBEAT_MS: u64 = 1_000;
+const CONTROL_PLANE_IDLE_BACKOFF_MS: u64 = 10;
 const STARTUP_BLE_DELAY_MS: u64 = 2_500;
 const STARTUP_BLE_WARM_RESTART_DELAY_MS: u64 = 2_500;
 
@@ -408,6 +409,8 @@ pub fn main() {
     // 5. Main loop
     let mut buf = [0u8; 128];
     loop {
+        let loop_body_started = std::time::Instant::now();
+        let usb_service_started = std::time::Instant::now();
         #[cfg(target_os = "espidf")]
         {
             if let Err(err) = usb.service_host() {
@@ -416,6 +419,9 @@ pub fn main() {
         }
         #[cfg(not(target_os = "espidf"))]
         usb.service_host();
+        app.record_usb_service_duration(elapsed_micros(usb_service_started));
+
+        app.service_virtual_input_sequence(elapsed_micros(bridge_clock));
 
         if let Some(due_at) = startup_ble_due_at
             && !startup_ble.attempted
@@ -458,6 +464,7 @@ pub fn main() {
 
         // Poll USB events
         let mut bridge_polled_this_loop = false;
+        let usb_event_drain_started = std::time::Instant::now();
         while let Some(event) = usb.poll_event() {
             let is_input_report = matches!(
                 &event,
@@ -544,19 +551,28 @@ pub fn main() {
             app.handle_usb_event(event);
             if is_input_report {
                 let now_ms = elapsed_ms(bridge_clock);
+                let bridge_poll_started = std::time::Instant::now();
                 let outcome = bridge.poll(&app, &mut ble, now_ms);
+                app.record_bridge_poll_duration(elapsed_micros(bridge_poll_started));
                 write_bridge_poll_outcome(&uart, outcome);
                 bridge_polled_this_loop = true;
             }
         }
+        app.record_usb_event_drain_duration(elapsed_micros(usb_event_drain_started));
 
         if !bridge_polled_this_loop {
             let now_ms = elapsed_ms(bridge_clock);
+            let bridge_poll_started = std::time::Instant::now();
             let outcome = bridge.poll(&app, &mut ble, now_ms);
+            app.record_bridge_poll_duration(elapsed_micros(bridge_poll_started));
             write_bridge_poll_outcome(&uart, outcome);
         }
 
-        match uart.read_line(&mut buf) {
+        app.record_loop_body_duration(elapsed_micros(loop_body_started));
+        let uart_read_started = std::time::Instant::now();
+        let uart_read_result = uart.read_line(&mut buf);
+        app.record_uart_read_duration(elapsed_micros(uart_read_started));
+        match uart_read_result {
             UartReadResult::Frame(n) => {
                 match control.decode_command(&buf[..n]) {
                     Ok(cmd) => {
@@ -589,7 +605,9 @@ pub fn main() {
             UartReadResult::Pending => {
                 // Continue looping, wait for more data
                 #[cfg(target_os = "espidf")]
-                std::thread::sleep(std::time::Duration::from_millis(10));
+                std::thread::sleep(std::time::Duration::from_millis(
+                    CONTROL_PLANE_IDLE_BACKOFF_MS,
+                ));
             }
             UartReadResult::Eof => {
                 // On host, stdin closed.
@@ -597,9 +615,11 @@ pub fn main() {
                 break;
             }
             UartReadResult::Error => {
-                // uart.write_all(b"ERROR: UART Read Error\n");
+                // A broken control channel must not starve USB/BLE bridge servicing.
                 #[cfg(target_os = "espidf")]
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                std::thread::sleep(std::time::Duration::from_millis(
+                    CONTROL_PLANE_IDLE_BACKOFF_MS,
+                ));
             }
         }
     }
@@ -607,6 +627,10 @@ pub fn main() {
 
 fn elapsed_ms(start: std::time::Instant) -> u64 {
     start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+fn elapsed_micros(start: std::time::Instant) -> u64 {
+    start.elapsed().as_micros().min(u128::from(u64::MAX)) as u64
 }
 
 fn apply_startup_ble_config<S>(
@@ -1931,6 +1955,12 @@ fn xbox_hat(value: i8) -> Vec<PersonaLogicalControlValue> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn control_plane_backoff_cannot_starve_default_bridge_rate() {
+        let default_bridge_interval_ms = 1_000 / u64::from(DEFAULT_BRIDGE_RATE_HZ);
+        assert!(CONTROL_PLANE_IDLE_BACKOFF_MS < default_bridge_interval_ms);
+    }
     use usb2ble_contracts::{
         BleLinkState, ConnectionTopology, DeviceId, InputReportPacket, InterfaceId,
         PersonaDescriptor, ReportDescriptorBlob, ReportId, UsbDeviceRef, UsbIngressEvent,

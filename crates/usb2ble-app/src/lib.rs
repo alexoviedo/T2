@@ -41,6 +41,51 @@ pub struct App<S> {
     config_source: &'static str,
     last_config_error: Option<&'static str>,
     virtual_input: VirtualInputRuntime,
+    runtime_loop_diagnostics: RuntimeLoopDiagnostics,
+}
+
+/// Aggregate main-loop phase timing captured without streaming diagnostic output.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RuntimeLoopDiagnostics {
+    /// Time spent servicing USB host events.
+    pub usb_service: RuntimePhaseTiming,
+    /// Time spent draining decoded USB ingress events.
+    pub usb_event_drain: RuntimePhaseTiming,
+    /// Time spent mapping and publishing bridge reports.
+    pub bridge_poll: RuntimePhaseTiming,
+    /// Time spent waiting for or reading a control-plane frame.
+    pub uart_read: RuntimePhaseTiming,
+    /// Time spent in the loop body before the control-plane read.
+    pub loop_body: RuntimePhaseTiming,
+}
+
+/// Aggregate timing for one main-loop phase.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RuntimePhaseTiming {
+    /// Number of measured calls.
+    pub calls: u64,
+    /// Sum of measured call durations.
+    pub total_micros: u64,
+    /// Longest measured call duration.
+    pub max_micros: u64,
+    /// Calls taking longer than 50 milliseconds.
+    pub over_50ms: u64,
+    /// Calls taking longer than 100 milliseconds.
+    pub over_100ms: u64,
+}
+
+impl RuntimePhaseTiming {
+    fn record(&mut self, duration_micros: u64) {
+        self.calls = self.calls.saturating_add(1);
+        self.total_micros = self.total_micros.saturating_add(duration_micros);
+        self.max_micros = self.max_micros.max(duration_micros);
+        if duration_micros > 50_000 {
+            self.over_50ms = self.over_50ms.saturating_add(1);
+        }
+        if duration_micros > 100_000 {
+            self.over_100ms = self.over_100ms.saturating_add(1);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -49,7 +94,18 @@ struct VirtualInputRuntime {
     frame: Option<CompositeInputFrame>,
     last_scenario: Option<String>,
     frame_counter: u64,
+    sequence_name: Option<String>,
+    sequence_active: bool,
+    sequence_started_at_micros: Option<u64>,
+    sequence_completed_at_micros: Option<u64>,
+    sequence_expected_frames: u64,
+    sequence_generated_frames: u64,
+    sequence_missed_intervals: u64,
+    sequence_next_slot: u64,
 }
+
+const FLIGHT_PACK_CORE_INTERVAL_MICROS: u64 = 20_000;
+const FLIGHT_PACK_CORE_EXPECTED_FRAMES: u64 = 500;
 
 const VIRTUAL_SCENARIOS: &[&str] = &[
     "neutral",
@@ -101,7 +157,43 @@ where
             config_source,
             last_config_error,
             virtual_input: VirtualInputRuntime::default(),
+            runtime_loop_diagnostics: RuntimeLoopDiagnostics::default(),
         }
+    }
+
+    /// Record one USB-host service call for deterministic loop-stall attribution.
+    pub fn record_usb_service_duration(&mut self, duration_micros: u64) {
+        self.runtime_loop_diagnostics
+            .usb_service
+            .record(duration_micros);
+    }
+
+    /// Record one USB ingress queue-drain pass.
+    pub fn record_usb_event_drain_duration(&mut self, duration_micros: u64) {
+        self.runtime_loop_diagnostics
+            .usb_event_drain
+            .record(duration_micros);
+    }
+
+    /// Record one bridge poll, including any BLE report publication.
+    pub fn record_bridge_poll_duration(&mut self, duration_micros: u64) {
+        self.runtime_loop_diagnostics
+            .bridge_poll
+            .record(duration_micros);
+    }
+
+    /// Record one control-plane read call for deterministic loop-stall attribution.
+    pub fn record_uart_read_duration(&mut self, duration_micros: u64) {
+        self.runtime_loop_diagnostics
+            .uart_read
+            .record(duration_micros);
+    }
+
+    /// Record one complete loop body before its control-plane read.
+    pub fn record_loop_body_duration(&mut self, duration_micros: u64) {
+        self.runtime_loop_diagnostics
+            .loop_body
+            .record(duration_micros);
     }
 
     /// Process a control plane command.
@@ -247,10 +339,12 @@ where
             }
             ControlCommand::StopVirtualInput => {
                 self.virtual_input.enabled = false;
+                self.virtual_input.sequence_active = false;
                 self.virtual_input_status_response()
             }
             ControlCommand::GetVirtualInputStatus => self.virtual_input_status_response(),
             ControlCommand::PublishVirtualInputFrame(scenario) => {
+                self.virtual_input.sequence_active = false;
                 match self.publish_virtual_input_scenario(scenario) {
                     Ok(()) => self.virtual_input_status_response(),
                     Err(err) => ControlResponse::Error(err),
@@ -854,6 +948,59 @@ where
         &self.state
     }
 
+    /// Advance an armed diagnostic sequence using the caller's monotonic clock.
+    ///
+    /// At most one frame is generated per call. Late calls record and skip missed
+    /// slots instead of emitting a catch-up burst that would hide scheduler stalls.
+    pub fn service_virtual_input_sequence(&mut self, now_micros: u64) {
+        if !self.virtual_input.enabled || !self.virtual_input.sequence_active {
+            return;
+        }
+
+        let started_at = *self
+            .virtual_input
+            .sequence_started_at_micros
+            .get_or_insert(now_micros);
+        let scheduled_slot = now_micros
+            .saturating_sub(started_at)
+            .checked_div(FLIGHT_PACK_CORE_INTERVAL_MICROS)
+            .unwrap_or(0);
+
+        if scheduled_slot >= self.virtual_input.sequence_expected_frames {
+            self.virtual_input.sequence_missed_intervals =
+                self.virtual_input.sequence_missed_intervals.saturating_add(
+                    self.virtual_input
+                        .sequence_expected_frames
+                        .saturating_sub(self.virtual_input.sequence_next_slot),
+                );
+            self.virtual_input.sequence_next_slot = self.virtual_input.sequence_expected_frames;
+            self.virtual_input.sequence_active = false;
+            self.virtual_input.sequence_completed_at_micros = Some(now_micros);
+            return;
+        }
+
+        if scheduled_slot < self.virtual_input.sequence_next_slot {
+            return;
+        }
+
+        self.virtual_input.sequence_missed_intervals = self
+            .virtual_input
+            .sequence_missed_intervals
+            .saturating_add(scheduled_slot.saturating_sub(self.virtual_input.sequence_next_slot));
+        let scenario = if scheduled_slot % 2 == 0 {
+            "stick_left"
+        } else {
+            "stick_right"
+        };
+        if self.publish_virtual_input_scenario(scenario).is_ok() {
+            self.virtual_input.sequence_generated_frames = self
+                .virtual_input
+                .sequence_generated_frames
+                .saturating_add(1);
+        }
+        self.virtual_input.sequence_next_slot = scheduled_slot.saturating_add(1);
+    }
+
     fn publish_virtual_input_scenario(&mut self, scenario: &str) -> Result<(), ControlError> {
         if !self.virtual_input.enabled {
             return Err(ControlError::Generic);
@@ -868,7 +1015,19 @@ where
 
     fn run_virtual_input_sequence(&mut self, sequence: &str) -> Result<(), ControlError> {
         match sequence {
-            "flight_pack_core" | "all" => self.publish_virtual_input_scenario("neutral"),
+            "flight_pack_core" | "all" if self.virtual_input.enabled => {
+                self.runtime_loop_diagnostics = RuntimeLoopDiagnostics::default();
+                self.virtual_input.sequence_name = Some("flight_pack_core".to_string());
+                self.virtual_input.sequence_active = true;
+                self.virtual_input.sequence_started_at_micros = None;
+                self.virtual_input.sequence_completed_at_micros = None;
+                self.virtual_input.sequence_expected_frames = FLIGHT_PACK_CORE_EXPECTED_FRAMES;
+                self.virtual_input.sequence_generated_frames = 0;
+                self.virtual_input.sequence_missed_intervals = 0;
+                self.virtual_input.sequence_next_slot = 0;
+                Ok(())
+            }
+            "flight_pack_core" | "all" => Err(ControlError::Generic),
             _ => Err(ControlError::NotFound),
         }
     }
@@ -886,6 +1045,53 @@ where
             "controls": self.virtual_input.frame.as_ref().map_or(0, |frame| frame.controls.len()),
             "sources": self.virtual_input.frame.as_ref().map_or(0, |frame| frame.sources.len()),
             "timestamp_micros": self.virtual_input.frame.as_ref().map(|frame| frame.timestamp_micros),
+            "sequence": {
+                "name": self.virtual_input.sequence_name,
+                "active": self.virtual_input.sequence_active,
+                "interval_micros": FLIGHT_PACK_CORE_INTERVAL_MICROS,
+                "expected_frames": self.virtual_input.sequence_expected_frames,
+                "generated_frames": self.virtual_input.sequence_generated_frames,
+                "missed_intervals": self.virtual_input.sequence_missed_intervals,
+                "started_at_micros": self.virtual_input.sequence_started_at_micros,
+                "completed_at_micros": self.virtual_input.sequence_completed_at_micros,
+            },
+            "runtime_loop_diagnostics": {
+                "usb_service": {
+                    "calls": self.runtime_loop_diagnostics.usb_service.calls,
+                    "total_micros": self.runtime_loop_diagnostics.usb_service.total_micros,
+                    "max_micros": self.runtime_loop_diagnostics.usb_service.max_micros,
+                    "over_50ms": self.runtime_loop_diagnostics.usb_service.over_50ms,
+                    "over_100ms": self.runtime_loop_diagnostics.usb_service.over_100ms,
+                },
+                "usb_event_drain": {
+                    "calls": self.runtime_loop_diagnostics.usb_event_drain.calls,
+                    "total_micros": self.runtime_loop_diagnostics.usb_event_drain.total_micros,
+                    "max_micros": self.runtime_loop_diagnostics.usb_event_drain.max_micros,
+                    "over_50ms": self.runtime_loop_diagnostics.usb_event_drain.over_50ms,
+                    "over_100ms": self.runtime_loop_diagnostics.usb_event_drain.over_100ms,
+                },
+                "bridge_poll": {
+                    "calls": self.runtime_loop_diagnostics.bridge_poll.calls,
+                    "total_micros": self.runtime_loop_diagnostics.bridge_poll.total_micros,
+                    "max_micros": self.runtime_loop_diagnostics.bridge_poll.max_micros,
+                    "over_50ms": self.runtime_loop_diagnostics.bridge_poll.over_50ms,
+                    "over_100ms": self.runtime_loop_diagnostics.bridge_poll.over_100ms,
+                },
+                "uart_read": {
+                    "calls": self.runtime_loop_diagnostics.uart_read.calls,
+                    "total_micros": self.runtime_loop_diagnostics.uart_read.total_micros,
+                    "max_micros": self.runtime_loop_diagnostics.uart_read.max_micros,
+                    "over_50ms": self.runtime_loop_diagnostics.uart_read.over_50ms,
+                    "over_100ms": self.runtime_loop_diagnostics.uart_read.over_100ms,
+                },
+                "loop_body": {
+                    "calls": self.runtime_loop_diagnostics.loop_body.calls,
+                    "total_micros": self.runtime_loop_diagnostics.loop_body.total_micros,
+                    "max_micros": self.runtime_loop_diagnostics.loop_body.max_micros,
+                    "over_50ms": self.runtime_loop_diagnostics.loop_body.over_50ms,
+                    "over_100ms": self.runtime_loop_diagnostics.loop_body.over_100ms,
+                },
+            },
             "supported_scenarios": VIRTUAL_SCENARIOS,
             "supported_sequences": ["flight_pack_core"],
         });
@@ -1555,6 +1761,118 @@ mod tests {
             );
         } else {
             panic!("Expected mapping diagnostics");
+        }
+    }
+
+    #[test]
+    fn flight_pack_core_sequence_generates_500_self_timed_frames() {
+        let mut app = App::new(InMemoryStore::new());
+        app.set_runtime_config(RuntimeConfig::flight_pack_generic_preset())
+            .unwrap();
+
+        let _ = app.handle_control_command(&ControlCommand::StartVirtualInput);
+        match app.handle_control_command(&ControlCommand::RunVirtualInputSequence(
+            "flight_pack_core".to_string(),
+        )) {
+            ControlResponse::Json(resp) => {
+                assert!(resp.json.contains("\"active\":true"));
+                assert!(resp.json.contains("\"expected_frames\":500"));
+            }
+            other => panic!("Expected virtual input status, got {other:?}"),
+        }
+
+        for slot in 0..FLIGHT_PACK_CORE_EXPECTED_FRAMES {
+            app.service_virtual_input_sequence(slot * FLIGHT_PACK_CORE_INTERVAL_MICROS);
+        }
+        app.service_virtual_input_sequence(
+            FLIGHT_PACK_CORE_EXPECTED_FRAMES * FLIGHT_PACK_CORE_INTERVAL_MICROS,
+        );
+
+        match app.handle_control_command(&ControlCommand::GetVirtualInputStatus) {
+            ControlResponse::Json(resp) => {
+                assert!(resp.json.contains("\"active\":false"));
+                assert!(resp.json.contains("\"generated_frames\":500"));
+                assert!(resp.json.contains("\"missed_intervals\":0"));
+            }
+            other => panic!("Expected virtual input status, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn flight_pack_core_sequence_records_missed_slots_without_catch_up_burst() {
+        let mut app = App::new(InMemoryStore::new());
+        let _ = app.handle_control_command(&ControlCommand::StartVirtualInput);
+        let _ = app.handle_control_command(&ControlCommand::RunVirtualInputSequence(
+            "flight_pack_core".to_string(),
+        ));
+
+        app.service_virtual_input_sequence(0);
+        app.service_virtual_input_sequence(100_000);
+        app.service_virtual_input_sequence(
+            FLIGHT_PACK_CORE_EXPECTED_FRAMES * FLIGHT_PACK_CORE_INTERVAL_MICROS,
+        );
+
+        match app.handle_control_command(&ControlCommand::GetVirtualInputStatus) {
+            ControlResponse::Json(resp) => {
+                assert!(resp.json.contains("\"generated_frames\":2"));
+                assert!(resp.json.contains("\"missed_intervals\":498"));
+            }
+            other => panic!("Expected virtual input status, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn flight_pack_core_reports_phase_timing_and_resets_it_when_armed() {
+        let mut app = App::new(InMemoryStore::new());
+        app.record_usb_service_duration(7);
+        app.record_uart_read_duration(50_001);
+        app.record_uart_read_duration(100_001);
+
+        let _ = app.handle_control_command(&ControlCommand::StartVirtualInput);
+        let _ = app.handle_control_command(&ControlCommand::RunVirtualInputSequence(
+            "flight_pack_core".to_string(),
+        ));
+        app.record_usb_service_duration(11);
+        app.record_usb_event_drain_duration(12);
+        app.record_bridge_poll_duration(100_002);
+        app.record_uart_read_duration(100_001);
+        app.record_loop_body_duration(100_003);
+
+        match app.handle_control_command(&ControlCommand::GetVirtualInputStatus) {
+            ControlResponse::Json(resp) => {
+                let json: serde_json::Value = serde_json::from_str(&resp.json).unwrap();
+                assert_eq!(json["runtime_loop_diagnostics"]["usb_service"]["calls"], 1);
+                assert_eq!(
+                    json["runtime_loop_diagnostics"]["usb_service"]["total_micros"],
+                    11
+                );
+                assert_eq!(json["runtime_loop_diagnostics"]["uart_read"]["calls"], 1);
+                assert_eq!(
+                    json["runtime_loop_diagnostics"]["uart_read"]["max_micros"],
+                    100_001
+                );
+                assert_eq!(
+                    json["runtime_loop_diagnostics"]["uart_read"]["over_50ms"],
+                    1
+                );
+                assert_eq!(
+                    json["runtime_loop_diagnostics"]["uart_read"]["over_100ms"],
+                    1
+                );
+                assert_eq!(
+                    json["runtime_loop_diagnostics"]["usb_event_drain"]["max_micros"],
+                    12
+                );
+                assert_eq!(
+                    json["runtime_loop_diagnostics"]["bridge_poll"]["max_micros"],
+                    100_002
+                );
+                assert_eq!(
+                    json["runtime_loop_diagnostics"]["loop_body"]["max_micros"],
+                    100_003
+                );
+            }
+            other => panic!("Expected virtual input status, got {other:?}"),
         }
     }
 
