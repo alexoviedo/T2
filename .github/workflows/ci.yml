@@ -144,6 +144,14 @@ jobs:
           name: usb2ble-fw-esp32s3-flashable
           path: firmware
 
+      - name: Point latest tag at this build
+        run: |
+          gh api \
+            --method PATCH \
+            "repos/${GITHUB_REPOSITORY}/git/refs/tags/latest" \
+            -f sha="${GITHUB_SHA}" \
+            -F force=true
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
