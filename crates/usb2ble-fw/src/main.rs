@@ -744,10 +744,15 @@ fn warm_restart_startup_ble_config<S>(
     app.set_ble_state(ble.current_state());
 
     match start_ble_persona_from_startup_config(app, ble, generic_encoder, xbox_encoder, &config) {
-        ControlResponse::BleAction(_) => {
-            startup_ble.warm_restart_applied = true;
-            startup_ble.last_error = None;
-        }
+        ControlResponse::BleAction(_) => match apply_configured_bridge_settings(app, bridge) {
+            Ok(()) => {
+                startup_ble.warm_restart_applied = true;
+                startup_ble.last_error = None;
+            }
+            Err(err) => {
+                startup_ble.last_error = Some(format!("warm_bridge:{err:?}"));
+            }
+        },
         ControlResponse::Error(err) => {
             startup_ble.last_error = Some(format!("warm_start:{err:?}"));
         }
@@ -1765,12 +1770,7 @@ where
         }
     }
 
-    if let Err(err) = bridge.set_rate_hz(config.bridge.rate_hz) {
-        return ControlResponse::Error(err);
-    }
-    if config.bridge.auto_start_bridge
-        && let Err(err) = bridge.start(app.state().active_persona)
-    {
+    if let Err(err) = apply_configured_bridge_settings(app, bridge) {
         return ControlResponse::Error(err);
     }
 
@@ -1782,6 +1782,23 @@ where
             persona_id.0, config.bridge.auto_start_bridge
         )),
     })
+}
+
+fn apply_configured_bridge_settings<S>(
+    app: &App<S>,
+    bridge: &mut BridgeRuntime,
+) -> Result<(), ControlError>
+where
+    S: usb2ble_contracts::ProfileStore
+        + usb2ble_contracts::BondStore
+        + usb2ble_contracts::ConfigStore,
+{
+    let config = &app.runtime_config().bridge;
+    bridge.set_rate_hz(config.rate_hz)?;
+    if config.auto_start_bridge {
+        bridge.start(app.state().active_persona)?;
+    }
+    Ok(())
 }
 
 fn publish_ble_report(
@@ -2404,6 +2421,39 @@ mod tests {
             )),
             "publish_xbox_test_report",
         );
+    }
+
+    #[test]
+    fn startup_ble_warm_restart_starts_saved_live_bridge() {
+        let mut runtime = Runtime::with_button_input();
+        let mut config = RuntimeConfig::flight_pack_generic_preset();
+        config.bridge.auto_start_bridge = true;
+        config.bridge.rate_hz = 50;
+        config.startup_ble.enabled = true;
+        config.startup_ble.persona = config.selected_persona.clone();
+        config.startup_ble.compatibility_variant =
+            BleCompatibilityVariant::GenericDefault.id().to_string();
+        runtime.app.set_runtime_config(config).unwrap();
+
+        runtime.apply_startup_ble_config();
+        assert!(
+            !runtime
+                .bridge
+                .status(runtime.app.state().active_persona)
+                .enabled
+        );
+
+        runtime.warm_restart_startup_ble_config();
+
+        assert!(runtime.startup_ble.warm_restart_applied);
+        assert_eq!(
+            runtime.app.state().active_persona,
+            Some(GENERIC_GAMEPAD_PERSONA_ID)
+        );
+        let status = runtime.bridge.status(runtime.app.state().active_persona);
+        assert!(status.enabled);
+        assert_eq!(status.rate_hz, 50);
+        assert_eq!(runtime.poll_bridge(0), BridgePollOutcome::FirstPublish);
     }
 
     #[test]

@@ -969,7 +969,8 @@ pub enum StoreError {
 pub struct BridgeRuntimeConfig {
     /// Whether `START_CONFIGURED` should start the selected BLE persona.
     pub auto_start_persona: bool,
-    /// Whether `START_CONFIGURED` should also start live bridge mode.
+    /// Whether configured startup, including enabled boot startup, should also
+    /// start live bridge mode.
     pub auto_start_bridge: bool,
     /// Maximum automatic live bridge publish rate.
     pub rate_hz: u16,
