@@ -58,6 +58,15 @@ const USB_ENDPOINT_TRANSFER_TYPE_MASK: u8 = 0x03;
 #[cfg(any(test, target_os = "espidf"))]
 const USB_ENDPOINT_TRANSFER_TYPE_INTERRUPT: u8 = 0x03;
 
+#[cfg(any(test, target_os = "espidf"))]
+const INTERRUPT_TRANSFER_RETRY_MICROS: u64 = 250_000;
+
+#[cfg(any(test, target_os = "espidf"))]
+const fn interrupt_transfer_retry_due(last_attempt_micros: u64, now_micros: u64) -> bool {
+    last_attempt_micros == 0
+        || now_micros.saturating_sub(last_attempt_micros) >= INTERRUPT_TRANSFER_RETRY_MICROS
+}
+
 /// Parse interface descriptors from a raw active configuration descriptor blob.
 #[cfg(any(test, target_os = "espidf"))]
 fn parse_interfaces_from_config(config_blob: &[u8]) -> Vec<InterfaceDescriptorInfo> {
@@ -221,6 +230,8 @@ struct TargetHidInterfaceSession {
     in_flight: bool,
     claimed: bool,
     last_report_log_micros: u64,
+    last_recovery_attempt_micros: u64,
+    recovery_attempts: u64,
 }
 
 #[cfg(target_os = "espidf")]
@@ -778,6 +789,8 @@ impl EspUsbHost {
             in_flight: true,
             claimed: true,
             last_report_log_micros: 0,
+            last_recovery_attempt_micros: 0,
+            recovery_attempts: 0,
         })
     }
 
@@ -795,7 +808,32 @@ impl EspUsbHost {
                 }
 
                 for interface_session in &mut device_session.interfaces {
-                    if !interface_session.in_flight || !interface_session.result.done {
+                    let now_micros = unsafe { esp_timer_get_time().max(0) as u64 };
+                    if !interface_session.in_flight {
+                        if interrupt_transfer_retry_due(
+                            interface_session.last_recovery_attempt_micros,
+                            now_micros,
+                        ) {
+                            interface_session.last_recovery_attempt_micros = now_micros;
+                            interface_session.recovery_attempts =
+                                interface_session.recovery_attempts.saturating_add(1);
+                            if recover_interrupt_transfer(device_session.dev_hdl, interface_session)
+                            {
+                                interface_session.in_flight = true;
+                                unsafe {
+                                    printf(
+                                        b"[USB_REPORT_RECOVERED] Device: ID=%lu, IFACE=%u, ATTEMPTS=%llu\n\0"
+                                            .as_ptr() as *const _,
+                                        interface_session.source.device.device_id.0 as u32,
+                                        interface_session.source.interface_id.0 as u32,
+                                        interface_session.recovery_attempts,
+                                    );
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    if !interface_session.result.done {
                         continue;
                     }
 
@@ -844,6 +882,10 @@ impl EspUsbHost {
 
                         if resubmit_interrupt_transfer(interface_session) {
                             interface_session.in_flight = true;
+                            interface_session.recovery_attempts = 0;
+                            interface_session.last_recovery_attempt_micros = 0;
+                        } else {
+                            interface_session.last_recovery_attempt_micros = now_micros;
                         }
                     } else if status == usb_transfer_status_t_USB_TRANSFER_STATUS_NO_DEVICE
                         || status == usb_transfer_status_t_USB_TRANSFER_STATUS_CANCELED
@@ -865,6 +907,10 @@ impl EspUsbHost {
                         }
                         if recover_interrupt_transfer(device_session.dev_hdl, interface_session) {
                             interface_session.in_flight = true;
+                            interface_session.recovery_attempts = 0;
+                            interface_session.last_recovery_attempt_micros = 0;
+                        } else {
+                            interface_session.last_recovery_attempt_micros = now_micros;
                         }
                     }
                 }
@@ -1165,9 +1211,25 @@ fn round_up_to_mps(value: usize, mps: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        EndpointDescriptorInfo, InterfaceDescriptorInfo, parse_hid_interfaces_from_config,
+        EndpointDescriptorInfo, INTERRUPT_TRANSFER_RETRY_MICROS, InterfaceDescriptorInfo,
+        interrupt_transfer_retry_due, parse_hid_interfaces_from_config,
         parse_interfaces_from_config,
     };
+
+    #[test]
+    fn stranded_interrupt_transfer_retries_without_busy_looping() {
+        assert!(interrupt_transfer_retry_due(0, 10));
+
+        let first_attempt = 1_000_000;
+        assert!(!interrupt_transfer_retry_due(
+            first_attempt,
+            first_attempt + INTERRUPT_TRANSFER_RETRY_MICROS - 1
+        ));
+        assert!(interrupt_transfer_retry_due(
+            first_attempt,
+            first_attempt + INTERRUPT_TRANSFER_RETRY_MICROS
+        ));
+    }
 
     #[test]
     fn parses_hid_interface_descriptors_only() {
