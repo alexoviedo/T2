@@ -61,10 +61,42 @@ const USB_ENDPOINT_TRANSFER_TYPE_INTERRUPT: u8 = 0x03;
 #[cfg(any(test, target_os = "espidf"))]
 const INTERRUPT_TRANSFER_RETRY_MICROS: u64 = 250_000;
 
+// The accepted Quest Flight Pack devices continuously complete their interrupt
+// IN transfers, even while their controls are stationary. If both devices stay
+// enumerated but a submitted transfer makes no progress for this long, the
+// transfer is wedged rather than merely idle. Keep this watchdog scoped to the
+// witnessed Thrustmaster devices so event-driven HID devices are not
+// periodically canceled while legitimately quiet.
+#[cfg(any(test, target_os = "espidf"))]
+const FLIGHT_PACK_TRANSFER_STALL_MICROS: u64 = 500_000;
+
+#[cfg(any(test, target_os = "espidf"))]
+const THRUSTMASTER_VENDOR_ID: u16 = 0x044f;
+#[cfg(any(test, target_os = "espidf"))]
+const T16000M_PRODUCT_ID: u16 = 0xb10a;
+#[cfg(any(test, target_os = "espidf"))]
+const TWCS_RJ12_PRODUCT_ID: u16 = 0xb687;
+
 #[cfg(any(test, target_os = "espidf"))]
 const fn interrupt_transfer_retry_due(last_attempt_micros: u64, now_micros: u64) -> bool {
     last_attempt_micros == 0
         || now_micros.saturating_sub(last_attempt_micros) >= INTERRUPT_TRANSFER_RETRY_MICROS
+}
+
+#[cfg(any(test, target_os = "espidf"))]
+const fn flight_pack_transfer_watchdog_enabled(vendor_id: u16, product_id: u16) -> bool {
+    vendor_id == THRUSTMASTER_VENDOR_ID
+        && (product_id == T16000M_PRODUCT_ID || product_id == TWCS_RJ12_PRODUCT_ID)
+}
+
+#[cfg(any(test, target_os = "espidf"))]
+const fn interrupt_transfer_stall_recovery_due(
+    last_progress_micros: u64,
+    last_attempt_micros: u64,
+    now_micros: u64,
+) -> bool {
+    now_micros.saturating_sub(last_progress_micros) >= FLIGHT_PACK_TRANSFER_STALL_MICROS
+        && interrupt_transfer_retry_due(last_attempt_micros, now_micros)
 }
 
 /// Parse interface descriptors from a raw active configuration descriptor blob.
@@ -230,8 +262,10 @@ struct TargetHidInterfaceSession {
     in_flight: bool,
     claimed: bool,
     last_report_log_micros: u64,
+    last_progress_micros: u64,
     last_recovery_attempt_micros: u64,
     recovery_attempts: u64,
+    watchdog_cancel_pending: bool,
 }
 
 #[cfg(target_os = "espidf")]
@@ -781,6 +815,7 @@ impl EspUsbHost {
             return Err(ReportCaptureError::TransferSubmit(submit_err));
         }
 
+        let now_micros = unsafe { esp_timer_get_time().max(0) as u64 };
         Ok(TargetHidInterfaceSession {
             source,
             endpoint,
@@ -789,8 +824,10 @@ impl EspUsbHost {
             in_flight: true,
             claimed: true,
             last_report_log_micros: 0,
+            last_progress_micros: now_micros,
             last_recovery_attempt_micros: 0,
             recovery_attempts: 0,
+            watchdog_cancel_pending: false,
         })
     }
 
@@ -833,6 +870,77 @@ impl EspUsbHost {
                         }
                         continue;
                     }
+                    if !interface_session.result.done
+                        && flight_pack_transfer_watchdog_enabled(
+                            interface_session.source.device.vendor_id,
+                            interface_session.source.device.product_id,
+                        )
+                        && interrupt_transfer_stall_recovery_due(
+                            interface_session.last_progress_micros,
+                            interface_session.last_recovery_attempt_micros,
+                            now_micros,
+                        )
+                    {
+                        interface_session.last_recovery_attempt_micros = now_micros;
+                        interface_session.recovery_attempts =
+                            interface_session.recovery_attempts.saturating_add(1);
+                        let halt_err = unsafe {
+                            usb_host_endpoint_halt(
+                                device_session.dev_hdl,
+                                interface_session.endpoint.address,
+                            )
+                        };
+                        let flush_err = if halt_err == ESP_OK as i32 {
+                            unsafe {
+                                usb_host_endpoint_flush(
+                                    device_session.dev_hdl,
+                                    interface_session.endpoint.address,
+                                )
+                            }
+                        } else {
+                            halt_err
+                        };
+                        let clear_err = if halt_err == ESP_OK as i32 {
+                            unsafe {
+                                usb_host_endpoint_clear(
+                                    device_session.dev_hdl,
+                                    interface_session.endpoint.address,
+                                )
+                            }
+                        } else {
+                            halt_err
+                        };
+                        if flush_err == ESP_OK as i32 {
+                            interface_session.watchdog_cancel_pending = true;
+                            unsafe {
+                                printf(
+                                    b"[USB_REPORT_STALLED] Device: ID=%lu, IFACE=%u, AGE_MS=%llu, ATTEMPTS=%llu, CLEAR_ERR=%d\n\0"
+                                        .as_ptr() as *const _,
+                                    interface_session.source.device.device_id.0 as u32,
+                                    interface_session.source.interface_id.0 as u32,
+                                    now_micros
+                                        .saturating_sub(interface_session.last_progress_micros)
+                                        / 1_000,
+                                    interface_session.recovery_attempts,
+                                    clear_err,
+                                );
+                            }
+                        } else {
+                            unsafe {
+                                printf(
+                                    b"[USB_REPORT_RECOVERY_WARN] Device: ID=%lu, IFACE=%u, HALT_ERR=%d, FLUSH_ERR=%d, CLEAR_ERR=%d, ATTEMPTS=%llu\n\0"
+                                        .as_ptr() as *const _,
+                                    interface_session.source.device.device_id.0 as u32,
+                                    interface_session.source.interface_id.0 as u32,
+                                    halt_err,
+                                    flush_err,
+                                    clear_err,
+                                    interface_session.recovery_attempts,
+                                );
+                            }
+                        }
+                        continue;
+                    }
                     if !interface_session.result.done {
                         continue;
                     }
@@ -841,6 +949,30 @@ impl EspUsbHost {
                     let status = interface_session.result.status;
                     let actual_num_bytes =
                         interface_session.result.actual_num_bytes.max(0) as usize;
+                    interface_session.last_progress_micros = now_micros;
+
+                    if interface_session.watchdog_cancel_pending
+                        && status == usb_transfer_status_t_USB_TRANSFER_STATUS_CANCELED
+                    {
+                        interface_session.watchdog_cancel_pending = false;
+                        if resubmit_interrupt_transfer(interface_session) {
+                            interface_session.in_flight = true;
+                            interface_session.last_recovery_attempt_micros = 0;
+                            unsafe {
+                                printf(
+                                    b"[USB_REPORT_RECOVERED] Device: ID=%lu, IFACE=%u, REASON=hung_in_flight, ATTEMPTS=%llu\n\0"
+                                        .as_ptr() as *const _,
+                                    interface_session.source.device.device_id.0 as u32,
+                                    interface_session.source.interface_id.0 as u32,
+                                    interface_session.recovery_attempts,
+                                );
+                            }
+                        } else {
+                            interface_session.last_recovery_attempt_micros = now_micros;
+                        }
+                        continue;
+                    }
+                    interface_session.watchdog_cancel_pending = false;
 
                     if status == usb_transfer_status_t_USB_TRANSFER_STATUS_COMPLETED {
                         if actual_num_bytes > 0 {
@@ -882,7 +1014,6 @@ impl EspUsbHost {
 
                         if resubmit_interrupt_transfer(interface_session) {
                             interface_session.in_flight = true;
-                            interface_session.recovery_attempts = 0;
                             interface_session.last_recovery_attempt_micros = 0;
                         } else {
                             interface_session.last_recovery_attempt_micros = now_micros;
@@ -907,7 +1038,6 @@ impl EspUsbHost {
                         }
                         if recover_interrupt_transfer(device_session.dev_hdl, interface_session) {
                             interface_session.in_flight = true;
-                            interface_session.recovery_attempts = 0;
                             interface_session.last_recovery_attempt_micros = 0;
                         } else {
                             interface_session.last_recovery_attempt_micros = now_micros;
@@ -1211,10 +1341,43 @@ fn round_up_to_mps(value: usize, mps: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        EndpointDescriptorInfo, INTERRUPT_TRANSFER_RETRY_MICROS, InterfaceDescriptorInfo,
-        interrupt_transfer_retry_due, parse_hid_interfaces_from_config,
-        parse_interfaces_from_config,
+        EndpointDescriptorInfo, FLIGHT_PACK_TRANSFER_STALL_MICROS, INTERRUPT_TRANSFER_RETRY_MICROS,
+        InterfaceDescriptorInfo, flight_pack_transfer_watchdog_enabled,
+        interrupt_transfer_retry_due, interrupt_transfer_stall_recovery_due,
+        parse_hid_interfaces_from_config, parse_interfaces_from_config,
     };
+
+    #[test]
+    fn flight_pack_watchdog_is_scoped_to_witnessed_periodic_devices() {
+        assert!(flight_pack_transfer_watchdog_enabled(0x044f, 0xb10a));
+        assert!(flight_pack_transfer_watchdog_enabled(0x044f, 0xb687));
+        assert!(!flight_pack_transfer_watchdog_enabled(0x044f, 0x0001));
+        assert!(!flight_pack_transfer_watchdog_enabled(0x1234, 0xb10a));
+    }
+
+    #[test]
+    fn hung_in_flight_transfer_uses_bounded_retry_schedule() {
+        let submitted = 1_000_000;
+        assert!(!interrupt_transfer_stall_recovery_due(
+            submitted,
+            0,
+            submitted + FLIGHT_PACK_TRANSFER_STALL_MICROS - 1,
+        ));
+        let first_due = submitted + FLIGHT_PACK_TRANSFER_STALL_MICROS;
+        assert!(interrupt_transfer_stall_recovery_due(
+            submitted, 0, first_due,
+        ));
+        assert!(!interrupt_transfer_stall_recovery_due(
+            submitted,
+            first_due,
+            first_due + INTERRUPT_TRANSFER_RETRY_MICROS - 1,
+        ));
+        assert!(interrupt_transfer_stall_recovery_due(
+            submitted,
+            first_due,
+            first_due + INTERRUPT_TRANSFER_RETRY_MICROS,
+        ));
+    }
 
     #[test]
     fn stranded_interrupt_transfer_retries_without_busy_looping() {
