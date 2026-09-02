@@ -4,7 +4,13 @@ All notable public-facing changes should be documented here.
 
 ## Unreleased
 
-- Future changes after `v0.1.0-alpha`.
+- Fixed a permanent Flight Pack input freeze after a transient ESP32-S3 USB
+  interrupt-transfer resubmission failure. Stranded transfers now retry at a
+  bounded interval and resume without rebuilding the USB hierarchy.
+- Preserved the optimized 50 Hz Quest bridge, saved boot auto-start, Generic
+  Gamepad identity, and existing Flight Pack mapping.
+- Refreshed the GitHub Pages build lockfile to patched Vite, PostCSS, and Nano ID
+  versions; `npm audit` reports zero known vulnerabilities.
 
 ## v0.1.0-alpha
 

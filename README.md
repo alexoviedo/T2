@@ -26,8 +26,11 @@ target, host, browser, soak, and self-hosted browser-game smoke evidence for
 the refined Generic Flight Pack path, but it is not a polished consumer product.
 
 Evidence is the source of truth. Start with [docs/EVIDENCE_INDEX.md](docs/EVIDENCE_INDEX.md).
-The current public prerelease is
-[v0.1.0-alpha](https://github.com/alexoviedo/T2/releases/tag/v0.1.0-alpha).
+The continuously updated, CI-built firmware is published as the
+[latest release](https://github.com/alexoviedo/T2/releases/tag/latest) and by
+the [GitHub Pages flasher](https://alexoviedo.github.io/T2/). The named
+[v0.1.0-alpha](https://github.com/alexoviedo/T2/releases/tag/v0.1.0-alpha)
+remains the original public prerelease milestone.
 
 ## Proven
 
@@ -54,7 +57,8 @@ The current public prerelease is
 - External or native game compatibility.
 - iPhone compatibility.
 - Xbox host-visible refined Flight Pack mapping.
-- BLE bond persistence and reconnect hardening.
+- Broad BLE bond persistence and reconnect hardening beyond the witnessed
+  Quest 3 Generic Flight Pack path.
 - Final product-quality deadzone/calibration feel.
 - Broad host/browser support beyond the checked-in witnesses.
 - Simultaneous three-separate-USB Flight Pack streaming.
